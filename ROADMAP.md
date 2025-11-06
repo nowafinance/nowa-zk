@@ -1650,7 +1650,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: contracts/package.json
       - name: Install deps and run tests (Hardhat)
@@ -2308,7 +2308,3 @@ typechain
 - **EVM**: Ethereum Virtual Machine
 - **Cosmos SDK**: Framework for building blockchains
 - **Ethermint**: EVM implementation for Cosmos chains
-
----
-
-**Ready to build? Let's go! 🎉**
