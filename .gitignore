@@ -1,3 +1,30 @@
+# Go build artifacts
+bin/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+*.log
+coverage/
+
+# IDE/editor
+.vscode/
+.idea/
+.DS_Store
+
+# Node/JS (existing contracts dir)
+node_modules/
+**/node_modules/
+
+# Misc
+.env
+.env.*
 # Temporary planning docs
 milestone.md
 
