@@ -35,7 +35,7 @@ Quick start for local development (contracts + services):
 
 ### Prerequisites
 * Go 1.21+
-* Node.js 20+ and npm
+* Node.js 24+ and npm
 * Docker (optional, for infra/monitoring)
 
 ### Build & Test
@@ -44,18 +44,16 @@ Quick start for local development (contracts + services):
 git clone https://github.com/tannetwork/zk-sequencer.git
 cd zk-sequencer
 
-
-
-# ⚠️ Under Production: These codes will not work for now, we are actively working on it 
-
 # Contracts (Hardhat)
 cd contracts
 npm ci
+npx hardhat compile
 npx hardhat test
 
-# Prover (Go + Gnark) - placeholder build
+# Prover (Go + Gnark)
 cd ../prover
 go build ./...
+go test ./...
 
 # Sequencer (Go)
 cd ../sequencer
@@ -69,4 +67,3 @@ We welcome contributions from the community\! If you're interested in helping bu
 ## License
 
 This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
-

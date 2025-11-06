@@ -1,0 +1,33 @@
+name: Prover CI
+
+on:
+  push:
+    paths:
+      - "prover/**"
+      - ".github/workflows/prover.yml"
+  pull_request:
+    paths:
+      - "prover/**"
+      - ".github/workflows/prover.yml"
+
+concurrency:
+  group: prover-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: prover
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.2'
+          cache: true
+
+      - name: Test
+        run: go test -v -race ./...
