@@ -67,13 +67,14 @@ ZK-Sequencer Service (this repo)
 ### Week 1: Project Setup & Smart Contracts
 
 **Milestone 1.1: Repository Structure** (Days 1-2)
-- [ ] Initialize zk-sequencer repository structure
-- [ ] Setup CI/CD pipeline (GitHub Actions)
-- [ ] Configure linters and formatters
+- [x] Initialize zk-sequencer repository structure
+- [x] Setup CI/CD pipeline (GitHub Actions)
+- [x] Configure linters and formatters
   - Solidity: `forge fmt`
   - Go: `golangci-lint`
-- [ ] Create README and initial documentation
-- [ ] Setup development environment
+- [x] Create README and initial documentation
+- [x] Setup development environment
+
 
 **Directory Structure:**
 ```
@@ -117,7 +118,7 @@ zk-sequencer/
 ```
 
 **Milestone 1.2: Smart Contract Foundation** (Days 3-7)
-- [ ] Setup Foundry project in `contracts/`
+- [x] Setup Foundry project in `contracts/`
 - [ ] Implement core contracts:
   - `BatchRegistry.sol` - Stores batch commitments
   - `StateManager.sol` - Tracks execution state roots
