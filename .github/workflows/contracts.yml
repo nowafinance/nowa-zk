@@ -23,18 +23,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
 
       # Setup Foundry (forge & cast)
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly  # or 'stable' if you prefer
+          version: stable
 
       - name: Show Forge version
         run: forge --version
 
       - name: Install Forge dependencies
-        run: forge install
+        run: forge install --no-commit || echo "No new dependencies to install"
 
       - name: Run Forge fmt
         run: forge fmt --check
