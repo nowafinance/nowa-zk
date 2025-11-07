@@ -24,11 +24,8 @@ interface IVerifier {
      * @param publicInputs The public inputs to the proof:
      *        - publicInputs[0]: oldStateRoot (bytes32)
      *        - publicInputs[1]: newStateRoot (bytes32)
-     *        - publicInputs[2]:batchNumber (uint256)
-     *                |
-     *                |
-     *                |
-     *        - publicInputs[n]: there may be more inputs, as circuit is not prepared so writing only the valid once for now   
+     *        - publicInputs[2]: batchNumber (uint256)
+     *        - publicInputs[n]: there may be more inputs, as circuit is not prepared so writing only the valid once for now
      *
      * @return success True if the proof is valid, false otherwise
      *
@@ -38,7 +35,7 @@ interface IVerifier {
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[3] calldata publicInputs // note: length of inputs will be more, so we are not writing all the inputs for now, it will be decided later as per circuit 
+        uint256[3] calldata publicInputs // note: length of inputs will be more, so we are not writing all the inputs for now, it will be decided later as per circuit
     ) external view returns (bool success);
 
     /**
