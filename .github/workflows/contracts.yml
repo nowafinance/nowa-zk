@@ -20,20 +20,29 @@ jobs:
     defaults:
       run:
         working-directory: contracts
+
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: 'contracts/package-lock.json'
+          submodules: false
 
-      - name: Install deps
-        run: npm ci
+      # Setup Foundry (forge & cast)
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
 
-      - name: Compile
-        run: npx hardhat compile
+      - name: Show Forge version
+        run: forge --version
 
-      - name: Test
-        run: npx hardhat test
+      - name: Install Forge dependencies
+        run: forge install foundry-rs/forge-std
+
+      - name: Run Forge fmt
+        run: forge fmt --check
+
+      - name: Build contracts
+        run: forge build --sizes
+
+      - name: Run tests
+        run: forge test -vvv

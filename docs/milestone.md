@@ -10,142 +10,92 @@ Milestone 1.1 — Repository Structure
   - CI jobs green
   - contracts compiles; Go modules build
 
-Milestone 1.2 — Smart Contract Foundation (Hardhat)
+Milestone 1.2 — Smart Contract Foundation (Foundry)
 - Due date: 2025-11-14
 - Description: Core contracts with tests and local deploy.
 - Scope:
+  - Initialize Foundry project (forge init)
   - Implement BatchRegistry, StateManager, IVerifier interface
-  - Unit tests (Hardhat) 
-  - scripts/deploy.ts for localhost
+  - Unit tests (Forge tests with fuzzing)
+  - script/Deploy.s.sol for localhost
 - Acceptance:
   - Contracts compile without warnings
-  - Core functions tested locally
+  - Core functions tested with forge test
+  - 100% coverage on critical functions
 
-Milestone 1.3 — Tan‑ZK RPC Client
-- Description: Implement Go RPC client for Tan‑ZK.
+Milestone 3.3.5 — Gnark Verifier Contract Integration
+- Due date: [Week 6, Day 3]
+- Description: Update contracts to use Gnark-generated verifier
 - Scope:
-  - JSON‑RPC/WebSocket connection
-  - Subscribe new blocks, fetch txs
-  - Query account state; stub SubmitBatchProof
-  - Basic integration tests with local node
+  - Move generated Verifier.sol to contracts/src/generated/
+  - Update BatchRegistry to import generated verifier
+  - Test proof verification on-chain
+  - Gas optimization for verification
 - Acceptance:
-  - Reliable block streaming and tx fetch with retries
+  - Gnark proof verifies on-chain successfully
+  - Gas costs documented (target: < 500k gas)
 
-Milestone 1.4 — State Synchronization
-- Description: Basic state tracking with persistence.
-- Scope:
-  - LevelDB/BadgerDB persistence
-  - Sparse Merkle Tree placeholder
-  - Current state root calculation
-  - Simple reorg handling
-- Acceptance:
-  - Deterministic state root on replay; reorg tests pass
-
-Milestone 2.1 — Transaction Pool
-- Description: In‑memory pool with validation and ordering.
-- Scope:
-  - Validation, nonce ordering, priority queue, limits/eviction
-  - Metrics for pool size/throughput
-- Acceptance:
-  - Unit tests for add/evict/order; metrics exposed
-
-Milestone 2.2 — Batch Builder
-- Description: Build batches and metadata.
+Milestone 2.2 — Batch Builder & Execution Traces
+- Description: Build batches, metadata, and prover inputs.
 - Scope:
   - Select N txs, compute batch hash/metadata
-  - Simulate state transitions; execution traces
-  - Store batches locally
+  - Simulate state transitions; generate execution traces
+  - Format traces for Gnark circuit (witness data)
+  - Store batches locally with traces
 - Acceptance:
   - Deterministic batch hash; persisted batches
+  - Execution traces compatible with circuit witness format 
 
-Milestone 2.3 — Sequencer Service
-- Description: Main loop and lifecycle.
-- Scope:
-  - Ingest blocks → txpool
-  - Periodic batch creation; request proof from prover
-  - Proof submitter stub; config; graceful shutdown
-- Acceptance:
-  - Service stable for extended local runs
-
-Milestone 2.4 — REST API
-- Description: Read‑only API for status/inspection.
-- Scope:
-  - Endpoints: status, batch/:number, batch/latest, metrics, state/root
-  - OpenAPI draft
-- Acceptance:
-  - Valid JSON responses; basic load test OK
-
-Milestone 3.1 — Gnark Project Setup
-- Description: Prover boot, simple circuit, keys flow.
-- Scope:
-  - Gnark setup; simple tx circuit
-  - Local proof generation/verification
-  - Plan Solidity verifier export path
-- Acceptance:
-  - Proofs generate for sample inputs; tests pass
-
-Milestone 3.2 — Batch Circuit (100 txs)
+Milestone 3.2 — Batch Circuit (100 → 1000 txs)
 - Description: Scale circuit with chained state updates.
 - Scope:
-  - Process 100 txs; intermediate roots
-  - Optimize hotspots; generate pk/vk
+  - **Phase 1**: Process 100 txs; intermediate roots (Week 5)
+  - **Phase 2**: Scale to 500 txs with optimizations (Week 6)
+  - **Phase 3**: Reach 1000 txs target (Week 7)
+  - Optimize hotspots at each phase; regenerate pk/vk
 - Acceptance:
-  - Proof within target time for 100 txs
+  - 100 txs: < 2 min proving time
+  - 500 txs: < 5 min proving time
+  - 1000 txs: < 10 min proving time
 
-Milestone 3.3 — Solidity Verifier Export
-- Description: Export and integrate verifier contract.
+Milestone 4.2 — End‑to‑End Integration with Tan-ZK
+- Description: Full flow on local Tan-ZK devnet.
 - Scope:
-  - Export Solidity verifier from vk
-  - Deploy verifier; wire into BatchRegistry
+  - Clone and start local Tan-ZK node (separate repo)
+  - Deploy contracts to Tan-ZK EVM using Foundry
+  - Configure sequencer to connect to Tan-ZK RPC
+  - Run sequencer+prover; submit 1000 real txs to Tan-ZK
+  - Generate proof and verify on Tan-ZK chain
+  - scripts/test-e2e.sh to automate entire flow
 - Acceptance:
-  - On‑chain verification passes for sample proofs
+  - Script completes end-to-end without manual intervention
+  - Batch verified on-chain on Tan-ZK
+  - State roots match between sequencer and Tan-ZK
 
-Milestone 3.4 — Prover HTTP Service
-- Description: Prover API and worker queue.
+Milestone 5.3 — Docker & CI/CD
+- Due date: [Week 8, Day 5]
+- Description: Production containers and automation.
 - Scope:
-  - POST /prove, GET /status/:id, GET /proof/:id, metrics, health
-  - Concurrent workers; basic persistence
+  - Dockerfile.sequencer (multi-stage, optimized)
+  - Dockerfile.prover (multi-stage, with keys)
+  - docker-compose.yml (all services + monitoring)
+  - GitHub Actions for build/test/release
+  - Container registry publishing
 - Acceptance:
-  - Sequencer → Prover request/response flow reliable
+  - docker-compose up runs full stack
+  - CI builds and pushes images on merge
+  - Release workflow creates tagged builds
 
----
-
-Milestone 4.1 — Circuit Optimization (towards 1000 txs)
-- Description: Optimize constraints and runtime.
+Milestone 5.2 — Documentation & API Specs
+- Description: Dev/architecture/API/ops docs + OpenAPI.
 - Scope:
-  - Batch ECDSA, Merkle proof reuse, profiling
+  - docs/ structure complete (getting-started, architecture, api, ops)
+  - Quickstart guide tested by external contributor
+  - OpenAPI 3.0 spec for sequencer and prover APIs
+  - Configuration reference with all env vars
+  - Troubleshooting common issues
+  - Architecture diagrams (system, data flow, components)
 - Acceptance:
-  - Measurable performance gains vs baseline
-
-Milestone 4.2 — End‑to‑End Integration
-- Description: Full flow on local/devnet.
-- Scope:
-  - Start local Tan‑ZK; deploy contracts (Hardhat)
-  - Run sequencer+prover; generate/verify proofs
-  - scripts/test-e2e.sh to automate
-- Acceptance:
-  - Script completes; batch verified on‑chain
-
-Milestone 4.3 — Performance & Monitoring
-- Description: Metrics, dashboards, and tuning.
-- Scope:
-  - Prometheus metrics; Grafana dashboards
-  - Throughput/latency bottleneck identification
-- Acceptance:
-  - Dashboards usable; perf targets tracked
-
-Milestone 5.1 — Testing Hardening
-- Description: Unit, integration, load, chaos.
-- Scope:
-  - ≥90% unit coverage core paths
-  - E2E, failure recovery, high‑load tests
-- Acceptance:
-  - CI green; flakiness addressed
-
-Milestone 5.2 — Documentation
-- Description: Dev/architecture/API/ops docs.
-- Scope:
-  - docs/ filled; quickstart; configuration; troubleshooting
-  - OpenAPI published in repo
-- Acceptance:
-  - New contributor can run E2E locally using docs
+  - New contributor can run E2E locally using only docs
+  - OpenAPI spec validates and generates client SDKs
+  - All API endpoints documented with examples

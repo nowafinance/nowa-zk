@@ -21,7 +21,7 @@ This architecture allows `Tan-ZK` to achieve high throughput and low-cost execut
 ## Technology Stack
 
 This project is built using a dedicated stack to optimize for performance and security:
-* **Smart Contracts (Verifier):** Solidity (Hardhat)
+* **Smart Contracts (Verifier):** Solidity (Foundry)
 * **Sequencer Service:** Go 1.21+
 * **ZK Prover:** Go (Gnark)
 
@@ -35,7 +35,7 @@ Quick start for local development (contracts + services):
 
 ### Prerequisites
 * Go 1.21+
-* Node.js 24+ and npm
+* Foundry
 * Docker (optional, for infra/monitoring)
 
 ### Build & Test
@@ -44,11 +44,10 @@ Quick start for local development (contracts + services):
 git clone https://github.com/tannetwork/zk-sequencer.git
 cd zk-sequencer
 
-# Contracts (Hardhat)
+# Contracts (Foundry)
 cd contracts
-npm ci
-npx hardhat compile
-npx hardhat test
+forge build
+forge test
 
 # Prover (Go + Gnark)
 cd ../prover
