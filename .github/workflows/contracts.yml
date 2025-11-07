@@ -36,7 +36,7 @@ jobs:
         run: forge --version
 
       - name: Install Forge dependencies
-        run: forge install --no-commit || echo "No new dependencies to install"
+        run: forge install foundry-rs/forge-std
 
       - name: Run Forge fmt
         run: forge fmt --check
