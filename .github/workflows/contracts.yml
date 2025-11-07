@@ -23,8 +23,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       # Setup Foundry (forge & cast)
       - name: Install Foundry
@@ -34,6 +32,9 @@ jobs:
 
       - name: Show Forge version
         run: forge --version
+
+      - name: Install Forge dependencies
+        run: forge install
 
       - name: Run Forge fmt
         run: forge fmt --check
