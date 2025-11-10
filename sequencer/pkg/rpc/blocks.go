@@ -208,6 +208,8 @@ func parseBlock(raw map[string]interface{}, fullTx bool) Block {
 			for _, txRaw := range txs {
 				if txMap, ok := txRaw.(map[string]interface{}); ok {
 					tx := parseTransaction(txMap)
+					// parseTransaction already handles contract deployment detection and computes address
+					// So we just append the transaction
 					block.Transactions = append(block.Transactions, &tx)
 				}
 			}

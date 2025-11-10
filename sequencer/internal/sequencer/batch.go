@@ -24,13 +24,15 @@ type Batch struct {
 
 // ExecutionTrace represents execution trace for a transaction
 type ExecutionTrace struct {
-	TxHash      string `json:"txHash"`
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Value       string `json:"value"`
-	Nonce       uint64 `json:"nonce"`
-	OldBalance  string `json:"oldBalance,omitempty"`
-	NewBalance  string `json:"newBalance,omitempty"`
+	TxHash            string `json:"txHash"`
+	From              string `json:"from"`
+	To                string `json:"to,omitempty"`                // Empty for contract deployments
+	ContractAddress   string `json:"contractAddress,omitempty"`   // Set for contract deployments
+	IsContractDeployment bool `json:"isContractDeployment"`      // True if this is a contract deployment
+	Value             string `json:"value"`
+	Nonce             uint64 `json:"nonce"`
+	OldBalance        string `json:"oldBalance,omitempty"`
+	NewBalance        string `json:"newBalance,omitempty"`
 }
 
 // BatchBuilder builds batches from transactions
@@ -66,13 +68,22 @@ func (bb *BatchBuilder) BuildBatch() (*Batch, error) {
 	// Generate execution traces (simplified for now)
 	traces := make([]*ExecutionTrace, len(txs))
 	for i, tx := range txs {
-		traces[i] = &ExecutionTrace{
-			TxHash: tx.Hash,
-			From:   tx.From,
-			To:     tx.To,
-			Value:  tx.Value.String(),
-			Nonce:  tx.Nonce,
+		trace := &ExecutionTrace{
+			TxHash:              tx.Hash,
+			From:                tx.From,
+			Value:               tx.Value.String(),
+			Nonce:               tx.Nonce,
+			IsContractDeployment: tx.IsContractDeployment,
 		}
+		
+		// For contract deployments, use contract address instead of to
+		if tx.IsContractDeployment {
+			trace.ContractAddress = tx.ContractAddress
+		} else {
+			trace.To = tx.To
+		}
+		
+		traces[i] = trace
 	}
 
 	// Compute new state root (simplified - just hash of batch)

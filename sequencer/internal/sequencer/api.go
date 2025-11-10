@@ -1,11 +1,13 @@
 package sequencer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -54,10 +56,17 @@ func (api *APIServer) Start() error {
 	return api.server.ListenAndServe()
 }
 
-// Stop stops the API server
+// Stop stops the API server gracefully
 func (api *APIServer) Stop() error {
 	if api.server != nil {
-		return api.server.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		if err := api.server.Shutdown(ctx); err != nil {
+			// If graceful shutdown fails, force close
+			api.server.Close()
+			return err
+		}
 	}
 	return nil
 }

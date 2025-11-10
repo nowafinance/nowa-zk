@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -106,7 +107,7 @@ func (s *Service) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.api.Start(); err != nil {
+		if err := s.api.Start(); err != nil && err != http.ErrServerClosed {
 			log.Printf("❌ API server error: %v", err)
 		}
 	}()
@@ -133,6 +134,13 @@ func (s *Service) Stop() error {
 	// Cancel context to stop all goroutines
 	s.cancel()
 
+	// Stop API server first (with timeout)
+	if s.api != nil {
+		if err := s.api.Stop(); err != nil {
+			log.Printf("⚠️  Error stopping API server: %v", err)
+		}
+	}
+
 	// Close RPC clients
 	if s.rpcClient != nil {
 		s.rpcClient.Close()
@@ -141,10 +149,20 @@ func (s *Service) Stop() error {
 		s.wsClient.Close()
 	}
 
-	// Wait for all goroutines to finish
-	s.wg.Wait()
+	// Wait for all goroutines to finish (with timeout)
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
 
-	log.Println("✅ ZK Sequencer stopped")
+	select {
+	case <-done:
+		log.Println("✅ ZK Sequencer stopped")
+	case <-time.After(5 * time.Second):
+		log.Println("⚠️  Timeout waiting for goroutines to finish")
+	}
+
 	return nil
 }
 
@@ -207,9 +225,14 @@ func (s *Service) pollBlocks() {
 			}
 
 			if blockNum > lastBlockNum {
-				// Process all new blocks
+				// Process all new blocks (check context before each)
 				for i := lastBlockNum + 1; i <= blockNum; i++ {
-					s.processBlock(i)
+					select {
+					case <-s.ctx.Done():
+						return
+					default:
+						s.processBlock(i)
+					}
 				}
 				lastBlockNum = blockNum
 			}
@@ -219,17 +242,51 @@ func (s *Service) pollBlocks() {
 
 // processBlock fetches and processes a block
 func (s *Service) processBlock(blockNum uint64) {
+	// Check if context is already canceled
+	select {
+	case <-s.ctx.Done():
+		return
+	default:
+	}
+
 	log.Printf("📦 Processing block #%d", blockNum)
 
 	// Fetch block with transactions
 	block, err := s.rpcClient.GetBlockByNumber(s.ctx, blockNum, true)
 	if err != nil {
-		log.Printf("⚠️  Failed to fetch block %d: %v", blockNum, err)
+		// Don't log context canceled errors during shutdown
+		if s.ctx.Err() == nil {
+			log.Printf("⚠️  Failed to fetch block %d: %v", blockNum, err)
+		}
 		return
 	}
 
-	// Add transactions to pool
+	// Add transactions to pool and enrich with contract addresses for deployments
 	for _, tx := range block.Transactions {
+		// Check context before processing each transaction
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+		}
+
+		// If this is a contract deployment, enrich with contract address
+		if tx.IsContractDeployment {
+			// Try to get contract address from receipt first (most accurate)
+			if tx.ContractAddress == "" || tx.ContractAddress == "0x" {
+				receipt, err := s.rpcClient.GetTransactionReceipt(s.ctx, tx.Hash)
+				if err == nil && receipt != nil && receipt.ContractAddress != "" {
+					tx.ContractAddress = receipt.ContractAddress
+				} else if tx.ContractAddress == "" && s.ctx.Err() == nil {
+					// Fallback: compute from sender + nonce (only if not shutting down)
+					tx.ContractAddress = rpc.ComputeContractAddress(tx.From, tx.Nonce)
+				}
+			}
+			// Set To field to contract address so it's not empty in the output
+			if tx.ContractAddress != "" && tx.ContractAddress != "0x" {
+				tx.To = tx.ContractAddress
+			}
+		}
 		s.txPool.AddTransaction(tx)
 	}
 
@@ -258,19 +315,30 @@ func (s *Service) batchCreationLoop() {
 
 // createBatch creates a new batch from the transaction pool
 func (s *Service) createBatch() {
+	// Check if context is canceled
+	select {
+	case <-s.ctx.Done():
+		return
+	default:
+	}
+
 	if s.txPool.Size() == 0 {
 		return // No transactions to batch
 	}
 
 	batch, err := s.batchBuilder.BuildBatch()
 	if err != nil {
-		log.Printf("⚠️  Failed to build batch: %v", err)
+		if s.ctx.Err() == nil {
+			log.Printf("⚠️  Failed to build batch: %v", err)
+		}
 		return
 	}
 
 	// Store batch
 	if err := s.batches.SaveBatch(batch); err != nil {
-		log.Printf("⚠️  Failed to save batch: %v", err)
+		if s.ctx.Err() == nil {
+			log.Printf("⚠️  Failed to save batch: %v", err)
+		}
 		return
 	}
 

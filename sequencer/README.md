@@ -104,13 +104,22 @@ Every 10 seconds (configurable), the sequencer:
 
 ### Batch Storage
 
+**Storage Type**: File-based storage (JSON files on disk) - **No database currently used**
+
 Batches are stored as JSON files in `./data/batch_<number>.json` with:
 - Batch number and hash
-- All transactions
+- All transactions (including contract addresses for deployments)
 - Execution traces
 - State roots
 - Timestamp
 - Status (pending, proving, ready, submitted)
+
+**Storage Details**:
+- **Database**: None (file-based storage)
+- **Format**: JSON files (one file per batch)
+- **Location**: `./data/` directory (created automatically)
+- **In-Memory Cache**: Batches are also cached in memory for fast API access
+- **Future**: Will migrate to **LevelDB or BadgerDB** per roadmap (Milestone 1.4) for better performance and state management
 
 ## REST API Endpoints
 
@@ -180,6 +189,29 @@ The sequencer can be configured via environment variables:
 
 **Note**: Batch size and interval are currently hardcoded but will be configurable in future versions.
 
+## Storage
+
+The sequencer currently uses **file-based storage** (no database):
+
+- **Storage Type**: JSON files on disk
+- **Database**: None (file-based storage)
+- **Storage Location**: `./data/` directory (default, created automatically)
+- **Format**: Each batch is stored as `batch_<number>.json`
+- **In-Memory Cache**: Batches are also kept in memory for fast API access
+- **Persistence**: Batches are automatically saved to disk when created
+
+**Example storage structure:**
+```
+sequencer/
+└── data/
+    ├── batch_1.json
+    ├── batch_2.json
+    ├── batch_3.json
+    └── ...
+```
+
+**Note**: According to the roadmap (Milestone 1.4), the sequencer will migrate to **LevelDB or BadgerDB** for better performance, indexed queries, and state management in the future. The current file-based approach is suitable for development and testing.
+
 ## Project Structure
 
 ```
@@ -199,8 +231,9 @@ sequencer/
 │       ├── sequencer.go    # Main service
 │       ├── pool.go         # Transaction pool
 │       ├── batch.go        # Batch builder
-│       ├── store.go        # Batch storage
+│       ├── store.go        # Batch storage (file-based, no DB)
 │       └── api.go          # REST API server
+├── data/                    # Batch storage directory (JSON files)
 ├── .env.example            # Environment configuration template
 └── README.md               # This file
 ```
