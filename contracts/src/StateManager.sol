@@ -18,10 +18,16 @@ contract StateManager {
     /// @param timestamp The timestamp when the state root was set
     event StateRootUpdated(bytes32 indexed stateRoot, uint256 indexed batchNumber, uint256 timestamp);
 
-    /// @notice Emitted when a state root is validated
-    /// @param stateRoot The validated state root
-    /// @param batchNumber The batch number associated with this state root
-    event StateRootValidated(bytes32 indexed stateRoot, uint256 indexed batchNumber);
+    /// @notice Emitted when ownership is transferred
+    /// @param previousOwner The previous owner address
+    /// @param newOwner The new owner address
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    /// @notice Emitted when the contract is paused
+    event Paused(address account);
+
+    /// @notice Emitted when the contract is unpaused
+    event Unpaused(address account);
 
     /// @notice Current state root
     bytes32 public currentStateRoot;
@@ -35,51 +41,70 @@ contract StateManager {
     /// @notice Total number of state roots stored
     uint256 public totalStateRoots;
 
-    /// @notice Owner address (can be updated to a multisig in the future)
+    /// @notice Last finalized batch number
+    uint256 public lastFinalizedBatch;
+
+    /// @notice Owner address (typically the BatchRegistry contract)
     address public owner;
+
+    /// @notice Paused state for emergency stops
+    bool public paused;
 
     /// @notice Modifier to restrict access to owner
     modifier onlyOwner() {
-        _onlyOwner();
+        require(msg.sender == owner, "StateManager: caller is not the owner");
         _;
     }
 
-    /// @notice Internal function to check ownership
-    function _onlyOwner() internal view {
-        require(msg.sender == owner, "StateManager: caller is not the owner");
+    /// @notice Modifier to check if contract is not paused
+    modifier whenNotPaused() {
+        require(!paused, "StateManager: contract is paused");
+        _;
     }
 
     /// @notice Constructor sets the initial state root and owner
     /// @param _initialStateRoot The initial state root (typically zero hash or genesis state)
     constructor(bytes32 _initialStateRoot) {
+        require(_initialStateRoot != bytes32(0), "StateManager: initial state root cannot be zero");
+        
         owner = msg.sender;
         currentStateRoot = _initialStateRoot;
         stateRoots[0] = _initialStateRoot;
         stateRootToBatch[_initialStateRoot] = 0;
         totalStateRoots = 1;
+        lastFinalizedBatch = 0;
 
         emit StateRootUpdated(_initialStateRoot, 0, block.timestamp);
     }
 
     /**
      * @notice Updates the state root for a new batch
-     * @dev This function should only be called by authorized contracts (e.g., BatchRegistry)
-     *      after a batch has been verified. The new state root must be different from the current one.
+     * @dev This function should only be called by BatchRegistry after a batch
+     *      has been finalized. The new state root must be different from the current one.
+     *      Batches must be finalized sequentially.
      *
      * @param newStateRoot The new state root after batch execution
      * @param batchNumber The batch number associated with this state root
      *
-     * @custom:security Only callable by owner (will be updated to BatchRegistry in future)
+     * @custom:security Only callable by owner (BatchRegistry)
      */
-    function updateStateRoot(bytes32 newStateRoot, uint256 batchNumber) external onlyOwner {
+    function updateStateRoot(bytes32 newStateRoot, uint256 batchNumber) 
+        external 
+        onlyOwner 
+        whenNotPaused 
+    {
         require(newStateRoot != bytes32(0), "StateManager: state root cannot be zero");
         require(newStateRoot != currentStateRoot, "StateManager: state root unchanged");
+        require(batchNumber > lastFinalizedBatch, "StateManager: batch number must be greater than last finalized");
+        require(batchNumber == lastFinalizedBatch + 1, "StateManager: batches must be sequential");
+        
+        // Check for duplicate state roots across different batches
         require(
             stateRootToBatch[newStateRoot] == 0 || stateRootToBatch[newStateRoot] == batchNumber,
             "StateManager: state root already exists for different batch"
         );
 
-        // If this state root was already set for this batch, skip
+        // Update state
         if (stateRoots[batchNumber] == bytes32(0)) {
             totalStateRoots++;
         }
@@ -87,6 +112,7 @@ contract StateManager {
         currentStateRoot = newStateRoot;
         stateRoots[batchNumber] = newStateRoot;
         stateRootToBatch[newStateRoot] = batchNumber;
+        lastFinalizedBatch = batchNumber;
 
         emit StateRootUpdated(newStateRoot, batchNumber, block.timestamp);
     }
@@ -99,13 +125,12 @@ contract StateManager {
      * @param batchNumber The expected batch number for this state root
      * @return isValid True if the state root is valid and matches the batch number
      */
-    function validateStateRoot(bytes32 stateRoot, uint256 batchNumber) external view returns (bool isValid) {
-        isValid = stateRoots[batchNumber] == stateRoot && stateRootToBatch[stateRoot] == batchNumber;
-
-        if (isValid) {
-            // Note: We can't emit events in view functions, but this is for validation
-            // The caller can emit an event if needed
-        }
+    function validateStateRoot(bytes32 stateRoot, uint256 batchNumber) 
+        external 
+        view 
+        returns (bool isValid) 
+    {
+        return stateRoots[batchNumber] == stateRoot && stateRootToBatch[stateRoot] == batchNumber;
     }
 
     /**
@@ -144,21 +169,42 @@ contract StateManager {
     }
 
     /**
+     * @notice Gets the last finalized batch number
+     * @return The last finalized batch number
+     */
+    function getLastFinalizedBatch() external view returns (uint256) {
+        return lastFinalizedBatch;
+    }
+
+    /**
+     * @notice Pauses the contract
+     * @dev Only callable by owner. Prevents state root updates.
+     */
+    function pause() external onlyOwner {
+        require(!paused, "StateManager: already paused");
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    /**
+     * @notice Unpauses the contract
+     * @dev Only callable by owner
+     */
+    function unpause() external onlyOwner {
+        require(paused, "StateManager: not paused");
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+
+    /**
      * @notice Transfers ownership to a new address
      * @dev This allows transferring ownership to a multisig or BatchRegistry contract
      * @param newOwner The address of the new owner
      */
     function transferOwnership(address newOwner) external onlyOwner {
         require(newOwner != address(0), "StateManager: new owner is the zero address");
+        address oldOwner = owner;
         owner = newOwner;
-    }
-
-    /**
-     * @notice Renounces ownership (sets owner to zero address)
-     * @dev This makes the contract ownerless. Use with extreme caution.
-     */
-    function renounceOwnership() external onlyOwner {
-        owner = address(0);
+        emit OwnershipTransferred(oldOwner, newOwner);
     }
 }
-
