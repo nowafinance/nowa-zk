@@ -52,21 +52,31 @@ contract StateManager {
 
     /// @notice Modifier to restrict access to owner
     modifier onlyOwner() {
-        require(msg.sender == owner, "StateManager: caller is not the owner");
+        _onlyOwner();
         _;
     }
 
     /// @notice Modifier to check if contract is not paused
     modifier whenNotPaused() {
-        require(!paused, "StateManager: contract is paused");
+        _whenNotPaused();
         _;
+    }
+
+    /// @notice Internal function to check ownership
+    function _onlyOwner() internal view {
+        require(msg.sender == owner, "StateManager: caller is not the owner");
+    }
+
+    /// @notice Internal function to check if contract is not paused
+    function _whenNotPaused() internal view {
+        require(!paused, "StateManager: contract is paused");
     }
 
     /// @notice Constructor sets the initial state root and owner
     /// @param _initialStateRoot The initial state root (typically zero hash or genesis state)
     constructor(bytes32 _initialStateRoot) {
         require(_initialStateRoot != bytes32(0), "StateManager: initial state root cannot be zero");
-        
+
         owner = msg.sender;
         currentStateRoot = _initialStateRoot;
         stateRoots[0] = _initialStateRoot;
@@ -88,16 +98,12 @@ contract StateManager {
      *
      * @custom:security Only callable by owner (BatchRegistry)
      */
-    function updateStateRoot(bytes32 newStateRoot, uint256 batchNumber) 
-        external 
-        onlyOwner 
-        whenNotPaused 
-    {
+    function updateStateRoot(bytes32 newStateRoot, uint256 batchNumber) external onlyOwner whenNotPaused {
         require(newStateRoot != bytes32(0), "StateManager: state root cannot be zero");
         require(newStateRoot != currentStateRoot, "StateManager: state root unchanged");
         require(batchNumber > lastFinalizedBatch, "StateManager: batch number must be greater than last finalized");
         require(batchNumber == lastFinalizedBatch + 1, "StateManager: batches must be sequential");
-        
+
         // Check for duplicate state roots across different batches
         require(
             stateRootToBatch[newStateRoot] == 0 || stateRootToBatch[newStateRoot] == batchNumber,
@@ -125,11 +131,7 @@ contract StateManager {
      * @param batchNumber The expected batch number for this state root
      * @return isValid True if the state root is valid and matches the batch number
      */
-    function validateStateRoot(bytes32 stateRoot, uint256 batchNumber) 
-        external 
-        view 
-        returns (bool isValid) 
-    {
+    function validateStateRoot(bytes32 stateRoot, uint256 batchNumber) external view returns (bool isValid) {
         return stateRoots[batchNumber] == stateRoot && stateRootToBatch[stateRoot] == batchNumber;
     }
 

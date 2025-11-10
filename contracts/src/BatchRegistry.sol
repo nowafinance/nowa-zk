@@ -19,9 +19,9 @@ contract BatchRegistry {
     /// @notice Batch status enumeration
     enum BatchStatus {
         NonExistent,
-        Verified,      // Proof verified, awaiting finalization
-        Finalized,     // Finalized and state root updated
-        Challenged     // Under dispute (for future fraud proof system)
+        Verified, // Proof verified, awaiting finalization
+        Finalized, // Finalized and state root updated
+        Challenged // Under dispute (for future fraud proof system)
     }
 
     /// @notice Batch metadata structure
@@ -82,7 +82,7 @@ contract BatchRegistry {
     IVerifier public verifier;
 
     /// @notice StateManager contract
-    StateManager public immutable stateManager;
+    StateManager public immutable STATE_MANAGER;
 
     /// @notice Owner address (can be updated to a multisig in the future)
     address public owner;
@@ -104,20 +104,35 @@ contract BatchRegistry {
 
     /// @notice Modifier to restrict access to owner
     modifier onlyOwner() {
-        require(msg.sender == owner, "BatchRegistry: caller is not the owner");
+        _onlyOwner();
         _;
     }
 
     /// @notice Modifier to restrict access to sequencer
     modifier onlySequencer() {
-        require(msg.sender == sequencer, "BatchRegistry: caller is not the sequencer");
+        _onlySequencer();
         _;
     }
 
     /// @notice Modifier to check if contract is not paused
     modifier whenNotPaused() {
-        require(!paused, "BatchRegistry: contract is paused");
+        _whenNotPaused();
         _;
+    }
+
+    /// @notice Internal function to check ownership
+    function _onlyOwner() internal view {
+        require(msg.sender == owner, "BatchRegistry: caller is not the owner");
+    }
+
+    /// @notice Internal function to check sequencer
+    function _onlySequencer() internal view {
+        require(msg.sender == sequencer, "BatchRegistry: caller is not the sequencer");
+    }
+
+    /// @notice Internal function to check if contract is not paused
+    function _whenNotPaused() internal view {
+        require(!paused, "BatchRegistry: contract is paused");
     }
 
     /**
@@ -127,12 +142,7 @@ contract BatchRegistry {
      * @param _sequencer Address of the authorized sequencer
      * @param _finalizationDelay Time delay before finalization (in seconds)
      */
-    constructor(
-        address _verifier,
-        address _stateManager,
-        address _sequencer,
-        uint256 _finalizationDelay
-    ) {
+    constructor(address _verifier, address _stateManager, address _sequencer, uint256 _finalizationDelay) {
         require(_verifier != address(0), "BatchRegistry: verifier cannot be zero address");
         require(_stateManager != address(0), "BatchRegistry: stateManager cannot be zero address");
         require(_sequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
@@ -143,7 +153,7 @@ contract BatchRegistry {
 
         owner = msg.sender;
         verifier = IVerifier(_verifier);
-        stateManager = StateManager(_stateManager);
+        STATE_MANAGER = StateManager(_stateManager);
         sequencer = _sequencer;
         finalizationDelay = _finalizationDelay;
         nextBatchNumber = 1;
@@ -186,21 +196,15 @@ contract BatchRegistry {
         require(keccak256(batchData) == batchHash, "BatchRegistry: batch hash mismatch");
 
         // Get current state root from StateManager
-        bytes32 oldStateRoot = stateManager.getCurrentStateRoot();
+        bytes32 oldStateRoot = STATE_MANAGER.getCurrentStateRoot();
         require(oldStateRoot != newStateRoot, "BatchRegistry: state root unchanged");
 
         // Assign batch number
         batchNumber = nextBatchNumber;
 
         // Validate public inputs
-        require(
-            bytes32(publicInputs[0]) == oldStateRoot,
-            "BatchRegistry: publicInputs[0] must match oldStateRoot"
-        );
-        require(
-            bytes32(publicInputs[1]) == newStateRoot,
-            "BatchRegistry: publicInputs[1] must match newStateRoot"
-        );
+        require(bytes32(publicInputs[0]) == oldStateRoot, "BatchRegistry: publicInputs[0] must match oldStateRoot");
+        require(bytes32(publicInputs[1]) == newStateRoot, "BatchRegistry: publicInputs[1] must match newStateRoot");
         require(publicInputs[2] == batchNumber, "BatchRegistry: publicInputs[2] must match batchNumber");
 
         // Verify the ZK proof
@@ -237,16 +241,12 @@ contract BatchRegistry {
         Batch storage batch = batches[batchNumber];
 
         require(batch.status == BatchStatus.Verified, "BatchRegistry: batch not verified");
-        require(
-            block.timestamp >= batch.timestamp + finalizationDelay,
-            "BatchRegistry: finalization delay not met"
-        );
+        require(block.timestamp >= batch.timestamp + finalizationDelay, "BatchRegistry: finalization delay not met");
 
         // Ensure sequential finalization
         if (batchNumber > 1) {
             require(
-                batches[batchNumber - 1].status == BatchStatus.Finalized,
-                "BatchRegistry: previous batch not finalized"
+                batches[batchNumber - 1].status == BatchStatus.Finalized, "BatchRegistry: previous batch not finalized"
             );
         }
 
@@ -254,7 +254,7 @@ contract BatchRegistry {
         batch.status = BatchStatus.Finalized;
 
         // Update StateManager with the new state root
-        stateManager.updateStateRoot(batch.newStateRoot, batchNumber);
+        STATE_MANAGER.updateStateRoot(batch.newStateRoot, batchNumber);
 
         emit BatchFinalized(batchNumber, batch.newStateRoot);
     }
@@ -310,7 +310,7 @@ contract BatchRegistry {
      * @return stateRoot The current state root
      */
     function getCurrentStateRoot() external view returns (bytes32 stateRoot) {
-        return stateManager.getCurrentStateRoot();
+        return STATE_MANAGER.getCurrentStateRoot();
     }
 
     /**
