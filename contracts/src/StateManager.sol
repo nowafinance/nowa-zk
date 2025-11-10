@@ -167,7 +167,13 @@ contract StateManager {
      * @return exists True if the state root has been recorded
      */
     function stateRootExists(bytes32 stateRoot) external view returns (bool exists) {
-        return stateRootToBatch[stateRoot] != 0 || stateRoot == currentStateRoot;
+        // Check if it's the current state root
+        if (stateRoot == currentStateRoot) {
+            return true;
+        }
+        // Check if it's been recorded (including batch 0 for initial state root)
+        uint256 batchNum = stateRootToBatch[stateRoot];
+        return batchNum != 0 || stateRoots[0] == stateRoot;
     }
 
     /**

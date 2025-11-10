@@ -20,8 +20,7 @@ contract BatchRegistry {
     enum BatchStatus {
         NonExistent,
         Verified, // Proof verified, awaiting finalization
-        Finalized, // Finalized and state root updated
-        Challenged // Under dispute (for future fraud proof system)
+        Finalized // Finalized and state root updated
     }
 
     /// @notice Batch metadata structure
@@ -47,9 +46,6 @@ contract BatchRegistry {
 
     /// @notice Emitted when a batch is finalized
     event BatchFinalized(uint256 indexed batchNumber, bytes32 indexed newStateRoot);
-
-    /// @notice Emitted when a batch is challenged
-    event BatchChallenged(uint256 indexed batchNumber, address indexed challenger, string reason);
 
     /// @notice Emitted when sequencer is updated
     event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer);
@@ -232,12 +228,13 @@ contract BatchRegistry {
     }
 
     /**
-     * @notice Finalizes a verified batch after the challenge period
+     * @notice Finalizes a verified batch after the finalization delay
      * @dev Updates the StateManager with the new state root. Batches must be finalized sequentially.
+     *      Only callable by owner for controlled finalization.
      *
      * @param batchNumber The batch number to finalize
      */
-    function finalizeBatch(uint256 batchNumber) external whenNotPaused {
+    function finalizeBatch(uint256 batchNumber) external onlyOwner whenNotPaused {
         Batch storage batch = batches[batchNumber];
 
         require(batch.status == BatchStatus.Verified, "BatchRegistry: batch not verified");
@@ -257,24 +254,6 @@ contract BatchRegistry {
         STATE_MANAGER.updateStateRoot(batch.newStateRoot, batchNumber);
 
         emit BatchFinalized(batchNumber, batch.newStateRoot);
-    }
-
-    /**
-     * @notice Challenges a batch (placeholder for future fraud proof system)
-     * @dev This is a placeholder for a future fraud proof mechanism.
-     *      In production, this would trigger a fraud proof verification process.
-     *
-     * @param batchNumber The batch number to challenge
-     * @param reason Human-readable reason for the challenge
-     */
-    function challengeBatch(uint256 batchNumber, string calldata reason) external whenNotPaused {
-        Batch storage batch = batches[batchNumber];
-        require(batch.status == BatchStatus.Verified, "BatchRegistry: can only challenge verified batches");
-
-        // Mark as challenged
-        batch.status = BatchStatus.Challenged;
-
-        emit BatchChallenged(batchNumber, msg.sender, reason);
     }
 
     /**
