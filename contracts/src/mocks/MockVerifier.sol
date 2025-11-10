@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import "./interfaces/IVerifier.sol";
+import "../interfaces/IVerifier.sol";
 
 /**
  * @title MockVerifier
@@ -35,7 +35,12 @@ contract MockVerifier is IVerifier {
         uint256[2][2] calldata, // b
         uint256[2] calldata, // c
         uint256[3] calldata // publicInputs
-    ) external view override returns (bool success) {
+    )
+        external
+        view
+        override
+        returns (bool success)
+    {
         // Mock implementation - returns configurable result
         return verificationResult;
     }
