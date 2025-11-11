@@ -1,49 +1,24 @@
 # ZK Sequencer
 
-The sequencer component of the Tan-ZK Sequencer system. This service is responsible for ingesting transactions from the Tan-ZK blockchain, batching them, and coordinating with the prover to generate zero-knowledge proofs.
+The sequencer service for the Tan-ZK network. It continuously monitors the Tan-ZK blockchain, collects transactions, builds batches, and provides REST API endpoints for the prover to fetch batch data for proof generation.
 
-## Overview
+## What It Does
 
-The sequencer connects to Tan-ZK blockchain nodes via JSON-RPC, collects transactions, builds batches, and submits proofs to the BatchRegistry contract.
+The ZK Sequencer is a continuously running service that:
 
-## Project Structure
-
-```
-sequencer/
-├── cmd/
-│   └── sequencer/          # Main application entry point
-├── pkg/
-│   └── rpc/                # RPC client for Tan-ZK blockchain
-├── internal/
-│   └── sequencer/          # Core sequencer logic
-├── .env.example            # Environment configuration template
-└── README.md               # This file
-```
-
-## Features
-
-### ✅ Implemented
-
-- **RPC Client** (`pkg/rpc/`): JSON-RPC client for Tan-ZK blockchain
-  - HTTP/HTTPS JSON-RPC support
-  - Configurable timeouts and retries
-  - Exponential backoff retry mechanism
-  - Environment variable configuration
-  - Integration tests with real RPC endpoints
-
-### 🚧 In Progress
-
-- WebSocket support for real-time block subscriptions
-- Transaction fetching and processing
-- Batch building and execution traces
-- State synchronization
+- **Connects to Tan-ZK Node**: Establishes JSON-RPC and WebSocket connections to Tan-ZK blockchain nodes
+- **Monitors Blocks**: Subscribes to new blocks via WebSocket or polls periodically
+- **Collects Transactions**: Fetches transactions from new blocks and adds them to the transaction pool
+- **Builds Batches**: Periodically creates batches of transactions (default: 100 transactions per batch, every 10 seconds)
+- **Stores Batches**: Saves batches locally with execution traces for the prover
+- **REST API**: Provides HTTP endpoints for the prover to fetch batch data
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.22 or later
-- Access to a Tan-ZK RPC endpoint (or use Anvil for local testing)
+- **Go 1.22 or later** - [Install Go](https://go.dev/doc/install)
+- **Access to a Tan-ZK RPC endpoint** (or use Anvil for local testing)
 
 ### Installation
 
@@ -63,162 +38,212 @@ go mod download
 cp .env.example .env
 ```
 
-2. **Edit `.env` with your RPC endpoint**:
+2. **Edit `.env` with your Tan-ZK node settings**:
 ```bash
-# Required: Your Tan-ZK RPC endpoint
+# Required: Tan-ZK RPC endpoint (HTTP/HTTPS)
 TAN_ZK_RPC_URL=http://localhost:8545
 
-# Optional: Customize timeouts and retries
+# Optional: WebSocket endpoint for real-time block subscriptions
+TAN_ZK_WS_URL=ws://localhost:8546
+
+# Optional: Request timeout (seconds)
 RPC_TIMEOUT=30
+
+# Optional: Maximum retry attempts
 RPC_MAX_RETRIES=3
-RPC_RETRY_BACKOFF=100
-RPC_MAX_RETRY_BACKOFF=10
 ```
 
 ### Running the Sequencer
 
+**Build and run:**
 ```bash
-# Build
+# Build the binary
 go build ./cmd/sequencer
 
-# Run
+# Run it
 ./sequencer
 ```
 
-Or directly:
+**Or run directly:**
 ```bash
 go run ./cmd/sequencer
 ```
 
-## RPC Client Usage
+The sequencer will:
+- Connect to your Tan-ZK node
+- Start monitoring for new blocks
+- Begin building batches from transactions
+- Start the REST API server on port 8080
 
-### Basic Example
+**Stop the sequencer**: Press `Ctrl+C` for graceful shutdown.
 
-```go
-package main
+## How It Works
 
-import (
-    "context"
-    "log"
-    
-    "github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
-)
+### Block Monitoring
 
-func main() {
-    // Create client from environment variables
-    client, err := rpc.NewClientFromEnv()
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer client.Close()
+The sequencer monitors new blocks in two ways:
 
-    ctx := context.Background()
+1. **WebSocket (Preferred)**: If `TAN_ZK_WS_URL` is configured, it subscribes to `eth_subscribe` for real-time block notifications
+2. **HTTP Polling (Fallback)**: If WebSocket is unavailable, it polls `eth_blockNumber` every 2 seconds
 
-    // Get chain ID
-    chainID, err := client.ChainID(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    log.Printf("Chain ID: %d", chainID)
+### Transaction Collection
 
-    // Get latest block number
-    blockNum, err := client.BlockNumber(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    log.Printf("Latest block: %d", blockNum)
-}
-```
+When a new block is detected:
+1. The sequencer fetches the full block with all transactions
+2. Each transaction is added to the in-memory transaction pool
+3. The pool maintains up to 10,000 transactions
 
-### With Custom Configuration
+### Batch Building
 
-```go
-import (
-    "time"
-    "github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
-)
+Every 10 seconds (configurable), the sequencer:
+1. Takes up to 100 transactions from the pool (configurable)
+2. Generates execution traces for each transaction
+3. Computes state roots (old and new)
+4. Creates a batch with metadata
+5. Stores the batch locally in `./data/` directory
 
-// Create client with explicit URL
-client, err := rpc.NewClient(
-    "http://localhost:8545",
-    rpc.WithTimeout(60*time.Second),
-    rpc.WithMaxRetries(5),
-)
-```
+### Batch Storage
 
-### Environment Variables
+**Storage Type**: File-based storage (JSON files on disk) - **No database currently used**
 
-The RPC client supports configuration via environment variables:
+Batches are stored as JSON files in `./data/batch_<number>.json` with:
+- Batch number and hash
+- All transactions (including contract addresses for deployments)
+- Execution traces
+- State roots
+- Timestamp
+- Status (pending, proving, ready, submitted)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TAN_ZK_RPC_URL` | RPC endpoint URL (required) | - |
-| `TAN_ZK_WS_URL` | WebSocket endpoint URL | - |
-| `RPC_TIMEOUT` | Request timeout in seconds | 30 |
-| `RPC_MAX_RETRIES` | Maximum retry attempts | 3 |
-| `RPC_RETRY_BACKOFF` | Initial retry backoff in milliseconds | 100 |
-| `RPC_MAX_RETRY_BACKOFF` | Maximum retry backoff in seconds | 10 |
+**Storage Details**:
+- **Database**: None (file-based storage)
+- **Format**: JSON files (one file per batch)
+- **Location**: `./data/` directory (created automatically)
+- **In-Memory Cache**: Batches are also cached in memory for fast API access
+- **Future**: Will migrate to **LevelDB or BadgerDB** per roadmap (Milestone 1.4) for better performance and state management
 
-## Testing
+## REST API Endpoints
 
-**⚠️ Important**: Always run tests from the `sequencer/` directory (where `go.mod` is located).
+The sequencer exposes REST API endpoints for the prover to fetch batch data:
 
-### Quick Start (Using Helper Script)
+### Health & Status
 
-```bash
-cd sequencer
+**GET `/health`**
+- Returns: `{"status": "ok"}`
 
-# Unit tests (mock server, no RPC needed)
-./test.sh unit
+**GET `/status`**
+- Returns: `{"status": "running", "batch_count": 5}`
 
-# Integration tests (requires .env with RPC URL)
-./test.sh integration
+### Batch Endpoints
 
-# Run all tests
-./test.sh all
-```
+**GET `/batch/latest`**
+- Returns the latest batch with all transactions and traces
 
-### Unit Tests (Mock Server)
+**GET `/batch/{number}`**
+- Returns a specific batch by number
+- Example: `GET /batch/1`
 
-Unit tests use a mock HTTP server and don't require a real RPC endpoint:
+**GET `/batches`**
+- Returns all batches
+- Returns: `{"batches": [...], "count": 5}`
+
+### Prover Endpoints
+
+**GET `/prover/batch/latest`**
+- Returns the latest batch with execution traces for proof generation
+
+**GET `/prover/batch/{number}`**
+- Returns a specific batch with execution traces
+- Example: `GET /prover/batch/1`
+
+### Example API Usage
 
 ```bash
-cd sequencer
-go test ./pkg/rpc/... -short -v
+# Check health
+curl http://localhost:8080/health
+
+# Get status
+curl http://localhost:8080/status
+
+# Get latest batch
+curl http://localhost:8080/batch/latest
+
+# Get batch #1
+curl http://localhost:8080/batch/1
+
+# Get latest batch for prover (with traces)
+curl http://localhost:8080/prover/batch/latest
 ```
 
-Run with coverage:
+## Configuration Options
 
-```bash
-go test ./pkg/rpc/... -cover
+The sequencer can be configured via environment variables:
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `TAN_ZK_RPC_URL` | HTTP/HTTPS RPC endpoint URL | ✅ Yes | - |
+| `TAN_ZK_WS_URL` | WebSocket endpoint URL | No | - |
+| `RPC_TIMEOUT` | Request timeout in seconds | No | 30 |
+| `RPC_MAX_RETRIES` | Maximum retry attempts | No | 3 |
+| `RPC_RETRY_BACKOFF` | Initial retry backoff in milliseconds | No | 100 |
+| `RPC_MAX_RETRY_BACKOFF` | Maximum retry backoff in seconds | No | 10 |
+
+**Note**: Batch size and interval are currently hardcoded but will be configurable in future versions.
+
+## Storage
+
+The sequencer currently uses **file-based storage** (no database):
+
+- **Storage Type**: JSON files on disk
+- **Database**: None (file-based storage)
+- **Storage Location**: `./data/` directory (default, created automatically)
+- **Format**: Each batch is stored as `batch_<number>.json`
+- **In-Memory Cache**: Batches are also kept in memory for fast API access
+- **Persistence**: Batches are automatically saved to disk when created
+
+**Example storage structure:**
+```
+sequencer/
+└── data/
+    ├── batch_1.json
+    ├── batch_2.json
+    ├── batch_3.json
+    └── ...
 ```
 
-### Integration Tests (Real RPC Endpoint)
+**Note**: According to the roadmap (Milestone 1.4), the sequencer will migrate to **LevelDB or BadgerDB** for better performance, indexed queries, and state management in the future. The current file-based approach is suitable for development and testing.
 
-Integration tests require a real Tan-ZK RPC endpoint:
+## Project Structure
 
-1. **Set up `.env` file**:
-```bash
-cd sequencer
-cp .env.example .env
-# Edit .env with your RPC URL: TAN_ZK_RPC_URL=http://localhost:8545
+```
+sequencer/
+├── cmd/
+│   └── sequencer/          # Main application entry point
+│       └── main.go
+├── pkg/
+│   └── rpc/                # RPC client for Tan-ZK blockchain
+│       ├── client.go       # HTTP RPC client
+│       ├── websocket.go    # WebSocket client
+│       ├── blocks.go       # Block operations
+│       ├── transactions.go # Transaction operations
+│       └── accounts.go     # Account queries
+├── internal/
+│   └── sequencer/          # Core sequencer logic
+│       ├── sequencer.go    # Main service
+│       ├── pool.go         # Transaction pool
+│       ├── batch.go        # Batch builder
+│       ├── store.go        # Batch storage (file-based, no DB)
+│       └── api.go          # REST API server
+├── data/                    # Batch storage directory (JSON files)
+├── .env.example            # Environment configuration template
+└── README.md               # This file
 ```
 
-2. **Run integration tests**:
+## Local Development with Anvil
+
+If you don't have a Tan-ZK node, you can test with Anvil (local Ethereum test node):
+
+1. **Start Anvil**:
 ```bash
-cd sequencer
-go test ./pkg/rpc/... -tags=integration -v
-```
-
-**Note**: If `TAN_ZK_RPC_URL` is not set, integration tests will skip gracefully.
-
-### Testing with Anvil (Local Ethereum Node)
-
-If you don't have a Tan-ZK node yet, you can test with Anvil (local Ethereum test node):
-
-1. **Install Anvil** (part of Foundry):
-```bash
-# If you have Foundry installed
 anvil --port 8545
 ```
 
@@ -227,132 +252,51 @@ anvil --port 8545
 TAN_ZK_RPC_URL=http://localhost:8545
 ```
 
-3. **Run integration tests**:
+3. **Start the sequencer**:
 ```bash
-go test ./pkg/rpc/... -tags=integration -v
+go run ./cmd/sequencer
 ```
 
-### Common Test Errors
-
-**Error**: `pattern ./pkg/rpc/...: directory prefix pkg/rpc does not contain main module`
-
-**Solution**: Make sure you're in the `sequencer/` directory:
+4. **Send test transactions** (in another terminal):
 ```bash
-cd sequencer  # ← Important!
-go test ./pkg/rpc/... -v
+# Anvil provides test accounts with funds
+# You can use cast or send transactions via RPC
 ```
 
-## Error Handling
+## What Happens When You Start
 
-The RPC client provides specific error types:
+When you start the sequencer, you'll see:
 
-- `ErrInvalidConfig`: Configuration validation failed
-- `ErrConnectionFailed`: Connection to RPC endpoint failed
-- `ErrRPCError`: RPC call returned an error
-- `ErrTimeout`: Request timed out
-- `ErrMaxRetriesExceeded`: Maximum retries exceeded
-
-Example error handling:
-
-```go
-blockNum, err := client.BlockNumber(ctx)
-if err != nil {
-    var rpcErr rpc.ErrRPCError
-    if errors.As(err, &rpcErr) {
-        log.Printf("RPC error [%d]: %s", rpcErr.Code, rpcErr.Message)
-    } else {
-        log.Fatal(err)
-    }
-}
+```
+🚀 Starting ZK Sequencer...
+✅ Connected to Tan-ZK RPC endpoint
+✅ Connected to Tan-ZK WebSocket endpoint (if configured)
+✅ Transaction pool initialized
+✅ Batch builder initialized
+✅ Batch store initialized
+✅ REST API server initialized on port 8080
+✅ ZK Sequencer is running!
+📡 Listening for new blocks and building batches...
+🌐 REST API available at http://localhost:8080
+📦 Processing block #12345
+✅ Block #12345 processed: 10 transactions added to pool (pool size: 10)
+✅ Batch #1 created: 10 transactions (batch hash: 0xabcd...)
 ```
 
-## Development
+The sequencer will continue running until you press `Ctrl+C`.
 
-### Project Structure
+## Integration with Prover
 
-- **`cmd/sequencer/`**: Main application entry point
-- **`pkg/rpc/`**: RPC client package for Tan-ZK blockchain
-- **`internal/sequencer/`**: Internal sequencer logic (not for external use)
+The prover service can fetch batches from the sequencer:
 
-### Adding New Features
+1. **Poll for new batches**: The prover can periodically check `/prover/batch/latest`
+2. **Fetch specific batch**: Use `/prover/batch/{number}` to get a batch with execution traces
+3. **Generate proof**: Use the batch data and traces to generate ZK proofs
+4. **Submit proof**: Once proof is generated, submit it back to the sequencer (future feature)
 
-1. Create a feature branch: `git checkout -b feat/feature-name`
-2. Implement the feature
-3. Add tests (unit + integration if applicable)
-4. Update documentation
-5. Submit a pull request
+## Next Steps
 
-### Code Style
-
-- Follow Go standard formatting: `go fmt ./...`
-- Run linters: `golangci-lint run`
-- Write tests for new functionality
-- Document exported functions and types
-
-## Roadmap
-
-### Milestone 1.3 - Tan-ZK RPC Client ✅
-- [x] Core RPC client structure
-- [x] Environment variable configuration
-- [x] Integration tests with real RPC
-- [ ] WebSocket support (#38)
-- [ ] Block subscription (#39)
-- [ ] Transaction fetching (#40)
-- [ ] Account state queries (#41)
-- [ ] SubmitBatchProof stub (#42)
-- [ ] Robust error handling (#44)
-
-### Future Milestones
-
-- **Milestone 1.4**: State Synchronization
-- **Milestone 2.1**: Transaction Pool
-- **Milestone 2.2**: Batch Builder
-- **Milestone 2.3**: Sequencer Service
-- **Milestone 2.4**: REST API
-
-See [docs/milestone.md](../docs/milestone.md) for complete roadmap.
-
-## Troubleshooting
-
-### Connection Issues
-
-**Problem**: Cannot connect to RPC endpoint
-
-**Solutions**:
-- Verify RPC endpoint is running: `curl http://localhost:8545`
-- Check firewall/network settings
-- Verify URL in `.env` file is correct
-- Check if endpoint requires authentication
-
-### Timeout Issues
-
-**Problem**: Requests timing out
-
-**Solutions**:
-- Increase `RPC_TIMEOUT` in `.env`
-- Check network latency
-- Verify RPC endpoint is responsive
-- Check for rate limiting
-
-### Integration Tests Skipped
-
-**Problem**: Integration tests are skipped
-
-**Solutions**:
-- Ensure `.env` file exists with `TAN_ZK_RPC_URL` set
-- Use `-tags=integration` flag when running tests
-- Don't use `-short` flag (it skips integration tests)
-
-## Contributing
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines.
-
-## License
-
-Apache 2.0 - See [LICENSE](../LICENSE) file.
-
-## Related Documentation
-
-- [Project README](../README.md)
-- [Milestones](../docs/milestone.md)
-- [Security Policy](../SECURITY.md)
+- The sequencer is now functional and continuously running
+- It monitors blocks, collects transactions, and builds batches
+- REST API is available for the prover to fetch batch data
+- Future enhancements will include proof submission and on-chain verification
