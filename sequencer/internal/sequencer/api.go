@@ -94,15 +94,21 @@ func (api *APIServer) Stop() error {
 
 func (api *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		logger.Error("Failed to encode health response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":      "running",
 		"batch_count": api.store.Count(),
-	})
+	}); err != nil {
+		logger.Error("Failed to encode status response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleLatestBatch(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +119,10 @@ func (api *APIServer) handleLatestBatch(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(batch)
+	if err := json.NewEncoder(w).Encode(batch); err != nil {
+		logger.Error("Failed to encode batch response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleGetBatch(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +140,22 @@ func (api *APIServer) handleGetBatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(batch)
+	if err := json.NewEncoder(w).Encode(batch); err != nil {
+		logger.Error("Failed to encode batch response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleGetAllBatches(w http.ResponseWriter, r *http.Request) {
 	batches := api.store.GetAllBatches()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"batches": batches,
 		"count":   len(batches),
-	})
+	}); err != nil {
+		logger.Error("Failed to encode batches response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleGetBatchForProver(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +174,10 @@ func (api *APIServer) handleGetBatchForProver(w http.ResponseWriter, r *http.Req
 
 	// Return batch with traces for prover
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(batch)
+	if err := json.NewEncoder(w).Encode(batch); err != nil {
+		logger.Error("Failed to encode batch response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleLatestBatchForProver(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +189,10 @@ func (api *APIServer) handleLatestBatchForProver(w http.ResponseWriter, r *http.
 
 	// Return batch with traces for prover
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(batch)
+	if err := json.NewEncoder(w).Encode(batch); err != nil {
+		logger.Error("Failed to encode batch response: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 // NotifyNewBatch notifies all WebSocket clients about a new batch
@@ -204,7 +225,11 @@ func (api *APIServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		"message": "Connected to sequencer WebSocket",
 		"time":    time.Now().Unix(),
 	}
-	conn.WriteJSON(welcomeMsg)
+	if err := conn.WriteJSON(welcomeMsg); err != nil {
+		logger.Error("Failed to send welcome message: %v", err)
+		conn.Close()
+		return
+	}
 
 	// Handle incoming messages (ping/pong, subscriptions, etc.)
 	for {
@@ -218,10 +243,13 @@ func (api *APIServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		// Handle ping
 		if msgType, ok := msg["type"].(string); ok && msgType == "ping" {
-			conn.WriteJSON(map[string]interface{}{
+			if err := conn.WriteJSON(map[string]interface{}{
 				"type": "pong",
 				"time": time.Now().Unix(),
-			})
+			}); err != nil {
+				logger.Error("Failed to send pong: %v", err)
+				break
+			}
 		}
 	}
 
