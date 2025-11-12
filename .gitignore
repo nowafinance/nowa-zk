@@ -9,6 +9,10 @@ build/
 *.test
 *.out
 
+# Sequencer build files (Go binaries)
+sequencer/sequencer
+sequencer/cmd/sequencer/sequencer
+
 # Go workspace
 *.log
 coverage/
@@ -56,3 +60,6 @@ yarn-error.log*
 
 
 contracts/lib/
+
+# Sequencer data directory
+sequencer/data/
