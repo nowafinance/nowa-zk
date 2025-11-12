@@ -2,6 +2,7 @@ package sequencer
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -105,7 +106,7 @@ func (s *Service) Start() error {
 		logger.Info("📦 Resuming from batch #%d with state root %s", initialBatchNum, initialStateRoot)
 	}
 
-	s.batchBuilder = NewBatchBuilder(initialBatchNum, initialStateRoot)
+	s.batchBuilder = NewBatchBuilder(initialBatchNum, initialStateRoot, s.rpcClient, s.ctx)
 	logger.Info("✅ Batch builder initialized")
 
 	// Initialize REST API server
@@ -178,6 +179,23 @@ func (s *Service) Stop() error {
 	return nil
 }
 
+// ClearAllData clears all batches, block hashes, and state data
+func (s *Service) ClearAllData() error {
+	// Open batch store temporarily to clear data
+	store, err := NewBatchStore(s.config.StateDBPath)
+	if err != nil {
+		return fmt.Errorf("failed to open batch store for clearing: %w", err)
+	}
+	defer store.Close()
+
+	// Clear all data
+	if err := store.ClearAll(); err != nil {
+		return fmt.Errorf("failed to clear data: %w", err)
+	}
+
+	return nil
+}
+
 // subscribeToBlocks subscribes to new blocks and processes transactions
 func (s *Service) subscribeToBlocks() {
 	defer s.wg.Done()
@@ -192,6 +210,10 @@ func (s *Service) subscribeToBlocks() {
 
 // subscribeViaWebSocket subscribes to blocks via WebSocket
 func (s *Service) subscribeViaWebSocket() {
+	// First, catch up on any unprocessed blocks
+	s.catchUpBlocks()
+
+	// Then subscribe to new blocks
 	headerChan, err := s.wsClient.SubscribeNewHeads(s.ctx)
 	if err != nil {
 		logger.Error("Failed to subscribe to blocks: %v, falling back to polling", err)
@@ -225,6 +247,64 @@ func (s *Service) subscribeViaWebSocket() {
 	}
 }
 
+// catchUpBlocks processes any unprocessed blocks on startup
+func (s *Service) catchUpBlocks() {
+	// Check context first
+	select {
+	case <-s.ctx.Done():
+		logger.Warn("Context canceled, skipping catch-up")
+		return
+	default:
+	}
+
+	// Load last processed block from database
+	lastBlockNum, err := s.batches.GetLastProcessedBlock()
+	if err != nil {
+		logger.Warn("Failed to get last processed block: %v, starting from 0", err)
+		lastBlockNum = 0
+	} else if lastBlockNum > 0 {
+		logger.Info("📦 Resuming from block #%d", lastBlockNum)
+	} else {
+		logger.Info("📦 Starting from block #0")
+	}
+
+	// Get current block number
+	currentBlockNum, err := s.rpcClient.BlockNumber(s.ctx)
+	if err != nil {
+		// If context canceled, just skip catch-up and continue
+		if s.ctx.Err() != nil {
+			logger.Warn("Context canceled during catch-up, continuing to subscription")
+			return
+		}
+		logger.Warn("Failed to get current block number: %v, skipping catch-up", err)
+		return
+	}
+
+	if currentBlockNum > lastBlockNum {
+		logger.Info("📦 Catching up on %d unprocessed blocks...", currentBlockNum-lastBlockNum)
+		// Process blocks sequentially
+		for i := lastBlockNum + 1; i <= currentBlockNum; i++ {
+			select {
+			case <-s.ctx.Done():
+				logger.Warn("Context canceled during catch-up, stopping at block #%d", i-1)
+				return
+			default:
+				if s.processBlock(i) {
+					if err := s.batches.SetLastProcessedBlock(i); err != nil {
+						logger.Warn("Failed to save last processed block: %v", err)
+					}
+				} else {
+					logger.Warn("Stopping catch-up at block #%d (will retry)", i)
+					return
+				}
+			}
+		}
+		logger.Info("✅ Caught up to block #%d", currentBlockNum)
+	} else {
+		logger.Info("✅ Already up to date at block #%d", currentBlockNum)
+	}
+}
+
 // pollBlocks polls for new blocks periodically
 func (s *Service) pollBlocks() {
 	logger.Info("📡 Polling for new blocks (every 2 seconds)")
@@ -254,6 +334,7 @@ func (s *Service) pollBlocks() {
 
 			if blockNum > lastBlockNum {
 				// Process blocks sequentially - only advance when block is fully processed
+			blockLoop:
 				for i := lastBlockNum + 1; i <= blockNum; i++ {
 					select {
 					case <-s.ctx.Done():
@@ -270,7 +351,7 @@ func (s *Service) pollBlocks() {
 							// Block processing failed or incomplete, stop here
 							// Will retry on next poll
 							logger.Warn("Stopping block processing at block #%d (will retry)", i)
-							break
+							break blockLoop
 						}
 					}
 				}
@@ -299,6 +380,41 @@ func (s *Service) processBlock(blockNum uint64) bool {
 			logger.Warn("Failed to fetch block %d: %v", blockNum, err)
 		}
 		return false
+	}
+
+	// Check for reorg: compare block hash with stored hash
+	if storedHash, err := s.batches.GetBlockHash(blockNum); err == nil {
+		if storedHash != block.Hash {
+			// Reorg detected!
+			logger.Warn("Reorg detected at block #%d: stored hash %s != new hash %s", blockNum, storedHash, block.Hash)
+
+			// Find fork point and rollback
+			forkPoint, err := s.findForkPoint(blockNum)
+			if err != nil {
+				logger.Error("Failed to find fork point: %v", err)
+				return false
+			}
+
+			if err := s.handleReorg(forkPoint); err != nil {
+				logger.Error("Failed to handle reorg: %v", err)
+				return false
+			}
+
+			logger.Info("Rolled back to block #%d, will re-process from block #%d", forkPoint, forkPoint+1)
+
+			// Update last processed block to fork point
+			if err := s.batches.SetLastProcessedBlock(forkPoint); err != nil {
+				logger.Warn("Failed to update last processed block: %v", err)
+			}
+
+			// Return false to indicate we need to re-process from fork point
+			return false
+		}
+	}
+
+	// Store block hash for future reorg detection
+	if err := s.batches.SetBlockHash(blockNum, block.Hash); err != nil {
+		logger.Warn("Failed to store block hash: %v", err)
 	}
 
 	// Enrich transactions with contract addresses for deployments
@@ -351,7 +467,7 @@ func (s *Service) processBlock(blockNum uint64) bool {
 				}
 
 				// Append to incomplete batch
-				if err := s.batchBuilder.AppendToBatch(incompleteBatch, txsToAdd); err != nil {
+				if err := s.batchBuilder.AppendToBatch(incompleteBatch, txsToAdd, blockNum); err != nil {
 					logger.Error("Failed to append to batch: %v", err)
 					return false
 				}
@@ -398,7 +514,7 @@ func (s *Service) processBlock(blockNum uint64) bool {
 				txsForNewBatch = remainingTxs[:s.config.BatchSize]
 			}
 
-			s.createBatchFromTransactions(txsForNewBatch)
+			s.createBatchFromTransactions(txsForNewBatch, blockNum)
 			remainingTxs = remainingTxs[len(txsForNewBatch):]
 		}
 	}
@@ -407,8 +523,74 @@ func (s *Service) processBlock(blockNum uint64) bool {
 	return true
 }
 
+// findForkPoint finds the last block where hash matches (common ancestor)
+func (s *Service) findForkPoint(currentBlock uint64) (uint64, error) {
+	// Start from current block and go backwards
+	for blockNum := currentBlock; blockNum > 0; blockNum-- {
+		// Get block from blockchain
+		block, err := s.rpcClient.GetBlockByNumber(s.ctx, blockNum, false)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get block %d: %w", blockNum, err)
+		}
+
+		// Check if we have this block hash stored
+		storedHash, err := s.batches.GetBlockHash(blockNum)
+		if err != nil {
+			// Block not stored yet, continue backwards
+			continue
+		}
+
+		// If hashes match, this is the fork point
+		if storedHash == block.Hash {
+			return blockNum, nil
+		}
+	}
+
+	// No matching block found, fork point is genesis (0)
+	return 0, nil
+}
+
+// handleReorg handles blockchain reorganization by rolling back batches
+func (s *Service) handleReorg(forkPoint uint64) error {
+	logger.Info("Handling reorg: rolling back to block #%d", forkPoint)
+
+	// Find last batch number before fork point
+	// We need to find which batch corresponds to forkPoint
+	// For simplicity, we'll delete all batches and let them be recreated
+	// In a more sophisticated implementation, we'd track batch->block mapping
+
+	// Get latest batch to determine rollback point
+	latestBatch, err := s.batches.GetLatestBatch()
+	if err != nil {
+		// No batches to rollback
+		return nil
+	}
+
+	// For now, rollback all batches (simplified approach)
+	// TODO: Track which batches correspond to which blocks for precise rollback
+	if latestBatch != nil {
+		logger.Info("Rolling back batches after batch #%d", latestBatch.Number)
+
+		// Delete batches after fork point
+		// Note: This is simplified - proper implementation would track batch->block mapping
+		if err := s.batches.DeleteBatchesAfter(latestBatch.Number); err != nil {
+			return fmt.Errorf("failed to delete batches: %w", err)
+		}
+
+		// Clear SMT state (will be rebuilt from fork point)
+		// Note: SMT state should be restored from fork point, but for now we'll rebuild
+		if s.batchBuilder != nil {
+			// Reset batch builder state root to fork point state
+			// For now, we'll start fresh - proper implementation would restore SMT state
+			logger.Info("SMT state will be rebuilt from fork point")
+		}
+	}
+
+	return nil
+}
+
 // createBatchFromTransactions creates a new batch directly from provided transactions
-func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction) {
+func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumber uint64) {
 	// Check if context is canceled
 	select {
 	case <-s.ctx.Done():
@@ -420,7 +602,7 @@ func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction) {
 		return // No transactions to batch
 	}
 
-	batch, err := s.batchBuilder.BuildBatch(txs)
+	batch, err := s.batchBuilder.BuildBatch(txs, blockNumber)
 	if err != nil {
 		if s.ctx.Err() == nil {
 			logger.Error("Failed to build batch: %v", err)

@@ -251,6 +251,118 @@ func (bs *BatchStore) SetLastProcessedBlock(blockNum uint64) error {
 	})
 }
 
+// SetBlockHash saves the hash for a block number (for reorg detection)
+func (bs *BatchStore) SetBlockHash(blockNum uint64, blockHash string) error {
+	key := []byte(fmt.Sprintf("blockhash:%d", blockNum))
+	return bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, []byte(blockHash))
+	})
+}
+
+// GetBlockHash retrieves the hash for a block number
+func (bs *BatchStore) GetBlockHash(blockNum uint64) (string, error) {
+	var blockHash string
+	err := bs.db.View(func(txn *badger.Txn) error {
+		key := []byte(fmt.Sprintf("blockhash:%d", blockNum))
+		item, err := txn.Get(key)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return fmt.Errorf("block hash not found for block %d", blockNum)
+			}
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			blockHash = string(val)
+			return nil
+		})
+	})
+
+	return blockHash, err
+}
+
+// DeleteBatchesAfter deletes all batches after the specified batch number (for reorg rollback)
+func (bs *BatchStore) DeleteBatchesAfter(batchNum uint64) error {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte("batch:")
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			key := item.Key()
+
+			// Extract batch number from key "batch:123"
+			var batchNumFromKey uint64
+			fmt.Sscanf(string(key), "batch:%d", &batchNumFromKey)
+
+			if batchNumFromKey > batchNum {
+				// Delete this batch
+				if err := txn.Delete(key); err != nil {
+					return err
+				}
+				// Remove from in-memory cache
+				delete(bs.batches, batchNumFromKey)
+			}
+		}
+
+		// Update count
+		if batchNum < bs.count {
+			bs.count = batchNum
+		}
+
+		return nil
+	})
+}
+
+// ClearAll deletes all batches, block hashes, and state data
+func (bs *BatchStore) ClearAll() error {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Delete all batches
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte("batch:")
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			key := it.Item().Key()
+			if err := txn.Delete(key); err != nil {
+				return err
+			}
+		}
+
+		// Delete all block hashes
+		opts.Prefix = []byte("blockhash:")
+		it = txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			key := it.Item().Key()
+			if err := txn.Delete(key); err != nil {
+				return err
+			}
+		}
+
+		// Delete last processed block
+		if err := txn.Delete([]byte("state:lastBlock")); err != nil && err != badger.ErrKeyNotFound {
+			return err
+		}
+
+		// Clear in-memory cache
+		bs.batches = make(map[uint64]*types.Batch)
+		bs.count = 0
+
+		return nil
+	})
+}
+
 // Close closes the BadgerDB connection
 func (bs *BatchStore) Close() error {
 	return bs.db.Close()
