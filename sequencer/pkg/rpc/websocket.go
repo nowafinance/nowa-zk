@@ -179,6 +179,14 @@ func (w *WebSocketClient) IsConnected() bool {
 
 // reconnect attempts to reconnect with exponential backoff
 func (w *WebSocketClient) reconnect() error {
+	// Close existing connection if any
+	w.connMutex.Lock()
+	if w.conn != nil {
+		w.conn.Close()
+		w.conn = nil
+	}
+	w.connMutex.Unlock()
+
 	delay := w.reconnectDelay
 	for attempt := 0; attempt < w.maxReconnect; attempt++ {
 		select {
@@ -205,6 +213,20 @@ func (w *WebSocketClient) reconnect() error {
 // messageHandler handles incoming WebSocket messages
 func (w *WebSocketClient) messageHandler() {
 	defer w.wg.Done()
+	defer func() {
+		// Recover from any panics and mark connection as failed
+		if r := recover(); r != nil {
+			// Mark connection as nil to prevent further reads
+			w.connMutex.Lock()
+			if w.conn != nil {
+				w.conn.Close()
+				w.conn = nil
+			}
+			w.connMutex.Unlock()
+			// Try to reconnect
+			_ = w.reconnect()
+		}
+	}()
 
 	for {
 		select {
@@ -220,21 +242,50 @@ func (w *WebSocketClient) messageHandler() {
 				if err := w.reconnect(); err != nil {
 					return
 				}
+				// Small delay after reconnect
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
 			// Set read deadline
-			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			if err := conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+				// Connection is broken, mark as nil and try to reconnect
+				w.connMutex.Lock()
+				w.conn = nil
+				w.connMutex.Unlock()
+				if err := w.reconnect(); err != nil {
+					return
+				}
+				continue
+			}
 
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				// Check if it's a close error
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				// Mark connection as nil on any read error
+				w.connMutex.Lock()
+				w.conn = nil
+				w.connMutex.Unlock()
+
+				// Check if context is canceled
+				if w.ctx.Err() != nil {
+					return
+				}
+
+				// Check if it's a close error or connection error
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) ||
+					websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					// Try to reconnect
 					if err := w.reconnect(); err != nil {
 						return
 					}
+				} else {
+					// Other read error, try to reconnect
+					if err := w.reconnect(); err != nil {
+						return
+					}
 				}
+				// Small delay before retrying
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
