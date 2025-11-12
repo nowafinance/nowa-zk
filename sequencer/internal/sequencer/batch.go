@@ -1,33 +1,43 @@
 package sequencer
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
 	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
 	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
+	"github.com/tannetwork/zk-sequencer/sequencer/pkg/smt"
 )
 
 // BatchBuilder builds batches from transactions
 type BatchBuilder struct {
 	batchNum  uint64
 	stateRoot string
+	smt       *smt.SparseMerkleTree // Sparse Merkle Tree for state root calculation
+	rpcClient *rpc.Client            // RPC client for querying balances
+	ctx       context.Context        // Context for RPC calls
 	mu        sync.Mutex
 }
 
 // NewBatchBuilder creates a new batch builder
-func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string) *BatchBuilder {
+func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string, rpcClient *rpc.Client, ctx context.Context) *BatchBuilder {
 	return &BatchBuilder{
 		batchNum:  initialBatchNum,
 		stateRoot: initialStateRoot,
+		smt:       smt.NewSparseMerkleTree(),
+		rpcClient: rpcClient,
+		ctx:       ctx,
 	}
 }
 
 // BuildBatch creates a new batch directly from provided transactions
-func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction) (*types.Batch, error) {
+// blockNumber is used to query balances at the start of the block
+func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction, blockNumber uint64) (*types.Batch, error) {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
@@ -56,9 +66,24 @@ func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction) (*types.Batch, error)
 		traces[i] = trace
 	}
 
-	// Compute new state root (simplified - just hash of batch)
+	// Compute new state root using Sparse Merkle Tree
 	oldRoot := bb.stateRoot
-	newRoot := bb.computeStateRoot(txs, oldRoot)
+
+	// Update SMT with transaction state changes
+	// Query balances at block start (blockNumber - 1, or blockNumber if first tx in block)
+	blockNumForBalance := blockNumber
+	if blockNumber > 0 {
+		blockNumForBalance = blockNumber - 1 // Balance at start of block
+	}
+
+	for _, tx := range txs {
+		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
+			return nil, fmt.Errorf("failed to update state from transaction: %w", err)
+		}
+	}
+
+	// Get new root from SMT
+	newRoot := bb.smt.RootHex()
 
 	// Create batch
 	batch := &types.Batch{
@@ -82,7 +107,8 @@ func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction) (*types.Batch, error)
 }
 
 // AppendToBatch appends transactions to an existing batch and updates state root
-func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transaction) error {
+// blockNumber is used to query balances at the start of the block
+func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transaction, blockNumber uint64) error {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
@@ -115,8 +141,20 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 	batch.Transactions = append(batch.Transactions, newTxs...)
 	batch.Traces = append(batch.Traces, newTraces...)
 
-	// Recompute state root with all transactions
-	newRoot := bb.computeStateRoot(batch.Transactions, batch.OldStateRoot)
+	// Update SMT with new transaction state changes
+	blockNumForBalance := blockNumber
+	if blockNumber > 0 {
+		blockNumForBalance = blockNumber - 1 // Balance at start of block
+	}
+
+	for _, tx := range newTxs {
+		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
+			return fmt.Errorf("failed to update state from transaction: %w", err)
+		}
+	}
+
+	// Get new root from SMT
+	newRoot := bb.smt.RootHex()
 	batch.NewStateRoot = newRoot
 
 	// Recompute batch hash (since transactions changed)
@@ -128,15 +166,60 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 	return nil
 }
 
-// computeStateRoot computes a new state root (simplified implementation)
-func (bb *BatchBuilder) computeStateRoot(txs []*rpc.Transaction, oldRoot string) string {
-	// Simplified: hash of old root + all transaction hashes
-	data := oldRoot
-	for _, tx := range txs {
-		data += tx.Hash
+// updateStateFromTransaction updates the SMT with state changes from a transaction
+func (bb *BatchBuilder) updateStateFromTransaction(tx *rpc.Transaction, blockNumber uint64) error {
+	// Helper to get or query balance
+	getBalance := func(address string) (*big.Int, error) {
+		balanceKey := fmt.Sprintf("balance:%s", address)
+		
+		// Check if balance exists in SMT
+		if balanceBytes, exists := bb.smt.Get(balanceKey); exists {
+			// Parse balance from bytes
+			balance := new(big.Int)
+			balance.SetBytes(balanceBytes)
+			return balance, nil
+		}
+
+		// Query balance from blockchain at block start
+		balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, address, blockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get balance for %s: %w", address, err)
+		}
+
+		// Store in SMT
+		bb.smt.Update(balanceKey, balance.Bytes())
+		return balance, nil
 	}
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
+
+	// Update sender balance
+	senderBalance, err := getBalance(tx.From)
+	if err != nil {
+		return err
+	}
+	
+	// Decrease sender balance
+	newSenderBalance := new(big.Int).Sub(senderBalance, tx.Value)
+	senderKey := fmt.Sprintf("balance:%s", tx.From)
+	bb.smt.Update(senderKey, newSenderBalance.Bytes())
+
+	// Update receiver balance (if not contract deployment)
+	if !tx.IsContractDeployment && tx.To != "" {
+		receiverBalance, err := getBalance(tx.To)
+		if err != nil {
+			return err
+		}
+
+		// Increase receiver balance
+		newReceiverBalance := new(big.Int).Add(receiverBalance, tx.Value)
+		receiverKey := fmt.Sprintf("balance:%s", tx.To)
+		bb.smt.Update(receiverKey, newReceiverBalance.Bytes())
+	}
+
+	// Store transaction hash for tracking (optional)
+	txKey := fmt.Sprintf("tx:%s", tx.Hash)
+	bb.smt.Update(txKey, []byte(tx.Hash))
+
+	return nil
 }
 
 // computeBatchHash computes the batch hash

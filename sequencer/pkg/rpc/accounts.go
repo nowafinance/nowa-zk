@@ -15,6 +15,12 @@ type AccountState struct {
 	CodeHash string   `json:"codeHash"` // Hash of contract code
 }
 
+// GetBalanceAtBlock fetches the balance of an account at a specific block number
+func (c *Client) GetBalanceAtBlock(ctx context.Context, address string, blockNumber uint64) (*big.Int, error) {
+	blockNumBig := big.NewInt(int64(blockNumber))
+	return c.GetBalance(ctx, address, blockNumBig)
+}
+
 // GetBalance fetches the balance of an account
 func (c *Client) GetBalance(ctx context.Context, address string, blockNumber *big.Int) (*big.Int, error) {
 	var blockTag string
