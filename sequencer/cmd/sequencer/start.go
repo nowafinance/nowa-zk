@@ -17,6 +17,7 @@ var (
 	stateDBPath string
 	batchSize   int
 	apiPort     int
+	reset       bool
 )
 
 var startCmd = &cobra.Command{
@@ -35,6 +36,16 @@ var startCmd = &cobra.Command{
 
 		// Create sequencer service with config
 		s := sequencer.NewWithConfig(cfg)
+
+		// Clear all data if --reset flag is set
+		if reset {
+			logger.Info("🗑️  Clearing all data and starting from block 0...")
+			if err := s.ClearAllData(); err != nil {
+				logger.Warn("Failed to clear data: %v (continuing anyway)", err)
+			} else {
+				logger.Info("✅ All data cleared")
+			}
+		}
 
 		// Start the service
 		if err := s.Start(); err != nil {
@@ -68,5 +79,6 @@ func init() {
 	startCmd.Flags().StringVar(&stateDBPath, "state-db-path", "", "Path to state database (overrides STATE_DB_PATH env var)")
 	startCmd.Flags().IntVar(&batchSize, "batch-size", 0, "Batch size (overrides BATCH_SIZE env var)")
 	startCmd.Flags().IntVar(&apiPort, "api-port", 0, "API server port (overrides API_PORT env var)")
+	startCmd.Flags().BoolVar(&reset, "reset", false, "Clear all data and start from block 0")
 }
 
