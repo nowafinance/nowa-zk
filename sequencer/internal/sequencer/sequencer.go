@@ -2,12 +2,13 @@ package sequencer
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
+	"github.com/tannetwork/zk-sequencer/sequencer/pkg/errors"
+	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
 	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
 )
 
@@ -15,34 +16,18 @@ import (
 type Service struct {
 	rpcClient    *rpc.Client
 	wsClient     *rpc.WebSocketClient
-	txPool       *TransactionPool
 	batchBuilder *BatchBuilder
 	batches      *BatchStore
 	api          *APIServer
 	ctx          context.Context
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
-	config       *Config
-}
-
-// Config holds sequencer configuration
-type Config struct {
-	RPCURL          string
-	WSURL           string
-	BatchSize       int
-	BatchInterval   time.Duration
-	APIPort         int
-	StateDBPath     string
+	config       *types.Config
 }
 
 // DefaultConfig returns default configuration
-func DefaultConfig() *Config {
-	return &Config{
-		BatchSize:     100,              // 100 transactions per batch
-		BatchInterval: 10 * time.Second, // Create batch every 10 seconds
-		APIPort:       8080,              // REST API port
-		StateDBPath:   "./data",         // Local storage path
-	}
+func DefaultConfig() *types.Config {
+	return types.DefaultConfig()
 }
 
 // New creates a new sequencer service
@@ -56,7 +41,7 @@ func New() *Service {
 }
 
 // NewWithConfig creates a new sequencer service with custom config
-func NewWithConfig(config *Config) *Service {
+func NewWithConfig(config *types.Config) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
 		ctx:    ctx,
@@ -67,48 +52,72 @@ func NewWithConfig(config *Config) *Service {
 
 // Start initializes and starts the sequencer service
 func (s *Service) Start() error {
-	log.Println("🚀 Starting ZK Sequencer...")
+	logger.Info("🚀 Starting ZK Sequencer...")
 
 	// Initialize RPC client
 	var err error
-	s.rpcClient, err = rpc.NewClientFromEnv()
-	if err != nil {
-		return fmt.Errorf("failed to create RPC client: %w", err)
+	if s.config.RPCURL != "" {
+		s.rpcClient, err = rpc.NewClient(s.config.RPCURL)
+		if err != nil {
+			return errors.ErrRPC("failed to create RPC client", err)
+		}
+	} else {
+		s.rpcClient, err = rpc.NewClientFromEnv()
+		if err != nil {
+			return errors.ErrRPC("failed to create RPC client", err)
+		}
 	}
-	log.Println("✅ Connected to Tan-ZK RPC endpoint")
+	logger.Info("✅ Connected to Tan-ZK RPC endpoint")
 
 	// Initialize WebSocket client (optional)
 	if s.config.WSURL != "" {
-		s.wsClient, err = rpc.NewWebSocketClientFromEnv()
+		s.wsClient, err = rpc.NewWebSocketClient(s.config.WSURL)
 		if err != nil {
-			log.Printf("⚠️  WebSocket connection failed: %v (continuing with HTTP polling)", err)
+			logger.Warn("WebSocket connection failed: %v (continuing with HTTP polling)", err)
 		} else {
-			log.Println("✅ Connected to Tan-ZK WebSocket endpoint")
+			logger.Info("✅ Connected to Tan-ZK WebSocket endpoint")
 		}
 	}
 
-	// Initialize transaction pool
-	s.txPool = NewTransactionPool()
-	log.Println("✅ Transaction pool initialized")
+	// Initialize batch store first (needed for batch builder initialization)
+	s.batches, err = NewBatchStore(s.config.StateDBPath)
+	if err != nil {
+		return errors.ErrBatchStore("failed to create batch store", err)
+	}
+	logger.Info("✅ Batch store initialized")
 
-	// Initialize batch builder
-	s.batchBuilder = NewBatchBuilder(s.txPool, s.config.BatchSize)
-	log.Println("✅ Batch builder initialized")
+	// Initialize batch builder with last batch number and state root
+	initialBatchNum := uint64(1)
+	initialStateRoot := "0x0000000000000000000000000000000000000000000000000000000000000000"
 
-	// Initialize batch store
-	s.batches = NewBatchStore(s.config.StateDBPath)
-	log.Println("✅ Batch store initialized")
+	// Check for incomplete batch first (to resume filling it)
+	incompleteBatch, err := s.batches.GetIncompleteBatch(s.config.BatchSize)
+	if err == nil && incompleteBatch != nil {
+		// Resume from incomplete batch
+		initialBatchNum = incompleteBatch.Number
+		initialStateRoot = incompleteBatch.NewStateRoot
+		logger.Info("📦 Resuming incomplete batch #%d (%d/%d transactions) with state root %s",
+			incompleteBatch.Number, len(incompleteBatch.Transactions), s.config.BatchSize, initialStateRoot)
+	} else if lastBatch, err := s.batches.GetLatestBatch(); err == nil {
+		// No incomplete batch, resume from last complete batch
+		initialBatchNum = lastBatch.Number + 1
+		initialStateRoot = lastBatch.NewStateRoot
+		logger.Info("📦 Resuming from batch #%d with state root %s", initialBatchNum, initialStateRoot)
+	}
+
+	s.batchBuilder = NewBatchBuilder(initialBatchNum, initialStateRoot)
+	logger.Info("✅ Batch builder initialized")
 
 	// Initialize REST API server
 	s.api = NewAPIServer(s.batches, s.config.APIPort)
-	log.Printf("✅ REST API server initialized on port %d", s.config.APIPort)
+	logger.Info("✅ REST API server initialized on port %d", s.config.APIPort)
 
 	// Start REST API server
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		if err := s.api.Start(); err != nil && err != http.ErrServerClosed {
-			log.Printf("❌ API server error: %v", err)
+			logger.Error("API server error: %v", err)
 		}
 	}()
 
@@ -116,20 +125,16 @@ func (s *Service) Start() error {
 	s.wg.Add(1)
 	go s.subscribeToBlocks()
 
-	// Start batch creation loop
-	s.wg.Add(1)
-	go s.batchCreationLoop()
-
-	log.Println("✅ ZK Sequencer is running!")
-	log.Println("📡 Listening for new blocks and building batches...")
-	log.Printf("🌐 REST API available at http://localhost:%d", s.config.APIPort)
+	logger.Info("✅ ZK Sequencer is running!")
+	logger.Info("📡 Listening for new blocks and building batches...")
+	logger.Info("🌐 REST API available at http://localhost:%d", s.config.APIPort)
 
 	return nil
 }
 
 // Stop gracefully stops the sequencer service
 func (s *Service) Stop() error {
-	log.Println("🛑 Stopping ZK Sequencer...")
+	logger.Info("🛑 Stopping ZK Sequencer...")
 
 	// Cancel context to stop all goroutines
 	s.cancel()
@@ -137,7 +142,14 @@ func (s *Service) Stop() error {
 	// Stop API server first (with timeout)
 	if s.api != nil {
 		if err := s.api.Stop(); err != nil {
-			log.Printf("⚠️  Error stopping API server: %v", err)
+			logger.Warn("Error stopping API server: %v", err)
+		}
+	}
+
+	// Close batch store
+	if s.batches != nil {
+		if err := s.batches.Close(); err != nil {
+			logger.Warn("Error closing batch store: %v", err)
 		}
 	}
 
@@ -158,9 +170,9 @@ func (s *Service) Stop() error {
 
 	select {
 	case <-done:
-		log.Println("✅ ZK Sequencer stopped")
+		logger.Info("✅ ZK Sequencer stopped")
 	case <-time.After(5 * time.Second):
-		log.Println("⚠️  Timeout waiting for goroutines to finish")
+		logger.Warn("Timeout waiting for goroutines to finish")
 	}
 
 	return nil
@@ -182,12 +194,12 @@ func (s *Service) subscribeToBlocks() {
 func (s *Service) subscribeViaWebSocket() {
 	headerChan, err := s.wsClient.SubscribeNewHeads(s.ctx)
 	if err != nil {
-		log.Printf("❌ Failed to subscribe to blocks: %v, falling back to polling", err)
+		logger.Error("Failed to subscribe to blocks: %v, falling back to polling", err)
 		s.pollBlocks()
 		return
 	}
 
-	log.Println("📡 Subscribed to new block headers via WebSocket")
+	logger.Info("📡 Subscribed to new block headers via WebSocket")
 
 	for {
 		select {
@@ -195,20 +207,36 @@ func (s *Service) subscribeViaWebSocket() {
 			return
 		case header, ok := <-headerChan:
 			if !ok {
-				log.Println("⚠️  WebSocket channel closed, falling back to polling")
+				logger.Warn("WebSocket channel closed, falling back to polling")
 				s.pollBlocks()
 				return
 			}
-			s.processBlock(header.Number.Uint64())
+			blockNum := header.Number.Uint64()
+			// Process block - only update last processed block if successful
+			if s.processBlock(blockNum) {
+				// Update last processed block only after successful processing
+				if err := s.batches.SetLastProcessedBlock(blockNum); err != nil {
+					logger.Warn("Failed to save last processed block: %v", err)
+				}
+			} else {
+				logger.Warn("Block #%d processing incomplete (will retry)", blockNum)
+			}
 		}
 	}
 }
 
 // pollBlocks polls for new blocks periodically
 func (s *Service) pollBlocks() {
-	log.Println("📡 Polling for new blocks (every 2 seconds)")
+	logger.Info("📡 Polling for new blocks (every 2 seconds)")
 
-	lastBlockNum := uint64(0)
+	// Load last processed block from database
+	lastBlockNum, err := s.batches.GetLastProcessedBlock()
+	if err != nil {
+		logger.Warn("Failed to get last processed block: %v, starting from 0", err)
+		lastBlockNum = 0
+	} else {
+		logger.Info("📦 Resuming from block #%d", lastBlockNum)
+	}
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -220,53 +248,65 @@ func (s *Service) pollBlocks() {
 		case <-ticker.C:
 			blockNum, err := s.rpcClient.BlockNumber(s.ctx)
 			if err != nil {
-				log.Printf("⚠️  Failed to get block number: %v", err)
+				logger.Warn("Failed to get block number: %v", err)
 				continue
 			}
 
 			if blockNum > lastBlockNum {
-				// Process all new blocks (check context before each)
+				// Process blocks sequentially - only advance when block is fully processed
 				for i := lastBlockNum + 1; i <= blockNum; i++ {
 					select {
 					case <-s.ctx.Done():
 						return
 					default:
-						s.processBlock(i)
+						// Process block - only advance if successfully processed
+						if s.processBlock(i) {
+							// Update last processed block only after successful processing
+							if err := s.batches.SetLastProcessedBlock(i); err != nil {
+								logger.Warn("Failed to save last processed block: %v", err)
+							}
+							lastBlockNum = i
+						} else {
+							// Block processing failed or incomplete, stop here
+							// Will retry on next poll
+							logger.Warn("Stopping block processing at block #%d (will retry)", i)
+							break
+						}
 					}
 				}
-				lastBlockNum = blockNum
 			}
 		}
 	}
 }
 
 // processBlock fetches and processes a block
-func (s *Service) processBlock(blockNum uint64) {
+// Returns true if block was fully processed, false if incomplete batch prevented processing
+func (s *Service) processBlock(blockNum uint64) bool {
 	// Check if context is already canceled
 	select {
 	case <-s.ctx.Done():
-		return
+		return false
 	default:
 	}
 
-	log.Printf("📦 Processing block #%d", blockNum)
+	logger.Info("📦 Processing block #%d", blockNum)
 
 	// Fetch block with transactions
 	block, err := s.rpcClient.GetBlockByNumber(s.ctx, blockNum, true)
 	if err != nil {
 		// Don't log context canceled errors during shutdown
 		if s.ctx.Err() == nil {
-			log.Printf("⚠️  Failed to fetch block %d: %v", blockNum, err)
+			logger.Warn("Failed to fetch block %d: %v", blockNum, err)
 		}
-		return
+		return false
 	}
 
-	// Add transactions to pool and enrich with contract addresses for deployments
+	// Enrich transactions with contract addresses for deployments
 	for _, tx := range block.Transactions {
 		// Check context before processing each transaction
 		select {
 		case <-s.ctx.Done():
-			return
+			return false
 		default:
 		}
 
@@ -287,34 +327,88 @@ func (s *Service) processBlock(blockNum uint64) {
 				tx.To = tx.ContractAddress
 			}
 		}
-		s.txPool.AddTransaction(tx)
 	}
 
-	log.Printf("✅ Block #%d processed: %d transactions added to pool (pool size: %d)",
-		blockNum, len(block.Transactions), s.txPool.Size())
-}
-
-// batchCreationLoop periodically creates batches from the transaction pool
-func (s *Service) batchCreationLoop() {
-	defer s.wg.Done()
-
-	ticker := time.NewTicker(s.config.BatchInterval)
-	defer ticker.Stop()
-
-	log.Printf("🔄 Batch creation loop started (interval: %v)", s.config.BatchInterval)
-
-	for {
+	// Process transactions sequentially to fill incomplete batches first
+	remainingTxs := block.Transactions
+	for len(remainingTxs) > 0 {
 		select {
 		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			s.createBatch()
+			return false
+		default:
+		}
+
+		// Check for incomplete batch first
+		incompleteBatch, err := s.batches.GetIncompleteBatch(s.config.BatchSize)
+		if err == nil && incompleteBatch != nil {
+			// Fill incomplete batch
+			spaceLeft := s.config.BatchSize - len(incompleteBatch.Transactions)
+			if spaceLeft > 0 {
+				// Take up to spaceLeft transactions
+				txsToAdd := remainingTxs
+				if len(txsToAdd) > spaceLeft {
+					txsToAdd = remainingTxs[:spaceLeft]
+				}
+
+				// Append to incomplete batch
+				if err := s.batchBuilder.AppendToBatch(incompleteBatch, txsToAdd); err != nil {
+					logger.Error("Failed to append to batch: %v", err)
+					return false
+				}
+
+				// Save updated batch
+				if err := s.batches.SaveBatch(incompleteBatch); err != nil {
+					logger.Error("Failed to save batch: %v", err)
+					return false
+				}
+
+				// Notify WebSocket clients
+				if s.api != nil {
+					s.api.NotifyNewBatch(incompleteBatch)
+				}
+
+				logger.Info("📝 Appended %d transactions to batch #%d (%d/%d)",
+					len(txsToAdd), incompleteBatch.Number, len(incompleteBatch.Transactions), s.config.BatchSize)
+
+				// Remove processed transactions
+				remainingTxs = remainingTxs[len(txsToAdd):]
+
+				// If batch is now complete, continue processing remaining transactions
+				if len(incompleteBatch.Transactions) >= s.config.BatchSize {
+					logger.Info("✅ Batch #%d completed with %d transactions", incompleteBatch.Number, len(incompleteBatch.Transactions))
+					// Batch is complete, continue processing remaining transactions
+					continue
+				} else {
+					// Batch still incomplete, but we've processed all transactions from this block
+					// Continue to process remaining transactions from this block if any
+					if len(remainingTxs) == 0 {
+						logger.Info("⏸️  Batch #%d incomplete (%d/%d), all transactions from block added",
+							incompleteBatch.Number, len(incompleteBatch.Transactions), s.config.BatchSize)
+					}
+					// Continue processing remaining transactions
+				}
+			}
+		}
+
+		// No incomplete batch, create new batch with remaining transactions
+		if len(remainingTxs) > 0 {
+			// Create batch with up to BatchSize transactions
+			txsForNewBatch := remainingTxs
+			if len(txsForNewBatch) > s.config.BatchSize {
+				txsForNewBatch = remainingTxs[:s.config.BatchSize]
+			}
+
+			s.createBatchFromTransactions(txsForNewBatch)
+			remainingTxs = remainingTxs[len(txsForNewBatch):]
 		}
 	}
+
+	logger.Info("✅ Block #%d processed: %d transactions", blockNum, len(block.Transactions))
+	return true
 }
 
-// createBatch creates a new batch from the transaction pool
-func (s *Service) createBatch() {
+// createBatchFromTransactions creates a new batch directly from provided transactions
+func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction) {
 	// Check if context is canceled
 	select {
 	case <-s.ctx.Done():
@@ -322,14 +416,14 @@ func (s *Service) createBatch() {
 	default:
 	}
 
-	if s.txPool.Size() == 0 {
+	if len(txs) == 0 {
 		return // No transactions to batch
 	}
 
-	batch, err := s.batchBuilder.BuildBatch()
+	batch, err := s.batchBuilder.BuildBatch(txs)
 	if err != nil {
 		if s.ctx.Err() == nil {
-			log.Printf("⚠️  Failed to build batch: %v", err)
+			logger.Error("Failed to build batch: %v", err)
 		}
 		return
 	}
@@ -337,12 +431,17 @@ func (s *Service) createBatch() {
 	// Store batch
 	if err := s.batches.SaveBatch(batch); err != nil {
 		if s.ctx.Err() == nil {
-			log.Printf("⚠️  Failed to save batch: %v", err)
+			logger.Error("Failed to save batch: %v", err)
 		}
 		return
 	}
 
-	log.Printf("✅ Batch #%d created: %d transactions (batch hash: %s)",
+	// Notify WebSocket clients about new batch
+	if s.api != nil {
+		s.api.NotifyNewBatch(batch)
+	}
+
+	logger.Info("✅ Batch #%d created: %d transactions (batch hash: %s)",
 		batch.Number, len(batch.Transactions), batch.Hash)
 
 	// TODO: Request proof from prover
@@ -351,9 +450,8 @@ func (s *Service) createBatch() {
 
 // Info returns service information
 func (s *Service) Info() string {
-	if s.txPool == nil {
+	if s.batches == nil {
 		return "zk-sequencer initialized (not started)"
 	}
-	return fmt.Sprintf("zk-sequencer running - Pool: %d txs, Batches: %d",
-		s.txPool.Size(), s.batches.Count())
+	return "zk-sequencer running"
 }

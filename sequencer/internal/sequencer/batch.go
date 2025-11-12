@@ -7,82 +7,52 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
 	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
 )
 
-// Batch represents a batch of transactions
-type Batch struct {
-	Number       uint64                `json:"number"`
-	Hash         string                `json:"hash"`
-	Transactions []*rpc.Transaction    `json:"transactions"`
-	OldStateRoot string                `json:"oldStateRoot"`
-	NewStateRoot string                `json:"newStateRoot"`
-	Timestamp    int64                 `json:"timestamp"`
-	Status       string                `json:"status"` // "pending", "proving", "ready", "submitted"
-	Traces       []*ExecutionTrace     `json:"traces,omitempty"`
-}
-
-// ExecutionTrace represents execution trace for a transaction
-type ExecutionTrace struct {
-	TxHash            string `json:"txHash"`
-	From              string `json:"from"`
-	To                string `json:"to,omitempty"`                // Empty for contract deployments
-	ContractAddress   string `json:"contractAddress,omitempty"`   // Set for contract deployments
-	IsContractDeployment bool `json:"isContractDeployment"`      // True if this is a contract deployment
-	Value             string `json:"value"`
-	Nonce             uint64 `json:"nonce"`
-	OldBalance        string `json:"oldBalance,omitempty"`
-	NewBalance        string `json:"newBalance,omitempty"`
-}
-
 // BatchBuilder builds batches from transactions
 type BatchBuilder struct {
-	txPool     *TransactionPool
-	batchSize  int
-	batchNum   uint64
-	stateRoot  string
-	mu         sync.Mutex
+	batchNum  uint64
+	stateRoot string
+	mu        sync.Mutex
 }
 
 // NewBatchBuilder creates a new batch builder
-func NewBatchBuilder(txPool *TransactionPool, batchSize int) *BatchBuilder {
+func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string) *BatchBuilder {
 	return &BatchBuilder{
-		txPool:    txPool,
-		batchSize: batchSize,
-		batchNum:  1,
-		stateRoot: "0x0000000000000000000000000000000000000000000000000000000000000000",
+		batchNum:  initialBatchNum,
+		stateRoot: initialStateRoot,
 	}
 }
 
-// BuildBatch creates a new batch from the transaction pool
-func (bb *BatchBuilder) BuildBatch() (*Batch, error) {
+// BuildBatch creates a new batch directly from provided transactions
+func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction) (*types.Batch, error) {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
-	// Get transactions from pool
-	txs := bb.txPool.GetTransactions(bb.batchSize)
 	if len(txs) == 0 {
-		return nil, fmt.Errorf("no transactions available")
+		return nil, fmt.Errorf("no transactions provided")
 	}
 
 	// Generate execution traces (simplified for now)
-	traces := make([]*ExecutionTrace, len(txs))
+	traces := make([]*types.ExecutionTrace, len(txs))
 	for i, tx := range txs {
-		trace := &ExecutionTrace{
-			TxHash:              tx.Hash,
-			From:                tx.From,
-			Value:               tx.Value.String(),
-			Nonce:               tx.Nonce,
+		trace := &types.ExecutionTrace{
+			TxHash:               tx.Hash,
+			From:                 tx.From,
+			Value:                tx.Value.String(),
+			Nonce:                tx.Nonce,
 			IsContractDeployment: tx.IsContractDeployment,
 		}
-		
+
 		// For contract deployments, use contract address instead of to
 		if tx.IsContractDeployment {
 			trace.ContractAddress = tx.ContractAddress
 		} else {
 			trace.To = tx.To
 		}
-		
+
 		traces[i] = trace
 	}
 
@@ -91,7 +61,7 @@ func (bb *BatchBuilder) BuildBatch() (*Batch, error) {
 	newRoot := bb.computeStateRoot(txs, oldRoot)
 
 	// Create batch
-	batch := &Batch{
+	batch := &types.Batch{
 		Number:       bb.batchNum,
 		Transactions: txs,
 		OldStateRoot: oldRoot,
@@ -111,6 +81,53 @@ func (bb *BatchBuilder) BuildBatch() (*Batch, error) {
 	return batch, nil
 }
 
+// AppendToBatch appends transactions to an existing batch and updates state root
+func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transaction) error {
+	bb.mu.Lock()
+	defer bb.mu.Unlock()
+
+	if len(newTxs) == 0 {
+		return fmt.Errorf("no transactions to append")
+	}
+
+	// Generate execution traces for new transactions
+	newTraces := make([]*types.ExecutionTrace, len(newTxs))
+	for i, tx := range newTxs {
+		trace := &types.ExecutionTrace{
+			TxHash:               tx.Hash,
+			From:                 tx.From,
+			Value:                tx.Value.String(),
+			Nonce:                tx.Nonce,
+			IsContractDeployment: tx.IsContractDeployment,
+		}
+
+		// For contract deployments, use contract address instead of to
+		if tx.IsContractDeployment {
+			trace.ContractAddress = tx.ContractAddress
+		} else {
+			trace.To = tx.To
+		}
+
+		newTraces[i] = trace
+	}
+
+	// Append transactions and traces
+	batch.Transactions = append(batch.Transactions, newTxs...)
+	batch.Traces = append(batch.Traces, newTraces...)
+
+	// Recompute state root with all transactions
+	newRoot := bb.computeStateRoot(batch.Transactions, batch.OldStateRoot)
+	batch.NewStateRoot = newRoot
+
+	// Recompute batch hash (since transactions changed)
+	batch.Hash = bb.computeBatchHash(batch)
+
+	// Update builder's state root to match
+	bb.stateRoot = newRoot
+
+	return nil
+}
+
 // computeStateRoot computes a new state root (simplified implementation)
 func (bb *BatchBuilder) computeStateRoot(txs []*rpc.Transaction, oldRoot string) string {
 	// Simplified: hash of old root + all transaction hashes
@@ -123,7 +140,7 @@ func (bb *BatchBuilder) computeStateRoot(txs []*rpc.Transaction, oldRoot string)
 }
 
 // computeBatchHash computes the batch hash
-func (bb *BatchBuilder) computeBatchHash(batch *Batch) string {
+func (bb *BatchBuilder) computeBatchHash(batch *types.Batch) string {
 	data := fmt.Sprintf("%d:%s:%s:%d",
 		batch.Number,
 		batch.OldStateRoot,
@@ -135,4 +152,3 @@ func (bb *BatchBuilder) computeBatchHash(batch *Batch) string {
 	hash := sha256.Sum256([]byte(data))
 	return "0x" + hex.EncodeToString(hash[:])
 }
-
