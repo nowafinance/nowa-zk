@@ -158,7 +158,7 @@ We plan to conduct professional security audits before major releases:
 We maintain transparency about known security issues:
 
 - Currently no known security vulnerabilities
-- See [GitHub Security Advisories](https://github.com/tannetwork/zk-sequencer/security/advisories) for historical issues
+- See [GitHub Security Advisories](https://github.com/tannetwork/tan-zk/security/advisories) for historical issues
 
 ## Security Features
 

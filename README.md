@@ -1,7 +1,7 @@
 # ZK-Sequencer - ⚠️ Under Production
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/tannetwork/zk-sequencer/main.yml?branch=main)](https://github.com/tannetwork/zk-sequencer/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/tannetwork/tan-zk/main.yml?branch=main)](https://github.com/tannetwork/tan-zk/actions)
 
 This repository contains the official implementation of the **ZK-Sequencer** for the **Tan-ZK** network.
 
@@ -41,8 +41,8 @@ Quick start for local development (contracts + services):
 ### Build & Test
 ```bash
 # Clone the repository
-git clone https://github.com/tannetwork/zk-sequencer.git
-cd zk-sequencer
+git clone https://github.com/tannetwork/tan-zk.git
+cd tan-zk
 
 # Contracts (Foundry)
 cd contracts
