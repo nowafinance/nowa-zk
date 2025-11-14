@@ -24,12 +24,12 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/zk-sequencer.git
-   cd zk-sequencer
+   git clone https://github.com/YOUR_USERNAME/tan-zk.git
+   cd tan-zk
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/tannetwork/zk-sequencer.git
+   git remote add upstream https://github.com/tannetwork/tan-zk.git
    ```
 
 ## Development Workflow
