@@ -17,17 +17,26 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     defaults:
       run:
         working-directory: prover
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.23.2'
+          go-version: "1.24.10"
           cache-dependency-path: prover/go.sum
 
+      - name: Install deps (optional but makes builds deterministic)
+        run: |
+          make deps
+
       - name: Test
-        run: go test -v -race ./...
+        run: |
+          # run tests with race detector and verbose output
+          go test -v -race ./...
