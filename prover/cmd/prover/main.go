@@ -1,15 +1,20 @@
 package main
 
 import (
-    "fmt"
+	"flag"
+	"fmt"
+	"os"
 
-    "github.com/tannetwork/zk-sequencer/prover/internal/prover"
+	"github.com/tannetwork/zk-sequencer/prover/prover"
 )
 
 func main() {
-    fmt.Println("zk-prover: starting up…")
-    p := prover.New()
-    fmt.Println(p.Info())
+	circuit := flag.String("circuit", "circuits/simple", "circuit identifier or path")
+	flag.Parse()
+
+	if err := prover.RunProve(*circuit); err != nil {
+		fmt.Fprintln(os.Stderr, "prove failed:", err)
+		os.Exit(1)
+	}
+	fmt.Println("prove completed")
 }
-
-
