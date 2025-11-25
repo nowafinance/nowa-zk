@@ -29,8 +29,8 @@
   - Core functions tested with forge test
   - 100% coverage on critical functions
 
-### Milestone 1.3 — Tan-ZK RPC Client
-- **Status**: IN PROGRESS
+### Milestone 1.3 — Tan-ZK RPC Client ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Implement Go RPC client for Tan-ZK blockchain.
 - **Scope**:
@@ -44,8 +44,8 @@
   - Integration tests pass with local Tan-ZK node
   - Error handling and reconnection logic implemented
 
-### Milestone 1.4 — State Synchronization
-- **Status**: PLANNED
+### Milestone 1.4 — State Synchronization ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Basic state tracking with persistence.
 - **Scope**:
@@ -61,8 +61,8 @@
 
 ## Phase 2: Sequencer Core
 
-### Milestone 2.1 — Transaction Pool
-- **Status**: PLANNED
+### Milestone 2.1 — Transaction Pool ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: In-memory pool with validation and ordering.
 - **Scope**:
@@ -73,8 +73,8 @@
   - Unit tests for add/evict/order
   - Metrics exposed
 
-### Milestone 2.2 — Batch Builder
-- **Status**: PLANNED
+### Milestone 2.2 — Batch Builder ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Build batches, metadata, and prover inputs.
 - **Scope**:
@@ -86,8 +86,8 @@
   - Deterministic batch hash; persisted batches
   - Execution traces compatible with circuit witness format
 
-### Milestone 2.3 — Sequencer Service
-- **Status**: PLANNED
+### Milestone 2.3 — Sequencer Service ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Main loop and lifecycle management.
 - **Scope**:
@@ -101,8 +101,8 @@
   - Service stable for extended local runs
   - Clean shutdown on SIGTERM/SIGINT
 
-### Milestone 2.4 — REST API
-- **Status**: PLANNED
+### Milestone 2.4 — REST API ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Read-only API for status/inspection.
 - **Scope**:
@@ -117,8 +117,8 @@
 
 ## Phase 3: Zero-Knowledge Prover
 
-### Milestone 3.1 — Gnark Project Setup
-- **Status**: PLANNED
+### Milestone 3.1 — Gnark Project Setup ✅
+- **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Prover bootstrap, simple circuit, keys flow.
 - **Scope**:
@@ -130,7 +130,7 @@
   - Tests pass
 
 ### Milestone 3.2 — Batch Circuit (100 → 1000 txs)
-- **Status**: PLANNED
+- **Status**: IN PROGRESS
 - **Due date**: TBD
 - **Description**: Scale circuit with chained state updates.
 - **Scope**:
@@ -268,20 +268,18 @@
 
 ## Progress Tracking
 
-**Completed**: 2/20+ milestones (10%)
+**Completed**: 9/20+ milestones (45%)
 - ✅ 1.1 Repository Structure
 - ✅ 1.2 Smart Contract Foundation
+- ✅ 1.3 Tan-ZK RPC Client
+- ✅ 1.4 State Synchronization
+- ✅ 2.1 Transaction Pool
+- ✅ 2.2 Batch Builder
+- ✅ 2.3 Sequencer Service
+- ✅ 2.4 REST API
+- ✅ 3.1 Gnark Project Setup
 
 **In Progress**: 1 milestone
-- 🔄 1.3 Tan-ZK RPC Client
+- 🔄 3.2 Batch Circuit (100 → 1000 txs)
 
-**Remaining**: 17+ milestones
-
----
-
-## Notes
-
-- Milestones are designed to be sequential within phases
-- Some milestones can run in parallel across phases
-- Due dates will be set as milestones are started
-- Acceptance criteria must be met before milestone completion
+**Remaining**: 10 milestones

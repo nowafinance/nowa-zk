@@ -12,27 +12,6 @@ The prover is responsible for:
 * Running (future) proving pipelines for batched state transitions
 * Exposing a lightweight CLI interface
 
----
-
-## **Structure**
-
-```
-prover/
-├─ go.mod
-├─ Makefile
-├─ cmd/
-│  └─ prover/         # CLI entrypoint
-├─ prover/
-│  ├─ prover.go       # core prover API
-│  └─ prover_test.go  # gnark compile test
-├─ circuits/
-│  └─ simple_circuit.go   # example circuit
-└─ internal/
-   └─ witness/
-      └─ witness.go       # witness helpers
-```
-
----
 
 ## **Install Dependencies**
 
@@ -74,17 +53,29 @@ bin/prover
 
 ---
 
-## **Run Proof (placeholder)**
+## **Usage**
+
+The prover CLI has two main commands: `setup` and `start`.
+
+### **Setup**
+
+The `setup` command generates the proving and verifying keys for the circuit.
 
 ```bash
-make prove
+./bin/prover setup --output-dir <path_to_keys_dir>
 ```
 
-or manually:
+By default, the keys are saved in the `./keys` directory.
+
+### **Start**
+
+The `start` command starts the prover, which generates a proof.
 
 ```bash
-./bin/prover --circuit circuits/simple
+./bin/prover start --keys-dir <path_to_keys_dir>
 ```
+
+By default, the prover looks for the keys in the `./keys` directory.
 
 ## **Development Notes**
 

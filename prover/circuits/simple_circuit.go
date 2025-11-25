@@ -6,7 +6,7 @@ import (
 
 // SimpleCircuit is a tiny example circuit: A + B == 5
 type SimpleCircuit struct {
-	A frontend.Variable
+	A frontend.Variable `gnark:",public"`
 	B frontend.Variable
 }
 
