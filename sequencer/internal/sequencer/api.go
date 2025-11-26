@@ -17,21 +17,21 @@ import (
 
 // APIServer provides REST API and WebSocket for the prover
 type APIServer struct {
-	store        *BatchStore
-	port         int
-	server       *http.Server
-	wsUpgrader   websocket.Upgrader
-	wsClients    map[*websocket.Conn]bool
-	wsClientsMu  sync.RWMutex
+	store         *BatchStore
+	port          int
+	server        *http.Server
+	wsUpgrader    websocket.Upgrader
+	wsClients     map[*websocket.Conn]bool
+	wsClientsMu   sync.RWMutex
 	batchNotifier chan *types.Batch
 }
 
 // NewAPIServer creates a new API server
 func NewAPIServer(store *BatchStore, port int) *APIServer {
 	return &APIServer{
-		store:        store,
-		port:         port,
-		wsClients:    make(map[*websocket.Conn]bool),
+		store:         store,
+		port:          port,
+		wsClients:     make(map[*websocket.Conn]bool),
 		batchNotifier: make(chan *types.Batch, 100),
 		wsUpgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -57,8 +57,8 @@ func (api *APIServer) Start() error {
 	router.HandleFunc("/batches", api.handleGetAllBatches).Methods("GET")
 
 	// Prover endpoints
-	router.HandleFunc("/prover/batch/{number}", api.handleGetBatchForProver).Methods("GET")
 	router.HandleFunc("/prover/batch/latest", api.handleLatestBatchForProver).Methods("GET")
+	router.HandleFunc("/prover/batch/{number}", api.handleGetBatchForProver).Methods("GET")
 
 	// WebSocket endpoint for real-time batch updates
 	router.HandleFunc("/ws/batches", api.handleWebSocket)
@@ -82,7 +82,7 @@ func (api *APIServer) Stop() error {
 	if api.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		if err := api.server.Shutdown(ctx); err != nil {
 			// If graceful shutdown fails, force close
 			api.server.Close()
@@ -292,4 +292,3 @@ func (api *APIServer) broadcastLoop() {
 		}
 	}
 }
-

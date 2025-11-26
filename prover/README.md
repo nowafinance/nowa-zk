@@ -1,83 +1,89 @@
-# **ZK-Sequencer — Prover Module**
+# Prover
 
-⚠️ *Under Production*
+ZK Prover for Tan-ZK Sequencer - Generates proofs and submits to smart contract.
 
-This directory contains the **ZK Prover** used by the `Tan-ZK` Sequencer.
-It is a standalone Go module (`go 1.21+`) using **Gnark** for circuit definition, compilation, and proof generation.
-
-The prover is responsible for:
-
-* Defining ZK circuits
-* Building witnesses
-* Running (future) proving pipelines for batched state transitions
-* Exposing a lightweight CLI interface
-
-
-## **Install Dependencies**
+## Quick Start
 
 ```bash
-make deps
+# Build
+go build -o prover-bin ./cmd/prover
+
+# Generate keys and Solidity verifier
+./prover-bin setup
+
+# Start prover (fetch batches and submit proofs)
+./prover-bin start --contract 0x... --private-key YOUR_KEY
 ```
 
-This fetches Gnark and updates `go.mod`.
+## Commands
 
----
+### Setup
 
-## **Run Tests**
-
-Compiles prover logic + gnark dependencies:
+Generates proving/verifying keys and exports Solidity verifier contract.
 
 ```bash
-make test
+./prover-bin setup
+# Options:
+#   -o, --output-dir string         Directory for keys (default: ./keys)
+#   -c, --contract-output string    Directory for Solidity file (default: ../contracts/src/generated)
 ```
 
-or directly:
+**Output:**
+- `keys/rollup.pk` - Proving key
+- `keys/rollup.vk` - Verifying key  
+- `keys/rollup.r1cs` - Compiled circuit
+- `contracts/src/generated/RollupVerifier.sol` - Solidity verifier
+
+### Start
+
+Fetches batches from sequencer API, generates proofs, submits to contract.
 
 ```bash
-go test ./prover/...
+./prover-bin start --contract 0xABC... --private-key abc123...
+# Options:
+#   -k, --keys-dir string        Keys directory (default: ./keys)
+#   -s, --sequencer-url string   Sequencer API URL (default: http://localhost:8080)
+#   -r, --rpc-url string         Ethereum RPC URL (default: http://localhost:8545)
+#   -c, --contract string        Contract address (REQUIRED)
+#   -p, --private-key string     Private key for submitting txs (REQUIRED)
+#   -i, --poll-interval int      Poll interval in seconds (default: 10)
 ```
 
----
+## Circuit
 
-## **Build Prover CLI**
+**BatchCircuit** processes 128 transactions per batch:
+- Computes transaction hashes (MiMC)
+- Builds Merkle tree
+- Verifies root matches public input
+
+**Transaction fields:**
+- `From` - Sender address
+- `To` - Recipient address
+- `Amount` - Transfer amount
+- `Nonce` - Sender nonce
+- `InputHash` - Hash of transaction data
+
+## Testing
 
 ```bash
-make build
+# Run all tests
+go test ./...
+
+# Test circuits only
+go test ./circuits -v
+
+# With coverage
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
 ```
 
-Binary output:
+## Workflow
 
-```
-bin/prover
-```
+1. **Setup** - Generate keys once
+2. **Deploy** - Deploy `RollupVerifier.sol` to chain
+3. **Start** - Run prover to process batches
+4. Prover polls sequencer API for new batches
+5. Generates ZK proof for each batch
+6. Submits proof to smart contract for verification
 
----
-
-## **Usage**
-
-The prover CLI has two main commands: `setup` and `start`.
-
-### **Setup**
-
-The `setup` command generates the proving and verifying keys for the circuit.
-
-```bash
-./bin/prover setup --output-dir <path_to_keys_dir>
-```
-
-By default, the keys are saved in the `./keys` directory.
-
-### **Start**
-
-The `start` command starts the prover, which generates a proof.
-
-```bash
-./bin/prover start --keys-dir <path_to_keys_dir>
-```
-
-By default, the prover looks for the keys in the `./keys` directory.
-
-## **Development Notes**
-
-* This module follows the `Tan-ZK` architecture where the **sequencer** delegates batch proof generation to this prover.
-* Future commits will add real circuits, state transition proving, and proof serialization.
+See [/CODEME.md](../CODEME.md) for full command reference.

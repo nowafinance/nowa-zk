@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import "../interfaces/IVerifier.sol";
+import {IVerifier} from "../interfaces/IVerifier.sol";
 
 /**
  * @title MockVerifier
@@ -13,7 +13,8 @@ import "../interfaces/IVerifier.sol";
  */
 contract MockVerifier is IVerifier {
     /// @notice Mock verification key hash
-    bytes32 private constant MOCK_VK_HASH = keccak256("MOCK_VERIFICATION_KEY_v1");
+    bytes32 private constant MOCK_VK_HASH =
+        keccak256("MOCK_VERIFICATION_KEY_v1");
 
     /// @notice Mock circuit size (1 million constraints)
     uint256 private constant MOCK_CIRCUIT_SIZE = 1_000_000;
@@ -25,23 +26,19 @@ contract MockVerifier is IVerifier {
     bool public verificationResult = true;
 
     /**
-     * @notice Verifies a zero-knowledge proof (MOCK - always returns verificationResult)
+    /**
+     * @notice Verifies a zero-knowledge proof (MOCK - always returns true)
      * @dev FOR TESTING ONLY. This does not perform actual cryptographic verification.
      *
-     * @return success The value of verificationResult flag
+     * @return success Always true
      */
     function verifyProof(
-        uint256[2] calldata, // a
-        uint256[2][2] calldata, // b
-        uint256[2] calldata, // c
-        uint256[3] calldata // publicInputs
-    )
-        external
-        view
-        override
-        returns (bool success)
-    {
-        // Mock implementation - returns configurable result
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[4] calldata publicInputs
+    ) external view override returns (bool success) {
+        // Return the configured result
         return verificationResult;
     }
 
@@ -49,7 +46,12 @@ contract MockVerifier is IVerifier {
      * @notice Returns the mock verification key hash
      * @return vkHash The mock verification key hash
      */
-    function getVerificationKeyHash() external pure override returns (bytes32 vkHash) {
+    function getVerificationKeyHash()
+        external
+        pure
+        override
+        returns (bytes32 vkHash)
+    {
         return MOCK_VK_HASH;
     }
 
@@ -57,7 +59,12 @@ contract MockVerifier is IVerifier {
      * @notice Returns the mock circuit size
      * @return circuitSize The mock number of constraints
      */
-    function getCircuitSize() external pure override returns (uint256 circuitSize) {
+    function getCircuitSize()
+        external
+        pure
+        override
+        returns (uint256 circuitSize)
+    {
         return MOCK_CIRCUIT_SIZE;
     }
 
@@ -65,7 +72,12 @@ contract MockVerifier is IVerifier {
      * @notice Returns the mock maximum batch size
      * @return maxBatchSize The mock maximum number of transactions per batch
      */
-    function getMaxBatchSize() external pure override returns (uint256 maxBatchSize) {
+    function getMaxBatchSize()
+        external
+        pure
+        override
+        returns (uint256 maxBatchSize)
+    {
         return MOCK_MAX_BATCH_SIZE;
     }
 

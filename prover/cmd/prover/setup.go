@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
@@ -14,69 +15,135 @@ import (
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Generate proving and verifying keys for the circuit",
+	Short: "Generate proving/verifying keys and Solidity verifier contract",
+	Long:  `Compiles the rollup circuit, generates Groth16 keys, and exports Solidity verifier.`,
 	Run:   setup,
 }
 
 var (
-	outputDir string
+	outputDir      string
+	contractOutput string
 )
 
 func init() {
-	setupCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "./keys", "Directory to save the keys")
+	// Keys output directory (default: ./keys)
+	setupCmd.Flags().StringVarP(&outputDir, "output-dir", "o", "./keys", "")
+
+	// Solidity contract output directory (default: ../contracts/src/generated)
+	setupCmd.Flags().StringVarP(&contractOutput, "contract-output", "c", "../contracts/src/generated", "")
 }
 
 func setup(cmd *cobra.Command, args []string) {
-	log.Println("Setting up the circuit...")
+	log.Println("========================================")
+	log.Println("  ZK Rollup Circuit Setup")
+	log.Println("========================================")
+	log.Printf("Batch size: %d transactions\n", circuits.BatchSize)
+	log.Println()
 
-	var circuit circuits.TransferCircuit
-
-	// compile the circuit
+	// Step 1: Compile circuit
+	log.Println("📦 Compiling circuit...")
+	var circuit circuits.Circuit
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
-		log.Fatalf("Failed to compile circuit: %v", err)
+		log.Fatalf("❌ Failed to compile circuit: %v", err)
 	}
+	log.Printf("✅ Circuit compiled (constraints: %d)\n", ccs.GetNbConstraints())
+	log.Println()
 
-	// run setup
+	// Step 2: Run Groth16 setup
+	log.Println("🔑 Running Groth16 trusted setup...")
+	log.Println("   (This may take 30-60 seconds...)")
 	pk, vk, err := groth16.Setup(ccs)
 	if err != nil {
-		log.Fatalf("Failed to run setup: %v", err)
+		log.Fatalf("❌ Failed to run setup: %v", err)
 	}
+	log.Println("✅ Trusted setup completed")
+	log.Println()
 
-	// create output directory if it doesn't exist
+	// Step 3: Create output directories
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		log.Fatalf("Failed to create output directory: %v", err)
+		log.Fatalf("❌ Failed to create output directory: %v", err)
+	}
+	if err := os.MkdirAll(contractOutput, 0755); err != nil {
+		log.Fatalf("❌ Failed to create contract output directory: %v", err)
 	}
 
-	// save proving key
-	pkFile, err := os.Create(outputDir + "/transfer.pk")
+	// Step 4: Save proving key
+	log.Println("💾 Saving proving key...")
+	pkPath := filepath.Join(outputDir, "rollup.pk")
+	pkFile, err := os.Create(pkPath)
 	if err != nil {
-		log.Fatalf("Failed to create proving key file: %v", err)
+		log.Fatalf("❌ Failed to create proving key file: %v", err)
 	}
 	defer pkFile.Close()
-	if _, err := pk.WriteTo(pkFile); err != nil {
-		log.Fatalf("Failed to write proving key: %v", err)
-	}
 
-	// save verifying key
-	vkFile, err := os.Create(outputDir + "/transfer.vk")
+	pkSize, err := pk.WriteTo(pkFile)
 	if err != nil {
-		log.Fatalf("Failed to create verifying key file: %v", err)
+		log.Fatalf("❌ Failed to write proving key: %v", err)
+	}
+	log.Printf("✅ Proving key saved: %s (%d bytes)\n", pkPath, pkSize)
+
+	// Step 5: Save verifying key
+	log.Println("💾 Saving verifying key...")
+	vkPath := filepath.Join(outputDir, "rollup.vk")
+	vkFile, err := os.Create(vkPath)
+	if err != nil {
+		log.Fatalf("❌ Failed to create verifying key file: %v", err)
 	}
 	defer vkFile.Close()
-	if _, err := vk.WriteTo(vkFile); err != nil {
-		log.Fatalf("Failed to write verifying key: %v", err)
-	}
 
-	// save compiled circuit
-	ccsFile, err := os.Create(outputDir + "/transfer.r1cs")
+	vkSize, err := vk.WriteTo(vkFile)
 	if err != nil {
-		log.Fatalf("Failed to create compiled circuit file: %v", err)
+		log.Fatalf("❌ Failed to write verifying key: %v", err)
+	}
+	log.Printf("✅ Verifying key saved: %s (%d bytes)\n", vkPath, vkSize)
+
+	// Step 6: Save compiled circuit
+	log.Println("💾 Saving compiled circuit...")
+	ccsPath := filepath.Join(outputDir, "rollup.r1cs")
+	ccsFile, err := os.Create(ccsPath)
+	if err != nil {
+		log.Fatalf("❌ Failed to create compiled circuit file: %v", err)
 	}
 	defer ccsFile.Close()
-	if _, err := ccs.WriteTo(ccsFile); err != nil {
-		log.Fatalf("Failed to write compiled circuit: %v", err)
-	}
 
-	log.Printf("Successfully generated keys and compiled circuit in %s", outputDir)
+	ccsSize, err := ccs.WriteTo(ccsFile)
+	if err != nil {
+		log.Fatalf("❌ Failed to write compiled circuit: %v", err)
+	}
+	log.Printf("✅ Compiled circuit saved: %s (%d bytes)\n", ccsPath, ccsSize)
+	log.Println()
+
+	// Step 7: Export Solidity verifier contract
+	log.Println("📝 Generating Solidity verifier contract...")
+	solidityPath := filepath.Join(contractOutput, "RollupVerifier.sol")
+	solidityFile, err := os.Create(solidityPath)
+	if err != nil {
+		log.Fatalf("❌ Failed to create Solidity file: %v", err)
+	}
+	defer solidityFile.Close()
+
+	if err := vk.ExportSolidity(solidityFile); err != nil {
+		log.Fatalf("❌ Failed to export Solidity verifier: %v", err)
+	}
+	log.Printf("✅ Solidity verifier saved: %s\n", solidityPath)
+	log.Println()
+
+	// Summary
+	log.Println("========================================")
+	log.Println("  ✅ Setup Complete!")
+	log.Println("========================================")
+	log.Println("Generated files:")
+	log.Printf("  📁 Keys directory: %s\n", outputDir)
+	log.Println("     - rollup.pk (proving key)")
+	log.Println("     - rollup.vk (verifying key)")
+	log.Println("     - rollup.r1cs (compiled circuit)")
+	log.Println()
+	log.Printf("  📁 Contract directory: %s\n", contractOutput)
+	log.Println("     - RollupVerifier.sol (Solidity verifier)")
+	log.Println()
+	log.Println("Next steps:")
+	log.Println("  1. Deploy RollupVerifier.sol to your chain")
+	log.Println("  2. Start prover with: ./prover-bin start")
+	log.Println("========================================")
 }

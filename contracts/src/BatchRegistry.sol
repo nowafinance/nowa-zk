@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import "./interfaces/IVerifier.sol";
-import "./StateManager.sol";
+import {IVerifier} from "./interfaces/IVerifier.sol";
+import {StateManager} from "./StateManager.sol";
 
 /**
  * @title BatchRegistry
@@ -45,16 +45,31 @@ contract BatchRegistry {
     );
 
     /// @notice Emitted when a batch is finalized
-    event BatchFinalized(uint256 indexed batchNumber, bytes32 indexed newStateRoot);
+    event BatchFinalized(
+        uint256 indexed batchNumber,
+        bytes32 indexed newStateRoot
+    );
 
     /// @notice Emitted when sequencer is updated
-    event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer);
+    event SequencerUpdated(
+        address indexed oldSequencer,
+        address indexed newSequencer
+    );
 
     /// @notice Emitted when finalization delay is updated
     event FinalizationDelayUpdated(uint256 oldDelay, uint256 newDelay);
 
     /// @notice Emitted when ownership is transferred
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
+    /// @notice Emitted when the verifier is updated
+    event VerifierUpdated(
+        address indexed oldVerifier,
+        address indexed newVerifier
+    );
 
     /// @notice Emitted when the contract is paused
     event Paused(address account);
@@ -86,15 +101,6 @@ contract BatchRegistry {
     /// @notice Authorized sequencer address
     address public sequencer;
 
-    /// @notice Finalization delay in seconds (default: 7 days)
-    uint256 public finalizationDelay;
-
-    /// @notice Minimum finalization delay (1 hour)
-    uint256 public constant MIN_FINALIZATION_DELAY = 1 hours;
-
-    /// @notice Maximum finalization delay (30 days)
-    uint256 public constant MAX_FINALIZATION_DELAY = 30 days;
-
     /// @notice Paused flag to stop batch registration in emergencies
     bool public paused;
 
@@ -123,7 +129,10 @@ contract BatchRegistry {
 
     /// @notice Internal function to check sequencer
     function _onlySequencer() internal view {
-        require(msg.sender == sequencer, "BatchRegistry: caller is not the sequencer");
+        require(
+            msg.sender == sequencer,
+            "BatchRegistry: caller is not the sequencer"
+        );
     }
 
     /// @notice Internal function to check if contract is not paused
@@ -136,30 +145,39 @@ contract BatchRegistry {
      * @param _verifier Address of the IVerifier contract
      * @param _stateManager Address of the StateManager contract
      * @param _sequencer Address of the authorized sequencer
-     * @param _finalizationDelay Time delay before finalization (in seconds)
+     * @param _finalizationDelay Deprecated (kept for interface compatibility, pass 0)
      */
-    constructor(address _verifier, address _stateManager, address _sequencer, uint256 _finalizationDelay) {
-        require(_verifier != address(0), "BatchRegistry: verifier cannot be zero address");
-        require(_stateManager != address(0), "BatchRegistry: stateManager cannot be zero address");
-        require(_sequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
+    constructor(
+        address _verifier,
+        address _stateManager,
+        address _sequencer,
+        uint256 _finalizationDelay
+    ) {
         require(
-            _finalizationDelay >= MIN_FINALIZATION_DELAY && _finalizationDelay <= MAX_FINALIZATION_DELAY,
-            "BatchRegistry: invalid finalization delay"
+            _verifier != address(0),
+            "BatchRegistry: verifier cannot be zero address"
+        );
+        require(
+            _stateManager != address(0),
+            "BatchRegistry: stateManager cannot be zero address"
+        );
+        require(
+            _sequencer != address(0),
+            "BatchRegistry: sequencer cannot be zero address"
         );
 
         owner = msg.sender;
         verifier = IVerifier(_verifier);
         STATE_MANAGER = StateManager(_stateManager);
         sequencer = _sequencer;
-        finalizationDelay = _finalizationDelay;
         nextBatchNumber = 1;
     }
 
     /**
      * @notice Registers a new batch with proof verification
      * @dev This function verifies the ZK proof and stores batch metadata.
-     *      The batch is marked as Verified but not Finalized until the challenge period passes.
-     *      Data availability is ensured by storing batchData in calldata.
+     *      Since this is a ZK-Rollup, verification implies finality.
+     *      The batch is marked as Finalized immediately and state root is updated.
      *
      * @param batchHash The hash of the batch being registered
      * @param newStateRoot The state root after batch execution
@@ -170,8 +188,6 @@ contract BatchRegistry {
      * @param publicInputs The public inputs to the proof [oldStateRoot, newStateRoot, batchNumber]
      *
      * @return batchNumber The assigned batch number
-     *
-     * @custom:security This function performs critical proof verification. All inputs must be validated.
      */
     function registerBatch(
         bytes32 batchHash,
@@ -180,80 +196,101 @@ contract BatchRegistry {
         uint256[2] calldata proofA,
         uint256[2][2] calldata proofB,
         uint256[2] calldata proofC,
-        uint256[3] calldata publicInputs
+        uint256[4] calldata publicInputs
     ) external onlySequencer whenNotPaused returns (uint256 batchNumber) {
         // Input validation
-        require(batchHash != bytes32(0), "BatchRegistry: batch hash cannot be zero");
-        require(newStateRoot != bytes32(0), "BatchRegistry: new state root cannot be zero");
-        require(batchData.length > 0, "BatchRegistry: batch data cannot be empty");
-        require(batchHashToNumber[batchHash] == 0, "BatchRegistry: batch hash already exists");
+        require(
+            batchHash != bytes32(0),
+            "BatchRegistry: batch hash cannot be zero"
+        );
+        require(
+            newStateRoot != bytes32(0),
+            "BatchRegistry: new state root cannot be zero"
+        );
+        require(
+            batchData.length > 0,
+            "BatchRegistry: batch data cannot be empty"
+        );
+        require(
+            batchHashToNumber[batchHash] == 0,
+            "BatchRegistry: batch hash already exists"
+        );
 
         // Verify batch hash matches data (data availability check)
-        require(keccak256(batchData) == batchHash, "BatchRegistry: batch hash mismatch");
+        require(
+            keccak256(batchData) == batchHash,
+            "BatchRegistry: batch hash mismatch"
+        );
 
-        // Get current state root from StateManager
-        bytes32 oldStateRoot = STATE_MANAGER.getCurrentStateRoot();
-        require(oldStateRoot != newStateRoot, "BatchRegistry: state root unchanged");
+        // Get expected old state root (chain from last batch or use finalized root)
+        bytes32 expectedOldStateRoot;
+        if (totalBatches > 0) {
+            expectedOldStateRoot = batches[totalBatches].newStateRoot;
+        } else {
+            expectedOldStateRoot = STATE_MANAGER.getCurrentStateRoot();
+        }
+
+        // Verify state transition
+        require(
+            bytes32(publicInputs[1]) == expectedOldStateRoot,
+            "BatchRegistry: publicInputs[1] must match expected old state root"
+        );
+        require(
+            bytes32(publicInputs[1]) != newStateRoot,
+            "BatchRegistry: state root unchanged"
+        );
 
         // Assign batch number
         batchNumber = nextBatchNumber;
 
         // Validate public inputs
-        require(bytes32(publicInputs[0]) == oldStateRoot, "BatchRegistry: publicInputs[0] must match oldStateRoot");
-        require(bytes32(publicInputs[1]) == newStateRoot, "BatchRegistry: publicInputs[1] must match newStateRoot");
-        require(publicInputs[2] == batchNumber, "BatchRegistry: publicInputs[2] must match batchNumber");
+        require(
+            bytes32(publicInputs[2]) == newStateRoot,
+            "BatchRegistry: publicInputs[2] must match newStateRoot"
+        );
+        require(
+            publicInputs[3] == batchNumber,
+            "BatchRegistry: publicInputs[3] must match batchNumber"
+        );
 
         // Verify the ZK proof
-        bool proofValid = verifier.verifyProof(proofA, proofB, proofC, publicInputs);
+        bool proofValid = verifier.verifyProof(
+            proofA,
+            proofB,
+            proofC,
+            publicInputs
+        );
         require(proofValid, "BatchRegistry: invalid proof");
 
-        // Store batch metadata (verified but not finalized)
+        // Store batch metadata (Finalized immediately)
         batches[batchNumber] = Batch({
             batchHash: batchHash,
-            oldStateRoot: oldStateRoot,
+            oldStateRoot: expectedOldStateRoot,
             newStateRoot: newStateRoot,
             submitter: msg.sender,
             timestamp: block.timestamp,
             verifiedAt: block.number,
-            status: BatchStatus.Verified
+            status: BatchStatus.Finalized
         });
 
         batchHashToNumber[batchHash] = batchNumber;
         totalBatches++;
         nextBatchNumber++;
 
-        emit BatchRegistered(batchNumber, batchHash, oldStateRoot, newStateRoot, msg.sender, block.timestamp);
+        // Update StateManager immediately
+        STATE_MANAGER.updateStateRoot(newStateRoot, batchNumber);
+
+        emit BatchRegistered(
+            batchNumber,
+            batchHash,
+            expectedOldStateRoot,
+            newStateRoot,
+            msg.sender,
+            block.timestamp
+        );
+        emit BatchFinalized(batchNumber, newStateRoot);
 
         return batchNumber;
-    }
-
-    /**
-     * @notice Finalizes a verified batch after the finalization delay
-     * @dev Updates the StateManager with the new state root. Batches must be finalized sequentially.
-     *      Only callable by owner for controlled finalization.
-     *
-     * @param batchNumber The batch number to finalize
-     */
-    function finalizeBatch(uint256 batchNumber) external onlyOwner whenNotPaused {
-        Batch storage batch = batches[batchNumber];
-
-        require(batch.status == BatchStatus.Verified, "BatchRegistry: batch not verified");
-        require(block.timestamp >= batch.timestamp + finalizationDelay, "BatchRegistry: finalization delay not met");
-
-        // Ensure sequential finalization
-        if (batchNumber > 1) {
-            require(
-                batches[batchNumber - 1].status == BatchStatus.Finalized, "BatchRegistry: previous batch not finalized"
-            );
-        }
-
-        // Update batch status
-        batch.status = BatchStatus.Finalized;
-
-        // Update StateManager with the new state root
-        STATE_MANAGER.updateStateRoot(batch.newStateRoot, batchNumber);
-
-        emit BatchFinalized(batchNumber, batch.newStateRoot);
     }
 
     /**
@@ -261,8 +298,13 @@ contract BatchRegistry {
      * @param batchNumber The batch number to query
      * @return batch The Batch struct for the given batch number
      */
-    function getBatch(uint256 batchNumber) external view returns (Batch memory batch) {
-        require(batchNumber > 0 && batchNumber < nextBatchNumber, "BatchRegistry: invalid batch number");
+    function getBatch(
+        uint256 batchNumber
+    ) external view returns (Batch memory batch) {
+        require(
+            batchNumber > 0 && batchNumber < nextBatchNumber,
+            "BatchRegistry: invalid batch number"
+        );
         return batches[batchNumber];
     }
 
@@ -271,7 +313,9 @@ contract BatchRegistry {
      * @param batchHash The batch hash to query
      * @return batchNumber The batch number associated with the hash, or zero if not found
      */
-    function getBatchNumber(bytes32 batchHash) external view returns (uint256 batchNumber) {
+    function getBatchNumber(
+        bytes32 batchHash
+    ) external view returns (uint256 batchNumber) {
         return batchHashToNumber[batchHash];
     }
 
@@ -280,7 +324,9 @@ contract BatchRegistry {
      * @param batchHash The batch hash to check
      * @return exists True if the batch hash has been registered
      */
-    function batchExists(bytes32 batchHash) external view returns (bool exists) {
+    function batchExists(
+        bytes32 batchHash
+    ) external view returns (bool exists) {
         return batchHashToNumber[batchHash] != 0;
     }
 
@@ -292,37 +338,6 @@ contract BatchRegistry {
         return STATE_MANAGER.getCurrentStateRoot();
     }
 
-    /**
-     * @notice Checks if a batch can be finalized
-     * @param batchNumber The batch number to check
-     * @return canFinalize True if the batch can be finalized
-     */
-    function canFinalizeBatch(uint256 batchNumber) external view returns (bool canFinalize) {
-        Batch storage batch = batches[batchNumber];
-
-        if (batch.status != BatchStatus.Verified) return false;
-        if (block.timestamp < batch.timestamp + finalizationDelay) return false;
-        if (batchNumber > 1 && batches[batchNumber - 1].status != BatchStatus.Finalized) return false;
-
-        return true;
-    }
-
-    /**
-     * @notice Gets the time remaining until a batch can be finalized
-     * @param batchNumber The batch number to check
-     * @return timeRemaining Seconds remaining (0 if ready or invalid)
-     */
-    function timeUntilFinalization(uint256 batchNumber) external view returns (uint256 timeRemaining) {
-        Batch storage batch = batches[batchNumber];
-
-        if (batch.status != BatchStatus.Verified) return 0;
-
-        uint256 finalizationTime = batch.timestamp + finalizationDelay;
-        if (block.timestamp >= finalizationTime) return 0;
-
-        return finalizationTime - block.timestamp;
-    }
-
     // ========== Admin Functions ==========
 
     /**
@@ -331,7 +346,10 @@ contract BatchRegistry {
      * @param newSequencer The address of the new sequencer
      */
     function updateSequencer(address newSequencer) external onlyOwner {
-        require(newSequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
+        require(
+            newSequencer != address(0),
+            "BatchRegistry: sequencer cannot be zero address"
+        );
         address oldSequencer = sequencer;
         sequencer = newSequencer;
         emit SequencerUpdated(oldSequencer, newSequencer);
@@ -343,23 +361,13 @@ contract BatchRegistry {
      * @param newVerifier The address of the new verifier contract
      */
     function updateVerifier(address newVerifier) external onlyOwner {
-        require(newVerifier != address(0), "BatchRegistry: verifier cannot be zero address");
-        verifier = IVerifier(newVerifier);
-    }
-
-    /**
-     * @notice Updates the finalization delay
-     * @dev Only callable by owner
-     * @param newDelay The new finalization delay in seconds
-     */
-    function updateFinalizationDelay(uint256 newDelay) external onlyOwner {
         require(
-            newDelay >= MIN_FINALIZATION_DELAY && newDelay <= MAX_FINALIZATION_DELAY,
-            "BatchRegistry: invalid finalization delay"
+            newVerifier != address(0),
+            "BatchRegistry: verifier cannot be zero address"
         );
-        uint256 oldDelay = finalizationDelay;
-        finalizationDelay = newDelay;
-        emit FinalizationDelayUpdated(oldDelay, newDelay);
+        address oldVerifier = address(verifier);
+        verifier = IVerifier(newVerifier);
+        emit VerifierUpdated(oldVerifier, newVerifier);
     }
 
     /**
@@ -388,7 +396,10 @@ contract BatchRegistry {
      * @param newOwner The address of the new owner
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "BatchRegistry: new owner is the zero address");
+        require(
+            newOwner != address(0),
+            "BatchRegistry: new owner is the zero address"
+        );
         address oldOwner = owner;
         owner = newOwner;
         emit OwnershipTransferred(oldOwner, newOwner);

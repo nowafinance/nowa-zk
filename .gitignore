@@ -61,5 +61,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-
 contracts/lib/
+prover/prover-bin 
+# contracts/deployments
+sequencer/sequencer-bin 
+.tan-zk

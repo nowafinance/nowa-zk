@@ -89,7 +89,7 @@ func (s *Service) Start() error {
 
 	// Initialize batch builder with last batch number and state root
 	initialBatchNum := uint64(1)
-	initialStateRoot := "0x0000000000000000000000000000000000000000000000000000000000000000"
+	initialStateRoot := "0x0000000000000000000000000000000000000000000000000000000000000001"
 
 	// Check for incomplete batch first (to resume filling it)
 	incompleteBatch, err := s.batches.GetIncompleteBatch(s.config.BatchSize)

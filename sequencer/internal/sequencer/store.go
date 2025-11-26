@@ -24,7 +24,9 @@ type BatchStore struct {
 // NewBatchStore creates a new batch store
 func NewBatchStore(path string) (*BatchStore, error) {
 	// Create directory if it doesn't exist
-	os.MkdirAll(path, 0755)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory %s: %w", path, err)
+	}
 
 	// Open BadgerDB (use subdirectory for DB files)
 	dbPath := filepath.Join(path, "db")
@@ -337,6 +339,7 @@ func (bs *BatchStore) ClearAll() error {
 				return err
 			}
 		}
+		it.Close() // Close first iterator explicitly
 
 		// Delete all block hashes
 		opts.Prefix = []byte("blockhash:")

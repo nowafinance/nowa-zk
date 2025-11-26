@@ -15,6 +15,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(trafficGenCmd)
 }
 
 func Execute() {
@@ -23,4 +24,3 @@ func Execute() {
 		os.Exit(1)
 	}
 }
-

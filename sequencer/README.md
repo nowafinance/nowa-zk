@@ -1,138 +1,103 @@
-# ZK Sequencer
+# Sequencer
 
-Continuously monitors the Tan-ZK blockchain, collects transactions, builds batches incrementally, and provides REST API endpoints for the prover.
+ZK Sequencer monitors blockchain, builds transaction batches, provides API for prover.
 
 ## Quick Start
 
-### Prerequisites
-- Go 1.24+
-- Access to Tan-ZK RPC endpoint (or use Anvil for local testing)
-
-### Installation
-
 ```bash
-cd sequencer
-go mod download
-cp .env.example .env
-# Edit .env with your RPC endpoint
-go build ./cmd/sequencer
-./sequencer start
+# Build
+go build -o sequencer-bin ./cmd/sequencer
+
+# Start sequencer
+export RPC_URL=http://localhost:8545
+./sequencer-bin start
+
+# Clear all data
+./sequencer-bin clear
 ```
 
-### Configuration
+## Configuration
 
-Create `.env` file:
-```bash
-TAN_ZK_RPC_URL=http://localhost:8545    # Required
-TAN_ZK_WS_URL=ws://localhost:8546       # Optional
-BATCH_SIZE=100                          # Transactions per batch
-API_PORT=8080                           # REST API port
-STATE_DB_PATH=./data                    # BadgerDB storage path
-```
-
-### Commands
+Environment variables:
 
 ```bash
-# Start sequencer (resumes from last processed block)
-./sequencer start
-
-# Start with custom options
-./sequencer start --rpc-url http://localhost:8545 --batch-size 200
-
-# Start and clear all data (reset to block 0)
-./sequencer start --reset
-
-# Start with reset and custom options
-./sequencer start --reset --rpc-url http://localhost:8545 --batch-size 200
-
-# Help
-./sequencer --help
-./sequencer start --help
+RPC_URL=http://localhost:8545      # Ethereum RPC endpoint (REQUIRED)
+WS_URL=ws://localhost:8546          # WebSocket endpoint (optional)
+API_PORT=8080                       # API server port (default: 8080)
+BATCH_SIZE=100                      # Transactions per batch (default: 100)
+STATE_DB_PATH=./data/state          # Database path (default: ./data/state)
 ```
-
-## How It Works
-
-1. **Block Monitoring**: Subscribes to new blocks via WebSocket (or polls via HTTP)
-2. **Transaction Processing**: Fetches transactions, enriches with contract addresses, queries balances
-3. **State Root**: Updates Sparse Merkle Tree (SMT) with balance changes, computes state root
-4. **Batch Building**: Creates batches incrementally (no pooling), appends to incomplete batches
-5. **Reorg Handling**: Detects forks by comparing block hashes, rolls back and re-processes
-6. **Storage**: Persists batches in BadgerDB with resume support
-
-## Features
-
-- ✅ Incremental batch creation (no transaction pooling)
-- ✅ BadgerDB persistence with resume support
-- ✅ Sparse Merkle Tree (SMT) for state root calculation
-- ✅ Blockchain reorg handling (fork detection and rollback)
-- ✅ REST API and WebSocket endpoints
-- ✅ Structured logging and error handling
-- ✅ Cobra CLI with start command and --reset flag
 
 ## API Endpoints
 
 ### REST API
 
-- `GET /health` - Health check
-- `GET /status` - Sequencer status
-- `GET /batch/latest` - Latest batch
-- `GET /batch/{number}` - Get batch by number
-- `GET /batches` - All batches
-- `GET /prover/batch/latest` - Latest batch for prover (with traces)
-- `GET /prover/batch/{number}` - Batch for prover by number
+```bash
+GET /health                 # Health check
+GET /status                 # Service status
+GET /batches/latest         # Latest batch
+GET /batches/:id            # Get batch by number
+GET /batches                # All batches
+GET /prover/batch/latest    # Latest batch for prover
+GET /prover/batch/:id       # Batch for prover by number
+```
 
 ### WebSocket
 
-- `WS /ws/batches` - Real-time batch notifications
+```bash
+WS /ws   # Real-time batch notifications
+```
 
-**Example:**
+### Examples
+
 ```bash
 curl http://localhost:8080/health
-curl http://localhost:8080/batch/latest
+curl http://localhost:8080/batches/latest
+curl http://localhost:8080/prover/batch/1
 ```
 
-## Architecture
+## How It Works
 
-```
-sequencer/
-├── cmd/sequencer/          # CLI (Cobra)
-├── pkg/
-│   ├── errors/            # Structured errors
-│   ├── logger/            # Structured logging
-│   ├── config/            # Configuration
-│   ├── smt/               # Sparse Merkle Tree
-│   └── rpc/               # RPC client
-└── internal/sequencer/    # Core logic
-    ├── sequencer.go       # Main service
-    ├── batch.go           # Batch builder
-    ├── store.go           # BadgerDB storage
-    └── api.go             # REST API & WebSocket
+1. **Monitors** blockchain for new blocks
+2. **Processes** transactions from each block
+3. **Builds** batches incrementally (128 txs per batch)
+4. **Computes** state roots using Sparse Merkle Tree  
+5. **Persists** batches to BadgerDB
+6. **Serves** batches via API for prover
+7. **Handles** chain reorganizations automatically
+
+## Features
+
+- ✅ Incremental batch filling
+- ✅ BadgerDB persistence
+- ✅ SMT state root calculation
+- ✅ Reorg handling with rollback
+- ✅ Balance validation
+- ✅ Thread-safe RPC client
+- ✅ REST + WebSocket API
+
+## Testing
+
+```bash
+# Run all tests
+go test ./...
+
+# With race detection
+go test -race ./...
+
+# With coverage
+go test ./... -coverprofile=coverage.out
 ```
 
 ## Local Development
 
-**Using Anvil:**
 ```bash
-# Terminal 1: Start Anvil
+# Terminal 1: Start local chain
 anvil --port 8545
 
-# Terminal 2: Start Sequencer
-cd sequencer
-./sequencer start --rpc-url http://localhost:8545
+# Terminal 2: Start sequencer
+export RPC_URL=http://localhost:8545
+./sequencer-bin start
 ```
 
-## Troubleshooting
-
-- **Won't start**: Check `TAN_ZK_RPC_URL` in `.env`
-- **No batches**: Ensure blocks contain transactions
-- **Database errors**: Check `STATE_DB_PATH` is writable
-- **WebSocket issues**: Sequencer falls back to HTTP polling
-
-## Status
-
-- ✅ Block monitoring and transaction collection
-- ✅ Incremental batch creation
-- ✅ BadgerDB persistence
-- ✅ SMT state root calculation
-- ✅ Reorg handling
-- 🔄 Proof submission (in progress)
+See [/CODEME.md](../CODEME.md) for full commands.

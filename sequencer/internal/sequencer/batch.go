@@ -2,12 +2,12 @@ package sequencer
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
 	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
@@ -19,8 +19,8 @@ type BatchBuilder struct {
 	batchNum  uint64
 	stateRoot string
 	smt       *smt.SparseMerkleTree // Sparse Merkle Tree for state root calculation
-	rpcClient *rpc.Client            // RPC client for querying balances
-	ctx       context.Context        // Context for RPC calls
+	rpcClient *rpc.Client           // RPC client for querying balances
+	ctx       context.Context       // Context for RPC calls
 	mu        sync.Mutex
 }
 
@@ -160,8 +160,9 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 	// Recompute batch hash (since transactions changed)
 	batch.Hash = bb.computeBatchHash(batch)
 
-	// Update builder's state root to match
-	bb.stateRoot = newRoot
+	// NOTE: Do NOT update bb.stateRoot here!
+	// The builder's state root should only advance when a batch is completed.
+	// Otherwise, incomplete batches corrupt the state for future batches.
 
 	return nil
 }
@@ -171,7 +172,7 @@ func (bb *BatchBuilder) updateStateFromTransaction(tx *rpc.Transaction, blockNum
 	// Helper to get or query balance
 	getBalance := func(address string) (*big.Int, error) {
 		balanceKey := fmt.Sprintf("balance:%s", address)
-		
+
 		// Check if balance exists in SMT
 		if balanceBytes, exists := bb.smt.Get(balanceKey); exists {
 			// Parse balance from bytes
@@ -196,9 +197,20 @@ func (bb *BatchBuilder) updateStateFromTransaction(tx *rpc.Transaction, blockNum
 	if err != nil {
 		return err
 	}
-	
+
+	// Validate sender has sufficient balance
+	totalDebit := new(big.Int).Add(tx.Value, big.NewInt(0)) // In future, add gas fees here
+	if senderBalance.Cmp(totalDebit) < 0 {
+		return fmt.Errorf("insufficient balance: account %s has %s wei, needs %s wei",
+			tx.From, senderBalance.String(), totalDebit.String())
+	}
+
 	// Decrease sender balance
 	newSenderBalance := new(big.Int).Sub(senderBalance, tx.Value)
+	if newSenderBalance.Sign() < 0 {
+		// This should never happen due to the check above, but add as safety check
+		return fmt.Errorf("internal error: negative balance after transfer for %s", tx.From)
+	}
 	senderKey := fmt.Sprintf("balance:%s", tx.From)
 	bb.smt.Update(senderKey, newSenderBalance.Bytes())
 
@@ -232,6 +244,6 @@ func (bb *BatchBuilder) computeBatchHash(batch *types.Batch) string {
 	for _, tx := range batch.Transactions {
 		data += ":" + tx.Hash
 	}
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:])
+	hash := crypto.Keccak256Hash([]byte(data))
+	return hash.Hex()
 }
