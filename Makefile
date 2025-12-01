@@ -12,6 +12,8 @@ clean:
 	@cd contracts && forge clean && rm -rf broadcast/ cache/ deployments/ out/ src/generated/
 	@cd sequencer && go clean && rm -rf sequencer-bin
 	@cd prover && go clean && rm -rf prover-bin
+	@rm -rf .tan-zk/sequencer/data
+	@rm -rf .tan-zk/prover/data
 	@rm -rf .tan-zk/
 
 # --- 2. Setup (Keys & Verifier) ---
@@ -74,9 +76,9 @@ deploy-local:
 	@echo "✅ Deployment info saved to .tan-zk/deployments.json"
 
 # Optional: ( New Terminal ) Run Traffic Generator
-# Usage: make run-traffic-gen [COUNT=1000]
+# Usage: make run-traffic-gen [COUNT=10000]
 run-traffic-gen: build-sequencer
-	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 1000)
+	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 10000)
 
 # Terminal 3: Run Sequencer
 run-sequencer: build-sequencer
