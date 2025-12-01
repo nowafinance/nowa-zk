@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tannetwork/zk-sequencer/prover/bindings"
 	"github.com/tannetwork/zk-sequencer/prover/circuits"
+	"github.com/tannetwork/zk-sequencer/prover/internal/storage"
 )
 
 var startCmd = &cobra.Command{
@@ -168,12 +169,30 @@ func start(cmd *cobra.Command, args []string) {
 	// Start API Server
 	go startAPIServer(batchRegistry)
 
+	// Initialize storage
+	storePath := ".tan-zk/prover/data"
+	if err := os.MkdirAll(storePath, 0755); err != nil {
+		log.Fatalf("❌ Failed to create storage directory: %v", err)
+	}
+
+	store, err := storage.NewProverStore(storePath)
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize storage: %v", err)
+	}
+	defer store.Close()
+
+	// Load last processed batch
+	lastProcessedBatch, err := store.GetLastProcessedBatch()
+	if err != nil {
+		log.Printf("⚠️  Failed to load last processed batch: %v", err)
+	} else if lastProcessedBatch > 0 {
+		log.Printf("🔄 Resuming from batch #%d", lastProcessedBatch)
+	}
+
 	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
 	log.Println("   Polling for new batches...")
 	log.Println()
-
-	lastProcessedBatch := uint64(0)
 
 	for {
 		// 1. Get the latest batch number from the sequencer
@@ -189,7 +208,7 @@ func start(cmd *cobra.Command, args []string) {
 		nextBatchNum := lastProcessedBatch + 1
 
 		// 3. Check if we are strictly behind the latest batch
-		if nextBatchNum >= latestBatch.Number {
+		if nextBatchNum > latestBatch.Number {
 			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d)\n", latestBatch.Number, lastProcessedBatch)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
@@ -246,6 +265,14 @@ func start(cmd *cobra.Command, args []string) {
 		}
 		log.Printf("   ✅ Proof submitted. TxHash: %s\n", txHash)
 		log.Println()
+
+		// Save state to store
+		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
+			log.Printf("⚠️  Failed to save last processed batch: %v", err)
+		}
+		if err := store.SaveProof(batch.Number, proof, publicWitness); err != nil {
+			log.Printf("⚠️  Failed to save proof data: %v", err)
+		}
 
 		lastProcessedBatch = batch.Number
 	}

@@ -30,6 +30,7 @@ func NewBatchStore(path string) (*BatchStore, error) {
 
 	// Open BadgerDB (use subdirectory for DB files)
 	dbPath := filepath.Join(path, "db")
+	fmt.Printf("📂 Opening BadgerDB at %s\n", dbPath)
 	db, err := badger.Open(badger.DefaultOptions(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open badger DB: %w", err)
@@ -188,7 +189,8 @@ func (bs *BatchStore) Count() uint64 {
 
 // loadBatches loads batches from BadgerDB
 func (bs *BatchStore) loadBatches() error {
-	return bs.db.View(func(txn *badger.Txn) error {
+	count := 0
+	err := bs.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = []byte("batch:")
 		it := txn.NewIterator(opts)
@@ -206,6 +208,7 @@ func (bs *BatchStore) loadBatches() error {
 				if batch.Number > bs.count {
 					bs.count = batch.Number
 				}
+				count++
 				return nil
 			})
 			if err != nil {
@@ -214,6 +217,8 @@ func (bs *BatchStore) loadBatches() error {
 		}
 		return nil
 	})
+	fmt.Printf("✅ Loaded %d batches from DB. Max batch number: %d\n", count, bs.count)
+	return err
 }
 
 // GetLastProcessedBlock returns the last processed block number

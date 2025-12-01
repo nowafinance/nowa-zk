@@ -130,6 +130,23 @@ cd tan-zk
 git submodule update --init --recursive
 ```
 
+### 3. Key Generation (Circuit Setup)
+Before running the system, you must generate the ZK proving/verifying keys and the Solidity verifier contract.
+
+```bash
+make setup
+```
+
+This command will:
+1.  Compile the ZK circuit.
+2.  Run the Groth16 Trusted Setup.
+3.  Generate the following artifacts:
+    *   `.tan-zk/keys/rollup.pk`: Proving Key (used by Prover)
+    *   `.tan-zk/keys/rollup.vk`: Verifying Key (used by Prover/Verifier)
+    *   `contracts/src/generated/RollupVerifier.sol`: Solidity Verifier Contract
+
+> **Note:** These keys are also automatically generated in the CI/CD pipeline and stored as build artifacts.
+
 ### Build All Components
 
 ```bash
@@ -280,7 +297,7 @@ ws://localhost:8080/ws
 RPC_URL=http://localhost:8545      # Ethereum RPC endpoint
 WS_URL=ws://localhost:8546          # WebSocket endpoint
 API_PORT=8080                       # API server port
-BATCH_SIZE=100                      # Transactions per batch
+BATCH_SIZE=128                      # Transactions per batch
 STATE_DB_PATH=./data/state          # Database path
 ```
 
@@ -328,7 +345,7 @@ go test -race ./...
 
 | Metric | Value |
 |--------|-------|
-| **Batch Size** | 100-1000 transactions |
+| **Batch Size** | 128-1000 transactions |
 | **Block Processing** | ~2-5 seconds |
 | **Proof Generation** | ~10-30 seconds |
 | **State Root Calculation** | ~100ms per batch |

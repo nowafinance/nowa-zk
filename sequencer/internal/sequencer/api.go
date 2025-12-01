@@ -132,7 +132,13 @@ const rootTemplate = `
             {{range .endpoints}}
             <tr>
                 <td><span class="method">{{.method}}</span></td>
-                <td><code>{{.path}}</code></td>
+                <td>
+                    {{if .link}}
+                    <a href="{{.link}}">{{.path}}</a>
+                    {{else}}
+                    <code>{{.path}}</code>
+                    {{end}}
+                </td>
                 <td>{{.description}}</td>
             </tr>
             {{end}}
@@ -144,13 +150,13 @@ const rootTemplate = `
 
 func (api *APIServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	endpoints := []map[string]string{
-		{"path": "/", "method": "GET", "description": "List all available endpoints"},
-		{"path": "/health", "method": "GET", "description": "Health check"},
-		{"path": "/status", "method": "GET", "description": "Get sequencer status"},
-		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch"},
+		{"path": "/", "method": "GET", "description": "List all available endpoints", "link": "/"},
+		{"path": "/health", "method": "GET", "description": "Health check", "link": "/health"},
+		{"path": "/status", "method": "GET", "description": "Get sequencer status", "link": "/status"},
+		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch", "link": "/batch/latest"},
 		{"path": "/batch/{number}", "method": "GET", "description": "Get batch by number"},
-		{"path": "/batches", "method": "GET", "description": "Get all batches"},
-		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover"},
+		{"path": "/batches", "method": "GET", "description": "Get all batches", "link": "/batches"},
+		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover", "link": "/prover/batch/latest"},
 		{"path": "/prover/batch/{number}", "method": "GET", "description": "Get batch by number for prover"},
 		{"path": "/ws/batches", "method": "WS", "description": "WebSocket for real-time batch updates"},
 	}
