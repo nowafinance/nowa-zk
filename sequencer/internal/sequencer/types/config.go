@@ -15,7 +15,7 @@ type Config struct {
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		BatchSize:     100,                      // 100 transactions per batch
+		BatchSize:     128,                      // 128 transactions per batch
 		BatchInterval: 5 * time.Second,          // Check/create batch every 5 seconds (reduced from 10s)
 		APIPort:       8080,                     // REST API port
 		StateDBPath:   ".tan-zk/sequencer/data", // Local storage path

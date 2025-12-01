@@ -20,7 +20,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: prover
+        working-directory: .
 
     steps:
       - name: Checkout
@@ -36,7 +36,20 @@ jobs:
         run: |
           make deps
 
+      - name: Generate Keys (Setup)
+        run: |
+          make setup
+
       - name: Test
         run: |
           # run tests with race detector and verbose output
-          go test -v -race ./...
+          cd prover && go test -v -race ./...
+
+      - name: Upload Keys and Verifier
+        uses: actions/upload-artifact@v4
+        with:
+          name: zk-keys-and-verifier
+          path: |
+            .tan-zk/keys/
+            contracts/src/generated/RollupVerifier.sol
+          if-no-files-found: error
