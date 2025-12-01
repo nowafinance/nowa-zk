@@ -73,15 +73,16 @@ deploy-local:
 	fi
 	@echo "✅ Deployment info saved to .tan-zk/deployments.json"
 
+# Optional: ( New Terminal ) Run Traffic Generator
+# Usage: make run-traffic-gen [COUNT=1000]
+run-traffic-gen: build-sequencer
+	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 1000)
+
 # Terminal 3: Run Sequencer
 run-sequencer: build-sequencer
 	@mkdir -p .tan-zk/sequencer/data
 	@./sequencer/sequencer-bin start --reset --rpc-url http://localhost:8545 --state-db-path .tan-zk/sequencer/data
 
-# Run Traffic Generator
-# Usage: make run-traffic-gen [COUNT=1000]
-run-traffic-gen: build-sequencer
-	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 1000)
 
 # Terminal 4: Run Prover
 # Usage: make run-prover [CONTRACT=...] [KEY=...]

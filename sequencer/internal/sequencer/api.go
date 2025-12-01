@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"sync"
@@ -44,6 +45,9 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 // Start starts the API server
 func (api *APIServer) Start() error {
 	router := mux.NewRouter()
+
+	// Root endpoint
+	router.HandleFunc("/", api.handleRoot).Methods("GET")
 
 	// Health check
 	router.HandleFunc("/health", api.handleHealth).Methods("GET")
@@ -90,6 +94,129 @@ func (api *APIServer) Stop() error {
 		}
 	}
 	return nil
+}
+
+const rootTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tan-ZK Sequencer API</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            margin: 0;
+            padding: 40px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #000;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #e0e0e0;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .method {
+            font-family: monospace;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .path {
+            font-family: monospace;
+            color: #d63384;
+        }
+        .footer {
+            margin-top: 40px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tan-ZK Sequencer API</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .endpoints}}
+                <tr>
+                    <td><span class="method">{{.method}}</span></td>
+                    <td><span class="path">{{.path}}</span></td>
+                    <td>{{.description}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        <div class="footer">
+            Tan-ZK Sequencer v1.0.0
+        </div>
+    </div>
+</body>
+</html>
+`
+
+func (api *APIServer) handleRoot(w http.ResponseWriter, r *http.Request) {
+	endpoints := []map[string]string{
+		{"path": "/", "method": "GET", "description": "List all available endpoints"},
+		{"path": "/health", "method": "GET", "description": "Health check"},
+		{"path": "/status", "method": "GET", "description": "Get sequencer status"},
+		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch"},
+		{"path": "/batch/{number}", "method": "GET", "description": "Get batch by number"},
+		{"path": "/batches", "method": "GET", "description": "Get all batches"},
+		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover"},
+		{"path": "/prover/batch/{number}", "method": "GET", "description": "Get batch by number for prover"},
+		{"path": "/ws/batches", "method": "WS", "description": "WebSocket for real-time batch updates"},
+	}
+
+	tmpl, err := template.New("root").Parse(rootTemplate)
+	if err != nil {
+		logger.Error("Failed to parse root template: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, map[string]interface{}{
+		"endpoints": endpoints,
+	}); err != nil {
+		logger.Error("Failed to execute root template: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {

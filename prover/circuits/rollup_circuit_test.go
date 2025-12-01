@@ -19,11 +19,13 @@ func TestRollupCircuit(t *testing.T) {
 	transactions := make([]Transaction, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		transactions[i] = Transaction{
-			From:      big.NewInt(int64(1000 + i)), // Sender address
-			To:        big.NewInt(int64(2000 + i)), // Recipient address
-			Amount:    big.NewInt(int64(100 + i)),  // Amount
-			Nonce:     big.NewInt(int64(i)),        // Nonce
-			InputHash: big.NewInt(int64(3000 + i)), // Input hash
+			Nonce:    big.NewInt(int64(i)),           // Sender nonce
+			From:     big.NewInt(int64(1000 + i)),    // Sender address
+			To:       big.NewInt(int64(2000 + i)),    // Recipient address
+			Amount:   big.NewInt(int64(100 + i)),     // Amount in wei
+			GasPrice: big.NewInt(int64(20 * 1e9)),    // 20 Gwei
+			GasLimit: big.NewInt(int64(21000 + i)),   // Gas limit
+			Data:     big.NewInt(int64(3000 + i)),    // Data hash
 		}
 	}
 
@@ -31,13 +33,18 @@ func TestRollupCircuit(t *testing.T) {
 	expectedRoot := computeMerkleRoot(t, transactions)
 	t.Logf("Expected Merkle Root: %s", expectedRoot.String())
 
+	// Compute expected state root after processing transactions
+	expectedNewStateRoot := computeStateRoot(t, big.NewInt(0), transactions)
+
 	// Create witness
 	var circuit Circuit
 	copy(circuit.Transactions[:], transactions)
 	circuit.BatchRoot = expectedRoot
-	circuit.OldStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = big.NewInt(1)
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = expectedNewStateRoot
 	circuit.BatchNumber = big.NewInt(1)
+	circuit.Timestamp = big.NewInt(1700000000)
+	circuit.SequencerAddr = big.NewInt(9999)
 
 	// Create witness for proving
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -72,24 +79,29 @@ func TestRollupCircuitInvalidRoot(t *testing.T) {
 	transactions := make([]Transaction, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		transactions[i] = Transaction{
-			From:      big.NewInt(int64(1000 + i)),
-			To:        big.NewInt(int64(2000 + i)),
-			Amount:    big.NewInt(int64(100 + i)),
-			Nonce:     big.NewInt(int64(i)),
-			InputHash: big.NewInt(int64(3000 + i)),
+			Nonce:    big.NewInt(int64(i)),
+			From:     big.NewInt(int64(1000 + i)),
+			To:       big.NewInt(int64(2000 + i)),
+			Amount:   big.NewInt(int64(100 + i)),
+			GasPrice: big.NewInt(int64(20 * 1e9)),
+			GasLimit: big.NewInt(int64(21000 + i)),
+			Data:     big.NewInt(int64(3000 + i)),
 		}
 	}
 
 	// Use wrong root
 	wrongRoot := big.NewInt(12345)
+	expectedNewStateRoot := computeStateRoot(t, big.NewInt(0), transactions)
 
 	// Create witness with wrong root
 	var circuit Circuit
 	copy(circuit.Transactions[:], transactions)
 	circuit.BatchRoot = wrongRoot
-	circuit.OldStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = big.NewInt(1)
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = expectedNewStateRoot
 	circuit.BatchNumber = big.NewInt(1)
+	circuit.Timestamp = big.NewInt(1700000000)
+	circuit.SequencerAddr = big.NewInt(9999)
 
 	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -111,31 +123,85 @@ func TestRollupCircuitInvalidRoot(t *testing.T) {
 	t.Log("✅ Invalid root correctly rejected")
 }
 
+// TestRollupCircuitInvalidStateRoot tests that invalid state root is rejected
+func TestRollupCircuitInvalidStateRoot(t *testing.T) {
+	// Create sample transactions
+	transactions := make([]Transaction, BatchSize)
+	for i := 0; i < BatchSize; i++ {
+		transactions[i] = Transaction{
+			Nonce:    big.NewInt(int64(i)),
+			From:     big.NewInt(int64(1000 + i)),
+			To:       big.NewInt(int64(2000 + i)),
+			Amount:   big.NewInt(int64(100 + i)),
+			GasPrice: big.NewInt(int64(20 * 1e9)),
+			GasLimit: big.NewInt(int64(21000 + i)),
+			Data:     big.NewInt(int64(3000 + i)),
+		}
+	}
+
+	expectedBatchRoot := computeMerkleRoot(t, transactions)
+	wrongStateRoot := big.NewInt(99999)
+
+	// Create witness with wrong state root
+	var circuit Circuit
+	copy(circuit.Transactions[:], transactions)
+	circuit.BatchRoot = expectedBatchRoot
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = wrongStateRoot
+	circuit.BatchNumber = big.NewInt(1)
+	circuit.Timestamp = big.NewInt(1700000000)
+	circuit.SequencerAddr = big.NewInt(9999)
+
+	// Create witness
+	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
+	require.NoError(t, err)
+
+	// Compile circuit
+	emptyCircuit := Circuit{}
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
+	require.NoError(t, err)
+
+	// Setup
+	pk, _, err := groth16.Setup(ccs)
+	require.NoError(t, err)
+
+	// Prove should fail because state root constraint is not satisfied
+	_, err = groth16.Prove(ccs, pk, witness)
+	require.Error(t, err, "Expected proof to fail with invalid state root")
+
+	t.Log("✅ Invalid state root correctly rejected")
+}
+
 // TestRollupCircuitEmptyBatch tests batch with all zero transactions
 func TestRollupCircuitEmptyBatch(t *testing.T) {
 	// Create empty transactions (all zeros)
 	transactions := make([]Transaction, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		transactions[i] = Transaction{
-			From:      big.NewInt(0),
-			To:        big.NewInt(0),
-			Amount:    big.NewInt(0),
-			Nonce:     big.NewInt(0),
-			InputHash: big.NewInt(0),
+			Nonce:    big.NewInt(0),
+			From:     big.NewInt(0),
+			To:       big.NewInt(0),
+			Amount:   big.NewInt(0),
+			GasPrice: big.NewInt(0),
+			GasLimit: big.NewInt(0),
+			Data:     big.NewInt(0),
 		}
 	}
 
 	// Compute Merkle root for empty batch
 	expectedRoot := computeMerkleRoot(t, transactions)
+	expectedStateRoot := computeStateRoot(t, big.NewInt(0), transactions)
 	t.Logf("Empty Batch Merkle Root: %s", expectedRoot.String())
 
 	// Create witness
 	var circuit Circuit
 	copy(circuit.Transactions[:], transactions)
 	circuit.BatchRoot = expectedRoot
-	circuit.OldStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = big.NewInt(0)
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(2)
+	circuit.Timestamp = big.NewInt(1700000000)
+	circuit.SequencerAddr = big.NewInt(9999)
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
@@ -160,25 +226,79 @@ func TestRollupCircuitEmptyBatch(t *testing.T) {
 	t.Log("✅ Empty batch verified successfully")
 }
 
+// TestRollupCircuitInvalidTimestamp tests that invalid timestamp is rejected
+func TestRollupCircuitInvalidTimestamp(t *testing.T) {
+	// Create sample transactions
+	transactions := make([]Transaction, BatchSize)
+	for i := 0; i < BatchSize; i++ {
+		transactions[i] = Transaction{
+			Nonce:    big.NewInt(int64(i)),
+			From:     big.NewInt(int64(1000 + i)),
+			To:       big.NewInt(int64(2000 + i)),
+			Amount:   big.NewInt(int64(100 + i)),
+			GasPrice: big.NewInt(int64(20 * 1e9)),
+			GasLimit: big.NewInt(int64(21000 + i)),
+			Data:     big.NewInt(int64(3000 + i)),
+		}
+	}
+
+	expectedBatchRoot := computeMerkleRoot(t, transactions)
+	expectedStateRoot := computeStateRoot(t, big.NewInt(0), transactions)
+	invalidTimestamp := big.NewInt(3000000000) // Beyond reasonable range
+
+	// Create witness with invalid timestamp
+	var circuit Circuit
+	copy(circuit.Transactions[:], transactions)
+	circuit.BatchRoot = expectedBatchRoot
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = expectedStateRoot
+	circuit.BatchNumber = big.NewInt(1)
+	circuit.Timestamp = invalidTimestamp
+	circuit.SequencerAddr = big.NewInt(9999)
+
+	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
+	require.NoError(t, err)
+
+	emptyCircuit := Circuit{}
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
+	require.NoError(t, err)
+
+	pk, _, err := groth16.Setup(ccs)
+	require.NoError(t, err)
+
+	_, err = groth16.Prove(ccs, pk, witness)
+	require.Error(t, err, "Expected proof to fail with invalid timestamp")
+
+	t.Log("✅ Invalid timestamp correctly rejected")
+}
+
 // BenchmarkRollupCircuit benchmarks the circuit compilation and proving
 func BenchmarkRollupCircuit(b *testing.B) {
 	// Create sample transactions
 	transactions := make([]Transaction, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		transactions[i] = Transaction{
-			From:      big.NewInt(int64(1000 + i)),
-			To:        big.NewInt(int64(2000 + i)),
-			Amount:    big.NewInt(int64(100 + i)),
-			Nonce:     big.NewInt(int64(i)),
-			InputHash: big.NewInt(int64(3000 + i)),
+			Nonce:    big.NewInt(int64(i)),
+			From:     big.NewInt(int64(1000 + i)),
+			To:       big.NewInt(int64(2000 + i)),
+			Amount:   big.NewInt(int64(100 + i)),
+			GasPrice: big.NewInt(int64(20 * 1e9)),
+			GasLimit: big.NewInt(int64(21000 + i)),
+			Data:     big.NewInt(int64(3000 + i)),
 		}
 	}
 
 	expectedRoot := computeMerkleRootBench(transactions)
+	expectedStateRoot := computeStateRootBench(big.NewInt(0), transactions)
 
 	var circuit Circuit
 	copy(circuit.Transactions[:], transactions)
 	circuit.BatchRoot = expectedRoot
+	circuit.PrevStateRoot = big.NewInt(0)
+	circuit.NewStateRoot = expectedStateRoot
+	circuit.BatchNumber = big.NewInt(1)
+	circuit.Timestamp = big.NewInt(1700000000)
+	circuit.SequencerAddr = big.NewInt(9999)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -208,11 +328,13 @@ func computeMerkleRoot(t *testing.T, transactions []Transaction) *big.Int {
 	leaves := make([]*big.Int, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		h.Reset()
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].InputHash.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
 	}
 
@@ -239,11 +361,13 @@ func computeMerkleRootBench(transactions []Transaction) *big.Int {
 	leaves := make([]*big.Int, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		h.Reset()
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].InputHash.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
 	}
 
@@ -260,4 +384,41 @@ func computeMerkleRootBench(transactions []Transaction) *big.Int {
 	}
 
 	return currentLayer[0]
+}
+
+// Helper function to compute state root off-circuit (for testing)
+func computeStateRoot(t *testing.T, prevRoot *big.Int, transactions []Transaction) *big.Int {
+	h := mimc_offchain.NewMiMC()
+	currentStateRoot := prevRoot
+
+	// Process each transaction and update state root
+	for i := 0; i < BatchSize; i++ {
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
+	}
+
+	return currentStateRoot
+}
+
+// Helper function for benchmarking state root computation
+func computeStateRootBench(prevRoot *big.Int, transactions []Transaction) *big.Int {
+	h := mimc_offchain.NewMiMC()
+	currentStateRoot := prevRoot
+
+	for i := 0; i < BatchSize; i++ {
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
+	}
+
+	return currentStateRoot
 }

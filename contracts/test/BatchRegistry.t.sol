@@ -98,11 +98,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -154,11 +156,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(user);
@@ -185,11 +189,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -216,11 +222,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -260,11 +268,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -293,11 +303,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -328,11 +340,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs1 = [
+        uint256[6] memory publicInputs1 = [
             uint256(0),
             uint256(oldStateRoot1),
             uint256(newStateRoot1),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -354,11 +368,13 @@ contract BatchRegistryTest is Test {
             uint256(keccak256(abi.encode("newStateRoot", 2)))
         );
 
-        uint256[4] memory publicInputs2 = [
+        uint256[6] memory publicInputs2 = [
             uint256(0),
             uint256(oldStateRoot2),
             uint256(newStateRoot2),
-            uint256(2)
+            uint256(2),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -408,11 +424,13 @@ contract BatchRegistryTest is Test {
                 [uint256(5), uint256(6)]
             ];
             uint256[2] memory c = [uint256(7), uint256(8)];
-            uint256[4] memory publicInputs = [
+            uint256[6] memory publicInputs = [
                 uint256(0),
                 uint256(oldStateRoot),
                 uint256(newStateRoot),
-                uint256(i + 1)
+                uint256(i + 1),
+                block.timestamp,
+                uint256(uint160(sequencer))
             ];
 
             vm.prank(sequencer);
@@ -475,11 +493,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -514,11 +534,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);
@@ -549,11 +571,13 @@ contract BatchRegistryTest is Test {
             [uint256(5), uint256(6)]
         ];
         uint256[2] memory c = [uint256(7), uint256(8)];
-        uint256[4] memory publicInputs = [
+        uint256[6] memory publicInputs = [
             uint256(0),
             uint256(INITIAL_STATE_ROOT),
             uint256(newStateRoot),
-            uint256(1)
+            uint256(1),
+            block.timestamp,
+            uint256(uint160(sequencer))
         ];
 
         vm.prank(sequencer);

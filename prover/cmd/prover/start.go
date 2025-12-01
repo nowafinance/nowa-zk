@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	"github.com/consensys/gnark/backend/groth16"
 	bn254 "github.com/consensys/gnark/backend/groth16/bn254"
@@ -141,7 +142,7 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Load circuit and keys
 	log.Println("📦 Loading circuit and keys...")
-	ccs, pk, err := loadCircuitAndKeys()
+	ccs, pk, vk, err := loadCircuitAndKeys()
 	if err != nil {
 		log.Fatalf("❌ Failed to load circuit/keys: %v", err)
 	}
@@ -178,10 +179,7 @@ func start(cmd *cobra.Command, args []string) {
 		nextBatchNum := lastProcessedBatch + 1
 
 		// 3. Check if we are strictly behind the latest batch
-		// User wants: "if batches have reached 41, make baches till 40 only"
-		// So we can process 'nextBatchNum' ONLY IF nextBatchNum < latestBatch.Number
 		if nextBatchNum >= latestBatch.Number {
-			// We are caught up to (latest - 1), or there are no new batches to process safely
 			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d)\n", latestBatch.Number, lastProcessedBatch)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
@@ -197,19 +195,40 @@ func start(cmd *cobra.Command, args []string) {
 
 		log.Printf("📦 Processing batch #%d (%d transactions)\n", batch.Number, len(batch.Transactions))
 
-		// Generate proof
+		// 5. Get current state root from contract to ensure alignment
+		// This is critical: we must prove the transition from the CONTRACT's current state
+		contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
+		if err != nil {
+			log.Printf("⚠️  Failed to fetch contract state root: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
+		log.Printf("   🏛️  Contract State Root: %s\n", contractStateRoot.String())
+
+		// Generate proof using CONTRACT's state root as PrevStateRoot
 		log.Println("   🔐 Generating proof...")
-		proof, publicWitness, err := generateProof(batch, ccs, pk)
+		sequencerAddr := hashAddress(auth.From.Hex())
+		proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, contractStateRoot, sequencerAddr)
 		if err != nil {
 			log.Printf("   ❌ Failed to generate proof: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 		log.Println("   ✅ Proof generated")
+		log.Printf("   🧮 Calculated New State Root: %s\n", calculatedNewStateRoot.String())
 
-		// Submit to contract
+		// Verify locally
+		log.Println("   🔍 Verifying proof locally...")
+		if err := verifyLocal(proof, vk, publicWitness); err != nil {
+			log.Printf("   ❌ Local verification failed: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
+		log.Println("   ✅ Proof verified locally")
+
+		// Submit proof to contract
 		log.Println("   📡 Submitting proof to contract...")
-		txHash, err := submitProof(client, auth, contractAddr, batch, proof, publicWitness)
+		txHash, err := submitProof(client, auth, contractAddr, batch, proof, contractStateRoot, calculatedNewStateRoot)
 		if err != nil {
 			log.Printf("   ❌ Failed to submit proof: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
@@ -222,32 +241,48 @@ func start(cmd *cobra.Command, args []string) {
 	}
 }
 
-func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, error) {
+func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness witness.Witness) error {
+	return groth16.Verify(proof, vk, publicWitness)
+}
+
+func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
 	// Load compiled circuit
 	ccsFile, err := os.Open(keysDir + "/rollup.r1cs")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open circuit file: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to open circuit file: %w", err)
 	}
 	defer ccsFile.Close()
 
 	ccs := groth16.NewCS(ecc.BN254)
 	if _, err := ccs.ReadFrom(ccsFile); err != nil {
-		return nil, nil, fmt.Errorf("failed to read circuit: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to read circuit: %w", err)
 	}
 
 	// Load proving key
 	pkFile, err := os.Open(keysDir + "/rollup.pk")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open proving key: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to open proving key: %w", err)
 	}
 	defer pkFile.Close()
 
 	pk := groth16.NewProvingKey(ecc.BN254)
 	if _, err := pk.ReadFrom(pkFile); err != nil {
-		return nil, nil, fmt.Errorf("failed to read proving key: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to read proving key: %w", err)
 	}
 
-	return ccs, pk, nil
+	// Load verifying key
+	vkFile, err := os.Open(keysDir + "/rollup.vk")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to open verifying key: %w", err)
+	}
+	defer vkFile.Close()
+
+	vk := groth16.NewVerifyingKey(ecc.BN254)
+	if _, err := vk.ReadFrom(vkFile); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read verifying key: %w", err)
+	}
+
+	return ccs, pk, vk, nil
 }
 
 func connectEthereum(rpcURL, privateKeyHex string) (*ethclient.Client, *bind.TransactOpts, error) {
@@ -320,7 +355,7 @@ func fetchBatch(sequencerURL string, number uint64) (*Batch, error) {
 	return &batch, nil
 }
 
-func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
+func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, prevStateRoot *big.Int, sequencerAddr *big.Int) (groth16.Proof, witness.Witness, *big.Int, error) {
 	// Convert batch to circuit witness
 	var circuit circuits.Circuit
 
@@ -329,20 +364,24 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 		if i < len(batch.Transactions) {
 			tx := batch.Transactions[i]
 			circuit.Transactions[i] = circuits.Transaction{
-				From:      hashAddress(tx.From),
-				To:        hashAddress(tx.To),
-				Amount:    parseBigInt(string(tx.Value)),
-				Nonce:     parseBigInt(string(tx.Nonce)),
-				InputHash: hashData(tx.Data),
+				Nonce:    parseBigInt(string(tx.Nonce)),
+				From:     hashAddress(tx.From),
+				To:       hashAddress(tx.To),
+				Amount:   parseBigInt(string(tx.Value)),
+				GasPrice: big.NewInt(1000000000), // 1 Gwei default
+				GasLimit: big.NewInt(21000),      // Standard transfer gas limit
+				Data:     hashData(tx.Data),
 			}
 		} else {
 			// Pad with zero transactions
 			circuit.Transactions[i] = circuits.Transaction{
-				From:      big.NewInt(0),
-				To:        big.NewInt(0),
-				Amount:    big.NewInt(0),
-				Nonce:     big.NewInt(0),
-				InputHash: big.NewInt(0),
+				Nonce:    big.NewInt(0),
+				From:     big.NewInt(0),
+				To:       big.NewInt(0),
+				Amount:   big.NewInt(0),
+				GasPrice: big.NewInt(0),
+				GasLimit: big.NewInt(0),
+				Data:     big.NewInt(0),
 			}
 		}
 	}
@@ -350,32 +389,40 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 	// Compute Merkle root
 	root := computeMerkleRoot(circuit.Transactions[:])
 	log.Printf("DEBUG: Go Computed Root: %s", root.String())
+
+	// Set public inputs
 	circuit.BatchRoot = root
-	circuit.OldStateRoot = parseBigInt(batch.PrevStateRoot)
-	circuit.NewStateRoot = parseBigInt(batch.NewStateRoot)
+	circuit.PrevStateRoot = prevStateRoot // Use contract's state root
+
+	// Compute NewStateRoot using circuit logic (rolling hash)
+	circuit.NewStateRoot = computeRollingHash(circuit.PrevStateRoot.(*big.Int), circuit.Transactions[:])
+	log.Printf("DEBUG: Go Computed State Root: %s", circuit.NewStateRoot.(*big.Int).String())
+
 	circuit.BatchNumber = big.NewInt(int64(batch.Number))
+	circuit.Timestamp = big.NewInt(batch.Timestamp)
+	circuit.SequencerAddr = sequencerAddr
 
 	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	publicWitness, err := witness.Public()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Generate proof
 	proof, err := groth16.Prove(ccs, pk, witness)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return proof, publicWitness, nil
+	return proof, publicWitness, circuit.NewStateRoot.(*big.Int), nil
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *Batch, proof groth16.Proof, publicWitness witness.Witness) (string, error) {
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *Batch, proof groth16.Proof, prevStateRoot *big.Int, newStateRootBig *big.Int) (string, error) {
 	// 1. Reconstruct batchData string
 	batchDataStr := fmt.Sprintf("%d:%s:%s:%d",
 		batch.Number,
@@ -406,38 +453,47 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		if i < len(batch.Transactions) {
 			tx := batch.Transactions[i]
 			transactions[i] = circuits.Transaction{
-				From:      hashAddress(tx.From),
-				To:        hashAddress(tx.To),
-				Amount:    parseBigInt(string(tx.Value)),
-				Nonce:     parseBigInt(string(tx.Nonce)),
-				InputHash: hashData(tx.Data),
+				Nonce:    parseBigInt(string(tx.Nonce)),
+				From:     hashAddress(tx.From),
+				To:       hashAddress(tx.To),
+				Amount:   parseBigInt(string(tx.Value)),
+				GasPrice: big.NewInt(1000000000),
+				GasLimit: big.NewInt(21000),
+				Data:     hashData(tx.Data),
 			}
 		} else {
 			transactions[i] = circuits.Transaction{
-				From:      big.NewInt(0),
-				To:        big.NewInt(0),
-				Amount:    big.NewInt(0),
-				Nonce:     big.NewInt(0),
-				InputHash: big.NewInt(0),
+				Nonce:    big.NewInt(0),
+				From:     big.NewInt(0),
+				To:       big.NewInt(0),
+				Amount:   big.NewInt(0),
+				GasPrice: big.NewInt(0),
+				GasLimit: big.NewInt(0),
+				Data:     big.NewInt(0),
 			}
 		}
 	}
 	batchRoot := computeMerkleRoot(transactions[:])
 
 	// 2. Prepare arguments
-	// IMPORTANT: We must use the MiMC Merkle Root as the batchHash because that is what the ZK proof verifies.
-	batchHash := common.BytesToHash(BigIntTo32Bytes(batchRoot))
-	newStateRoot := common.HexToHash(batch.NewStateRoot)
+	// Use Keccak256 for batchHash (DA check)
+	batchHash := crypto.Keccak256Hash(batchData)
 
-	publicInputs := [4]*big.Int{
+	// Use calculated NewStateRoot (converted to bytes32)
+	newStateRoot := common.BytesToHash(BigIntTo32Bytes(newStateRootBig))
+
+	publicInputs := [6]*big.Int{
 		batchRoot,
-		parseBigInt(batch.PrevStateRoot),
-		parseBigInt(batch.NewStateRoot),
+		prevStateRoot,
+		newStateRootBig,
 		new(big.Int).SetUint64(batch.Number),
+		big.NewInt(batch.Timestamp),
+		hashAddress(auth.From.Hex()),
 	}
 
 	// 5. Pack ABI and send transaction
-	const abiJSON = `[{"inputs":[{"internalType":"bytes32","name":"batchHash","type":"bytes32"},{"internalType":"bytes32","name":"newStateRoot","type":"bytes32"},{"internalType":"bytes","name":"batchData","type":"bytes"},{"internalType":"uint256[2]","name":"proofA","type":"uint256[2]"},{"internalType":"uint256[2][2]","name":"proofB","type":"uint256[2][2]"},{"internalType":"uint256[2]","name":"proofC","type":"uint256[2]"},{"internalType":"uint256[4]","name":"publicInputs","type":"uint256[4]"}],"name":"registerBatch","outputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"}],"stateMutability":"nonpayable","type":"function"}]`
+	// Added getCurrentStateRoot to ABI
+	const abiJSON = `[{"inputs":[{"internalType":"bytes32","name":"batchHash","type":"bytes32"},{"internalType":"bytes32","name":"newStateRoot","type":"bytes32"},{"internalType":"bytes","name":"batchData","type":"bytes"},{"internalType":"uint256[2]","name":"proofA","type":"uint256[2]"},{"internalType":"uint256[2][2]","name":"proofB","type":"uint256[2][2]"},{"internalType":"uint256[2]","name":"proofC","type":"uint256[2]"},{"internalType":"uint256[6]","name":"publicInputs","type":"uint256[6]"}],"name":"registerBatch","outputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"}],"stateMutability":"nonpayable","type":"function"}, {"inputs":[],"name":"getCurrentStateRoot","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return "", fmt.Errorf("failed to parse ABI: %w", err)
@@ -457,48 +513,108 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	return tx.Hash().Hex(), nil
 }
 
-// Helper functions
+func getCurrentStateRoot(client *ethclient.Client, contractAddr string) (*big.Int, error) {
+	const abiJSON = `[{"inputs":[],"name":"getCurrentStateRoot","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+	}
+
+	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
+	var result []interface{}
+	err = contract.Call(&bind.CallOpts{}, &result, "getCurrentStateRoot")
+	if err != nil {
+		return nil, fmt.Errorf("failed to call getCurrentStateRoot: %w", err)
+	}
+
+	// Convert bytes32 to big.Int
+	rootBytes := result[0].([32]byte)
+	return new(big.Int).SetBytes(rootBytes[:]), nil
+}
+
+// Helper functions with proper field reduction
+
+// hashAddress converts Ethereum address to BN254 field element
 func hashAddress(addr string) *big.Int {
-	// Convert hex address to big.Int
 	if addr == "" {
 		return big.NewInt(0)
 	}
-	return new(big.Int).SetBytes(common.HexToAddress(addr).Bytes())
+
+	addrBytes := common.HexToAddress(addr).Bytes()
+	val := new(big.Int).SetBytes(addrBytes)
+
+	// Reduce to BN254 scalar field
+	var frVal fr.Element
+	frVal.SetBigInt(val)
+	return frVal.BigInt(new(big.Int))
 }
 
+// parseBigInt parses string to field element
 func parseBigInt(s string) *big.Int {
 	val, ok := new(big.Int).SetString(s, 0)
 	if !ok {
 		return big.NewInt(0)
 	}
-	return val
+
+	// Reduce to BN254 scalar field
+	var frVal fr.Element
+	frVal.SetBigInt(val)
+	return frVal.BigInt(new(big.Int))
 }
 
+// hashData converts transaction data to field element
 func hashData(data string) *big.Int {
 	if data == "" || data == "0x" {
 		return big.NewInt(0)
 	}
+
+	// Hash the data first
 	hash := crypto.Keccak256Hash([]byte(data))
-	return new(big.Int).SetBytes(hash.Bytes())
+	val := new(big.Int).SetBytes(hash.Bytes())
+
+	// Reduce to BN254 scalar field
+	var frVal fr.Element
+	frVal.SetBigInt(val)
+	return frVal.BigInt(new(big.Int))
 }
 
+// BigIntTo32Bytes converts field element to 32-byte array for MiMC
+func BigIntTo32Bytes(i *big.Int) []byte {
+	b := i.Bytes()
+	if len(b) == 32 {
+		return b
+	}
+	if len(b) > 32 {
+		return b[len(b)-32:]
+	}
+	padded := make([]byte, 32)
+	copy(padded[32-len(b):], b)
+	return padded
+}
+
+// computeMerkleRoot - Fixed version with proper field arithmetic
 func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
 	h := mimc.NewMiMC()
 
-	// Compute leaf hashes
+	// Compute leaf hashes - must match circuit's hash order
 	leaves := make([]*big.Int, circuits.BatchSize)
 	for i := 0; i < circuits.BatchSize; i++ {
 		h.Reset()
+
+		// Each field must be properly reduced before hashing
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].InputHash.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
+
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
 
 		if i == 0 {
 			log.Printf("DEBUG: Go Leaf 0: %s", leaves[i].String())
-			log.Printf("DEBUG: Go Tx 0 InputHash: %s", transactions[i].InputHash.(*big.Int).String())
+			log.Printf("DEBUG: Go Tx 0 Data: %s", transactions[i].Data.(*big.Int).String())
 		}
 	}
 
@@ -510,6 +626,7 @@ func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
 			h.Reset()
 			h.Write(BigIntTo32Bytes(currentLayer[i]))
 			h.Write(BigIntTo32Bytes(currentLayer[i+1]))
+
 			nextLayer[i/2] = new(big.Int).SetBytes(h.Sum(nil))
 		}
 		currentLayer = nextLayer
@@ -518,17 +635,21 @@ func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
 	return currentLayer[0]
 }
 
-func BigIntTo32Bytes(i *big.Int) []byte {
-	b := i.Bytes()
-	if len(b) == 32 {
-		return b
+// computeRollingHash computes the state root transition using rolling hash logic
+// This matches the circuit's computeStateTransition function
+func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transaction) *big.Int {
+	h := mimc.NewMiMC()
+	currentStateRoot := prevStateRoot
+
+	for i := 0; i < circuits.BatchSize; i++ {
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+
+		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
-	// If larger than 32 bytes (unlikely for BN254 scalar field elements), truncate
-	if len(b) > 32 {
-		return b[len(b)-32:]
-	}
-	// Pad with leading zeros
-	padded := make([]byte, 32)
-	copy(padded[32-len(b):], b)
-	return padded
+	return currentStateRoot
 }

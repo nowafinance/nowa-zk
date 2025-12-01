@@ -185,7 +185,7 @@ contract BatchRegistry {
      * @param proofA The first part of the ZK proof (G1 point)
      * @param proofB The second part of the ZK proof (G2 point)
      * @param proofC The third part of the ZK proof (G1 point)
-     * @param publicInputs The public inputs to the proof [oldStateRoot, newStateRoot, batchNumber]
+     * @param publicInputs The public inputs [BatchRoot, PrevStateRoot, NewStateRoot, BatchNumber, Timestamp, SequencerAddr]
      *
      * @return batchNumber The assigned batch number
      */
@@ -196,7 +196,7 @@ contract BatchRegistry {
         uint256[2] calldata proofA,
         uint256[2][2] calldata proofB,
         uint256[2] calldata proofC,
-        uint256[4] calldata publicInputs
+        uint256[6] calldata publicInputs
     ) external onlySequencer whenNotPaused returns (uint256 batchNumber) {
         // Input validation
         require(
@@ -244,6 +244,13 @@ contract BatchRegistry {
         batchNumber = nextBatchNumber;
 
         // Validate public inputs
+        // publicInputs[0] = BatchRoot (Merkle root of transactions)
+        // publicInputs[1] = PrevStateRoot
+        // publicInputs[2] = NewStateRoot
+        // publicInputs[3] = BatchNumber
+        // publicInputs[4] = Timestamp
+        // publicInputs[5] = SequencerAddr
+
         require(
             bytes32(publicInputs[2]) == newStateRoot,
             "BatchRegistry: publicInputs[2] must match newStateRoot"
@@ -251,6 +258,14 @@ contract BatchRegistry {
         require(
             publicInputs[3] == batchNumber,
             "BatchRegistry: publicInputs[3] must match batchNumber"
+        );
+        require(
+            publicInputs[4] <= block.timestamp + 300,
+            "BatchRegistry: timestamp cannot be too far in future"
+        );
+        require(
+            publicInputs[5] == uint256(uint160(msg.sender)),
+            "BatchRegistry: sequencer address mismatch"
         );
 
         // Verify the ZK proof

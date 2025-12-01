@@ -26,19 +26,17 @@ contract MockVerifier is IVerifier {
     bool public verificationResult = true;
 
     /**
-    /**
      * @notice Verifies a zero-knowledge proof (MOCK - always returns true)
      * @dev FOR TESTING ONLY. This does not perform actual cryptographic verification.
      *
-     * @return success Always true
+     * @return valid Always returns verificationResult
      */
     function verifyProof(
-        uint256[2] calldata a,
-        uint256[2][2] calldata b,
-        uint256[2] calldata c,
-        uint256[4] calldata publicInputs
-    ) external view override returns (bool success) {
-        // Return the configured result
+        uint256[2] calldata,
+        uint256[2][2] calldata,
+        uint256[2] calldata,
+        uint256[6] calldata
+    ) external view override returns (bool valid) {
         return verificationResult;
     }
 
