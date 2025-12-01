@@ -56,9 +56,6 @@ contract BatchRegistry {
         address indexed newSequencer
     );
 
-    /// @notice Emitted when finalization delay is updated
-    event FinalizationDelayUpdated(uint256 oldDelay, uint256 newDelay);
-
     /// @notice Emitted when ownership is transferred
     event OwnershipTransferred(
         address indexed previousOwner,
@@ -145,14 +142,8 @@ contract BatchRegistry {
      * @param _verifier Address of the IVerifier contract
      * @param _stateManager Address of the StateManager contract
      * @param _sequencer Address of the authorized sequencer
-     * @param _finalizationDelay Deprecated (kept for interface compatibility, pass 0)
      */
-    constructor(
-        address _verifier,
-        address _stateManager,
-        address _sequencer,
-        uint256 _finalizationDelay
-    ) {
+    constructor(address _verifier, address _stateManager, address _sequencer) {
         require(
             _verifier != address(0),
             "BatchRegistry: verifier cannot be zero address"

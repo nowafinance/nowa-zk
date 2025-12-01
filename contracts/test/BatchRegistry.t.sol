@@ -47,8 +47,7 @@ contract BatchRegistryTest is Test {
         batchRegistry = new BatchRegistry(
             address(verifier),
             address(stateManager),
-            sequencer,
-            FINALIZATION_DELAY
+            sequencer
         );
 
         // Transfer StateManager ownership to BatchRegistry
@@ -67,22 +66,17 @@ contract BatchRegistryTest is Test {
 
     function testRevert_DeploymentWithZeroVerifier() public {
         vm.expectRevert("BatchRegistry: verifier cannot be zero address");
-        new BatchRegistry(address(0), address(stateManager), sequencer, 0);
+        new BatchRegistry(address(0), address(stateManager), sequencer);
     }
 
     function testRevert_DeploymentWithZeroStateManager() public {
         vm.expectRevert("BatchRegistry: stateManager cannot be zero address");
-        new BatchRegistry(address(verifier), address(0), sequencer, 0);
+        new BatchRegistry(address(verifier), address(0), sequencer);
     }
 
     function testRevert_DeploymentWithZeroSequencer() public {
         vm.expectRevert("BatchRegistry: sequencer cannot be zero address");
-        new BatchRegistry(
-            address(verifier),
-            address(stateManager),
-            address(0),
-            0
-        );
+        new BatchRegistry(address(verifier), address(stateManager), address(0));
     }
 
     // ============ Register Batch Tests ============

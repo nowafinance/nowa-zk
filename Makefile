@@ -1,6 +1,6 @@
 # Tan-ZK Project Makefile
 
-.PHONY: all clean setup build test anvil deploy-local run-sequencer run-prover help
+.PHONY: all clean setup build test anvil deploy-local run-sequencer run-prover help check-batch
 
 # Default target: Full fresh setup and test
 all: clean setup build test
@@ -105,3 +105,17 @@ help:
 	@echo "  make deploy-local    - 6. Deploy contracts (Term 2)"
 	@echo "  make run-sequencer   - 7. Start sequencer (Term 3)"
 	@echo "  make run-prover      - 8. Start prover (Term 4)"
+	@echo "  make check-batch     - 9. Check latest batch info"
+
+# --- 6. Utilities ---
+
+check-batch:
+	@echo "🔍 Checking Batch Registry..."
+	@TOTAL=$$(cast call 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 "totalBatches()(uint256)" --rpc-url http://localhost:8545); \
+	echo "📊 Total Batches: $$TOTAL"; \
+	if [ "$$TOTAL" -gt 0 ]; then \
+		echo "📄 Latest Batch Details:"; \
+		cast call 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 "getBatch(uint256)(tuple(bytes32,bytes32,bytes32,address,uint256,uint256,uint8))" $$TOTAL --rpc-url http://localhost:8545; \
+	else \
+		echo "⚠️  No batches registered yet."; \
+	fi

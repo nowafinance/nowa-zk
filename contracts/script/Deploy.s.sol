@@ -33,23 +33,17 @@ contract Deploy is Script {
 
     // Configuration
     bytes32 public initialStateRoot;
-    uint256 public finalizationDelay;
     address public sequencerAddress;
 
     // Default values
     bytes32 public constant DEFAULT_INITIAL_STATE_ROOT =
         0x0000000000000000000000000000000000000000000000000000000000000001;
-    uint256 public constant DEFAULT_FINALIZATION_DELAY = 7 days;
 
     function setUp() public {
         // Read configuration from environment or use defaults
         initialStateRoot = vm.envOr(
             "INITIAL_STATE_ROOT",
             DEFAULT_INITIAL_STATE_ROOT
-        );
-        finalizationDelay = vm.envOr(
-            "FINALIZATION_DELAY",
-            DEFAULT_FINALIZATION_DELAY
         );
 
         // Get deployer address
@@ -71,7 +65,8 @@ contract Deploy is Script {
         console.log("Deployer:", deployer);
         console.log("Deployer Balance:", deployer.balance);
         console.log("Initial State Root:", vm.toString(initialStateRoot));
-        console.log("Finalization Delay:", finalizationDelay, "seconds");
+        console.log("Initial State Root:", vm.toString(initialStateRoot));
+
         console.log("Sequencer:", sequencerAddress);
         console.log("");
     }
@@ -109,8 +104,7 @@ contract Deploy is Script {
         batchRegistry = new BatchRegistry(
             address(verifierAdapter),
             address(stateManager),
-            sequencerAddress,
-            0
+            sequencerAddress
         );
         console.log("   BatchRegistry deployed at:", address(batchRegistry));
         console.log("");
@@ -201,7 +195,8 @@ contract Deploy is Script {
         vm.serializeAddress(json, "VerifierAdapter", address(verifierAdapter));
         vm.serializeAddress(json, "BatchRegistry", address(batchRegistry));
         vm.serializeAddress(json, "Sequencer", sequencerAddress);
-        vm.serializeUint(json, "FinalizationDelay", finalizationDelay);
+        vm.serializeAddress(json, "Sequencer", sequencerAddress);
+
         string memory finalJson = vm.serializeBytes32(
             json,
             "InitialStateRoot",
@@ -220,3 +215,4 @@ contract Deploy is Script {
         console.log("Deployment addresses saved to:", outputFile);
     }
 }
+    

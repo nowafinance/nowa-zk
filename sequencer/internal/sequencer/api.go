@@ -102,90 +102,42 @@ const rootTemplate = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tan-ZK Sequencer API</title>
+    <title>Sequencer API</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #ffffff;
-            color: #333;
-            margin: 0;
-            padding: 40px;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #000;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #e0e0e0;
-        }
-        th, td {
-            text-align: left;
-            padding: 12px 16px;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        th {
-            background-color: #f9f9f9;
-            font-weight: 600;
-            color: #555;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        tr:last-child td {
-            border-bottom: none;
-        }
-        tr:hover {
-            background-color: #f5f5f5;
-        }
-        .method {
-            font-family: monospace;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .path {
-            font-family: monospace;
-            color: #d63384;
-        }
-        .footer {
-            margin-top: 40px;
-            font-size: 12px;
-            color: #888;
-            text-align: center;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
+        th { background-color: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f8f9fa; }
+        code { background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9em; color: #d63384; }
+        a { color: #228be6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .method { font-weight: bold; color: #228be6; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Tan-ZK Sequencer API</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Method</th>
-                    <th>Path</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .endpoints}}
-                <tr>
-                    <td><span class="method">{{.method}}</span></td>
-                    <td><span class="path">{{.path}}</span></td>
-                    <td>{{.description}}</td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-        <div class="footer">
-            Tan-ZK Sequencer v1.0.0
-        </div>
-    </div>
+    <h1>Sequencer API</h1>
+    <p>Available endpoints for the ZK Rollup Sequencer.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Endpoint</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .endpoints}}
+            <tr>
+                <td><span class="method">{{.method}}</span></td>
+                <td><code>{{.path}}</code></td>
+                <td>{{.description}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
 </body>
 </html>
 `

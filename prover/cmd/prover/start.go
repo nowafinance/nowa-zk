@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/spf13/cobra"
+	"github.com/tannetwork/zk-sequencer/prover/bindings"
 	"github.com/tannetwork/zk-sequencer/prover/circuits"
 )
 
@@ -158,6 +159,15 @@ func start(cmd *cobra.Command, args []string) {
 	log.Println("✅ Connected to Ethereum")
 	log.Println()
 
+	// Initialize BatchRegistry contract
+	batchRegistry, err := bindings.NewBatchRegistry(common.HexToAddress(contractAddr), client)
+	if err != nil {
+		log.Fatalf("❌ Failed to instantiate BatchRegistry contract: %v", err)
+	}
+
+	// Start API Server
+	go startAPIServer(batchRegistry)
+
 	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
 	log.Println("   Polling for new batches...")
@@ -234,7 +244,7 @@ func start(cmd *cobra.Command, args []string) {
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
-		log.Printf("   ✅ Proof submitted: %s\n", txHash)
+		log.Printf("   ✅ Proof submitted. TxHash: %s\n", txHash)
 		log.Println()
 
 		lastProcessedBatch = batch.Number
@@ -652,4 +662,149 @@ func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transact
 		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
 	return currentStateRoot
+}
+
+// API Server Implementation
+
+type BatchResponse struct {
+	BatchNumber  uint64 `json:"batchNumber"`
+	BatchHash    string `json:"batchHash"`
+	OldStateRoot string `json:"oldStateRoot"`
+	NewStateRoot string `json:"newStateRoot"`
+	Submitter    string `json:"submitter"`
+	Timestamp    uint64 `json:"timestamp"`
+	VerifiedAt   uint64 `json:"verifiedAt"`
+	Status       uint8  `json:"status"`
+}
+
+func startAPIServer(registry *bindings.BatchRegistry) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		html := `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prover API</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
+        th { background-color: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f8f9fa; }
+        code { background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9em; color: #d63384; }
+        a { color: #228be6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .method { font-weight: bold; color: #228be6; }
+    </style>
+</head>
+<body>
+    <h1>Prover API</h1>
+    <p>Available endpoints for querying batch status from the ZK Rollup Prover.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Endpoint</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="method">GET</span></td>
+                <td><a href="/batches/latest">/batches/latest</a></td>
+                <td>Get details of the latest verified batch</td>
+            </tr>
+            <tr>
+                <td><span class="method">GET</span></td>
+                <td><code>/batches/{id}</code></td>
+                <td>Get details of a specific batch by ID (e.g., <a href="/batches/1">/batches/1</a>)</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>`
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(html))
+	})
+
+	mux.HandleFunc("/batches/latest", func(w http.ResponseWriter, r *http.Request) {
+		totalBatches, err := registry.TotalBatches(&bind.CallOpts{})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get total batches: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		if totalBatches.Cmp(big.NewInt(0)) == 0 {
+			http.Error(w, "No batches found", http.StatusNotFound)
+			return
+		}
+
+		batch, err := registry.GetBatch(&bind.CallOpts{}, totalBatches)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get batch: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		resp := BatchResponse{
+			BatchNumber:  totalBatches.Uint64(),
+			BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
+			OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
+			NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
+			Submitter:    batch.Submitter.Hex(),
+			Timestamp:    batch.Timestamp.Uint64(),
+			VerifiedAt:   batch.VerifiedAt.Uint64(),
+			Status:       batch.Status,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("/batches/", func(w http.ResponseWriter, r *http.Request) {
+		idStr := strings.TrimPrefix(r.URL.Path, "/batches/")
+		if idStr == "" {
+			http.Error(w, "Batch ID required", http.StatusBadRequest)
+			return
+		}
+
+		batchID, ok := new(big.Int).SetString(idStr, 10)
+		if !ok {
+			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
+			return
+		}
+
+		batch, err := registry.GetBatch(&bind.CallOpts{}, batchID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get batch: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		resp := BatchResponse{
+			BatchNumber:  batchID.Uint64(),
+			BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
+			OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
+			NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
+			Submitter:    batch.Submitter.Hex(),
+			Timestamp:    batch.Timestamp.Uint64(),
+			VerifiedAt:   batch.VerifiedAt.Uint64(),
+			Status:       batch.Status,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	log.Println("🌍 Starting Prover API on :8081")
+	if err := http.ListenAndServe(":8081", mux); err != nil {
+		log.Fatalf("❌ Failed to start API server: %v", err)
+	}
 }
