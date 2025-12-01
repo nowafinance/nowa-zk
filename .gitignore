@@ -12,6 +12,9 @@ build/
 # Sequencer build files (Go binaries)
 sequencer/sequencer
 sequencer/cmd/sequencer/sequencer
+sequencer/data/
+
+prover/keys/
 
 # Go workspace
 *.log
@@ -58,8 +61,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-
 contracts/lib/
-
-# Sequencer data directory
-sequencer/data/
+prover/prover-bin 
+# contracts/deployments
+sequencer/sequencer-bin 
+.tan-zk

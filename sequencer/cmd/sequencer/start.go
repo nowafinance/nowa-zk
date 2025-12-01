@@ -18,6 +18,7 @@ var (
 	batchSize   int
 	apiPort     int
 	reset       bool
+	configPath  string
 )
 
 var startCmd = &cobra.Command{
@@ -28,7 +29,7 @@ var startCmd = &cobra.Command{
 		logger.Info("🚀 Starting ZK Sequencer...")
 
 		// Load configuration from env and command-line flags
-		cfg, err := config.LoadWithOverrides(rpcURL, wsURL, stateDBPath, batchSize, apiPort)
+		cfg, err := config.LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath, batchSize, apiPort)
 		if err != nil {
 			logger.Error("Failed to load configuration: %v", err)
 			return err
@@ -80,5 +81,5 @@ func init() {
 	startCmd.Flags().IntVar(&batchSize, "batch-size", 0, "Batch size (overrides BATCH_SIZE env var)")
 	startCmd.Flags().IntVar(&apiPort, "api-port", 0, "API server port (overrides API_PORT env var)")
 	startCmd.Flags().BoolVar(&reset, "reset", false, "Clear all data and start from block 0")
+	startCmd.Flags().StringVar(&configPath, "config", "", "Path to YAML config file")
 }
-

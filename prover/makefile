@@ -9,8 +9,7 @@ all: test
 # fetch gnark + other deps (idempotent)
 deps:
 	@echo "Fetching dependencies..."
-	$(GO) get github.com/consensys/gnark@latest
-	$(GO) mod tidy
+	$(GO) get github.com/consensys/gnark
 
 # run unit tests for the prover package (compiles gnark deps)
 test: deps

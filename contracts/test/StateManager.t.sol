@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import "forge-std/Test.sol";
-import "../src/StateManager.sol";
+import {Test} from "forge-std/Test.sol";
+import {StateManager} from "../src/StateManager.sol";
 
 /**
  * @title StateManagerTest

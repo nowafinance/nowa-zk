@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"sync"
@@ -17,21 +18,21 @@ import (
 
 // APIServer provides REST API and WebSocket for the prover
 type APIServer struct {
-	store        *BatchStore
-	port         int
-	server       *http.Server
-	wsUpgrader   websocket.Upgrader
-	wsClients    map[*websocket.Conn]bool
-	wsClientsMu  sync.RWMutex
+	store         *BatchStore
+	port          int
+	server        *http.Server
+	wsUpgrader    websocket.Upgrader
+	wsClients     map[*websocket.Conn]bool
+	wsClientsMu   sync.RWMutex
 	batchNotifier chan *types.Batch
 }
 
 // NewAPIServer creates a new API server
 func NewAPIServer(store *BatchStore, port int) *APIServer {
 	return &APIServer{
-		store:        store,
-		port:         port,
-		wsClients:    make(map[*websocket.Conn]bool),
+		store:         store,
+		port:          port,
+		wsClients:     make(map[*websocket.Conn]bool),
 		batchNotifier: make(chan *types.Batch, 100),
 		wsUpgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -45,6 +46,9 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 func (api *APIServer) Start() error {
 	router := mux.NewRouter()
 
+	// Root endpoint
+	router.HandleFunc("/", api.handleRoot).Methods("GET")
+
 	// Health check
 	router.HandleFunc("/health", api.handleHealth).Methods("GET")
 
@@ -57,8 +61,8 @@ func (api *APIServer) Start() error {
 	router.HandleFunc("/batches", api.handleGetAllBatches).Methods("GET")
 
 	// Prover endpoints
-	router.HandleFunc("/prover/batch/{number}", api.handleGetBatchForProver).Methods("GET")
 	router.HandleFunc("/prover/batch/latest", api.handleLatestBatchForProver).Methods("GET")
+	router.HandleFunc("/prover/batch/{number}", api.handleGetBatchForProver).Methods("GET")
 
 	// WebSocket endpoint for real-time batch updates
 	router.HandleFunc("/ws/batches", api.handleWebSocket)
@@ -82,7 +86,7 @@ func (api *APIServer) Stop() error {
 	if api.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		
+
 		if err := api.server.Shutdown(ctx); err != nil {
 			// If graceful shutdown fails, force close
 			api.server.Close()
@@ -90,6 +94,81 @@ func (api *APIServer) Stop() error {
 		}
 	}
 	return nil
+}
+
+const rootTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sequencer API</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
+        th { background-color: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f8f9fa; }
+        code { background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9em; color: #d63384; }
+        a { color: #228be6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .method { font-weight: bold; color: #228be6; }
+    </style>
+</head>
+<body>
+    <h1>Sequencer API</h1>
+    <p>Available endpoints for the ZK Rollup Sequencer.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Endpoint</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .endpoints}}
+            <tr>
+                <td><span class="method">{{.method}}</span></td>
+                <td><code>{{.path}}</code></td>
+                <td>{{.description}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</body>
+</html>
+`
+
+func (api *APIServer) handleRoot(w http.ResponseWriter, r *http.Request) {
+	endpoints := []map[string]string{
+		{"path": "/", "method": "GET", "description": "List all available endpoints"},
+		{"path": "/health", "method": "GET", "description": "Health check"},
+		{"path": "/status", "method": "GET", "description": "Get sequencer status"},
+		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch"},
+		{"path": "/batch/{number}", "method": "GET", "description": "Get batch by number"},
+		{"path": "/batches", "method": "GET", "description": "Get all batches"},
+		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover"},
+		{"path": "/prover/batch/{number}", "method": "GET", "description": "Get batch by number for prover"},
+		{"path": "/ws/batches", "method": "WS", "description": "WebSocket for real-time batch updates"},
+	}
+
+	tmpl, err := template.New("root").Parse(rootTemplate)
+	if err != nil {
+		logger.Error("Failed to parse root template: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, map[string]interface{}{
+		"endpoints": endpoints,
+	}); err != nil {
+		logger.Error("Failed to execute root template: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }
 
 func (api *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -292,4 +371,3 @@ func (api *APIServer) broadcastLoop() {
 		}
 	}
 }
-

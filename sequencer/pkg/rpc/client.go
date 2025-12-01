@@ -7,14 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
 // Client is a JSON-RPC client for Tan-ZK blockchain
 type Client struct {
-	config     *Config
-	httpClient *http.Client
-	url        string
+	config           *Config
+	httpClient       *http.Client
+	url              string
+	requestIDCounter atomic.Int64
 }
 
 // NewClient creates a new RPC client with the given configuration
@@ -92,7 +94,7 @@ type RPCError struct {
 
 // call performs a JSON-RPC call with retry logic
 func (c *Client) call(ctx context.Context, method string, params []interface{}) (*RPCResponse, error) {
-	requestID := 1 // Simple ID generation (can be improved)
+	requestID := int(c.requestIDCounter.Add(1)) // Thread-safe request ID generation
 	req := RPCRequest{
 		JSONRPC: "2.0",
 		Method:  method,
@@ -227,4 +229,3 @@ func (c *Client) ChainID(ctx context.Context) (uint64, error) {
 
 	return chainID, nil
 }
-
