@@ -8,6 +8,7 @@ build/
 *.dylib
 *.test
 *.out
+*.prof
 
 # Sequencer build files (Go binaries)
 sequencer/sequencer

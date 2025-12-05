@@ -64,21 +64,25 @@ anvil:
 
 # Terminal 2: Deploy contracts to local Anvil chain
 deploy-local:
+	@if [ ! -f contracts/src/generated/RollupVerifier.sol ]; then \
+		echo "⚠️  RollupVerifier.sol not found. Running setup..."; \
+		$(MAKE) setup; \
+	fi
 	@echo "🚀 Deploying Contracts to Local Anvil..."
 	@mkdir -p contracts/deployments
 	@cd contracts && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 	@mkdir -p .tan-zk
 	@cp contracts/deployments/31337.json .tan-zk/deployments.json
 	@if [ ! -f .tan-zk/secrets.env ]; then \
-		echo "PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" > .tan-zk/secrets.env; \
-		echo "📝 Created .tan-zk/secrets.env with default Anvil key"; \
+		cp contracts/.env .tan-zk/secrets.env; \
+		echo "📝 Created .tan-zk/secrets.env from contracts/.env"; \
 	fi
 	@echo "✅ Deployment info saved to .tan-zk/deployments.json"
 
 # Optional: ( New Terminal ) Run Traffic Generator
-# Usage: make run-traffic-gen [COUNT=10000]
+# Usage: make run-traffic-gen [COUNT=5000]
 run-traffic-gen: build-sequencer
-	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 10000)
+	@./sequencer/sequencer-bin traffic-gen --count $(or $(COUNT), 5000)
 
 # Terminal 3: Run Sequencer
 run-sequencer: build-sequencer

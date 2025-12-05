@@ -8,8 +8,6 @@
 | 1 tx       | ~20 ms         | ~20 ms      | Baseline overhead |
 | 128 tx     | ~1.99 s        | ~15.5 ms    | Full batch (BatchSize=128) |
 
-![Benchmark Results](docs/images/benchmark_results.png)
-
 ### Detailed Phase Breakdown (128 tx)
 | Phase | Time | Description |
 |-------|------|-------------|
@@ -21,16 +19,18 @@
 **Total Proving Time (Witness + Prove):** ~1.99 s
 
 ## Performance Analysis
-- **Scalability**: The proving time scales linearly with the number of transactions.
-- **Throughput**: At ~1.99s for 128 txs, the prover can handle **~64 tx/s** on a single core.
-- **Setup Cost**: Setup is expensive (~21.6s) but only needs to be run once per circuit update.
-- **Verification**: Extremely fast (~0.6ms), ensuring low latency for verifiers.
+## Latest Results (After Optimization)
 
-## SLA / Performance Targets
-Based on these results, we define the following Service Level Agreements (SLA):
+- **Proof Generation Time**: ~1.70s (was 1.99s)
+- **Throughput**: ~75 tx/s (was 64 tx/s)
+- **Setup Cost**: ~21.6s (One-time)
+- **Verification Time**: ~600µs
 
-1.  **Proof Generation Time**: < 3 seconds for a 128-tx batch.
-2.  **Max Latency**: < 5 seconds from batch submission to proof generation.
+### Optimization Details
+1. **State Transition Logic**: Refactored to use `TxHash` (leaf) for state transition instead of re-hashing all transaction fields. This reduced the number of MiMC permutations significantly.
+2. **Field Packing**: Packed `Nonce`, `GasLimit`, and `GasPrice` into a single field element before hashing, further reducing the number of constraints.
+
+![Benchmark Results](/docs/images/benchmark_results.png)
 
 ## Methodology
 Benchmarks were run using `go test -bench` on the `rollup_circuit` package.

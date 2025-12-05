@@ -1,6 +1,8 @@
 package circuits
 
 import (
+	"math/big"
+
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/hash/mimc"
 )
@@ -58,14 +60,33 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	for i := 0; i < BatchSize; i++ {
 		h.Reset()
 		// Hash all transaction fields
-		h.Write(circuit.Transactions[i].Nonce)
+		// Optimization 2: Pack small fields (Nonce, GasLimit, GasPrice) into one
+		// All are < 2^64, so they fit in one 254-bit field element
+		// packed = Nonce + (GasLimit << 64) + (GasPrice << 128)
+
+		// Constants for shifting
+		shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+		shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
+		packed := api.Add(
+			circuit.Transactions[i].Nonce,
+			api.Mul(circuit.Transactions[i].GasLimit, shift64),
+			api.Mul(circuit.Transactions[i].GasPrice, shift128),
+		)
+
+		h.Write(packed)
 		h.Write(circuit.Transactions[i].From)
 		h.Write(circuit.Transactions[i].To)
 		h.Write(circuit.Transactions[i].Amount)
-		h.Write(circuit.Transactions[i].GasPrice)
-		h.Write(circuit.Transactions[i].GasLimit)
+		// GasPrice, GasLimit, Nonce are already packed
 		h.Write(circuit.Transactions[i].Data)
 		leaves[i] = h.Sum()
+
+		// Perform range checks here (consolidated from Step 3 and 4)
+		api.AssertIsLessOrEqual(circuit.Transactions[i].Nonce, 1000000)
+		api.AssertIsLessOrEqual(circuit.Transactions[i].Amount, 1000000000000000000)
+		api.AssertIsLessOrEqual(circuit.Transactions[i].GasPrice, 100000000000)
+		api.AssertIsLessOrEqual(circuit.Transactions[i].GasLimit, 30000000)
 	}
 
 	// ============ Step 2: Build and verify Merkle tree ============
@@ -74,15 +95,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// Verify the computed root matches the public input
 	api.AssertIsEqual(computedRoot, circuit.BatchRoot)
 
-	// ============ Step 3: Verify transaction ordering and nonce validity ============
-	for i := 0; i < BatchSize; i++ {
-		// Check nonce is valid (non-negative constraint implicit in field arithmetic)
-		api.AssertIsLessOrEqual(circuit.Transactions[i].Nonce, 1000000) // Reasonable nonce upper bound
-	}
-
-	// ============ Step 4: Verify state root transition ============
+	// ============ Step 3: Verify state root transition ============
 	// Compute what the new state root should be based on transactions
-	expectedNewRoot := computeStateTransition(api, &h, circuit)
+	expectedNewRoot := computeStateTransition(api, &h, circuit, leaves)
 
 	// Verify state transition is correct
 	api.AssertIsEqual(expectedNewRoot, circuit.NewStateRoot)
@@ -128,28 +143,17 @@ func buildMerkleTree(api frontend.API, h *mimc.MiMC, leaves []frontend.Variable)
 }
 
 // computeStateTransition verifies that transactions correctly transform state
-func computeStateTransition(api frontend.API, h *mimc.MiMC, circuit *Circuit) frontend.Variable {
+func computeStateTransition(api frontend.API, h *mimc.MiMC, circuit *Circuit, leaves []frontend.Variable) frontend.Variable {
 	// Start with previous state root
 	currentStateRoot := circuit.PrevStateRoot
 
 	// Process each transaction and verify state changes
 	for i := 0; i < BatchSize; i++ {
-		tx := circuit.Transactions[i]
-
-		// Verify transaction amounts are non-negative
-		api.AssertIsLessOrEqual(tx.Amount, 1000000000000000000) // Max reasonable amount (10^18)
-
-		// Verify gas parameters are reasonable
-		api.AssertIsLessOrEqual(tx.GasPrice, 100000000000) // Max reasonable gas price (100 Gwei)
-		api.AssertIsLessOrEqual(tx.GasLimit, 30000000)     // Max reasonable gas limit
-
-		// Update state root
+		// Update state root using the transaction hash (leaf)
+		// This is an optimization: NewStateRoot = Hash(OldStateRoot, TxHash)
 		h.Reset()
 		h.Write(currentStateRoot)
-		h.Write(tx.From)
-		h.Write(tx.To)
-		h.Write(tx.Amount)
-		h.Write(tx.Nonce)
+		h.Write(leaves[i])
 		currentStateRoot = h.Sum()
 	}
 

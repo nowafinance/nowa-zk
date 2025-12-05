@@ -207,9 +207,10 @@ func start(cmd *cobra.Command, args []string) {
 		// 2. Determine the next batch we want to process
 		nextBatchNum := lastProcessedBatch + 1
 
-		// 3. Check if we are strictly behind the latest batch
-		if nextBatchNum > latestBatch.Number {
-			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d)\n", latestBatch.Number, lastProcessedBatch)
+		// 3. Check if we are strictly behind the latest batch (Process up to N-1)
+		// User requested: "if latest is 5 then process till 4 only"
+		if nextBatchNum >= latestBatch.Number {
+			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d, Target: < %d)\n", latestBatch.Number, lastProcessedBatch, latestBatch.Number)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
@@ -635,16 +636,25 @@ func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
 
 	// Compute leaf hashes - must match circuit's hash order
 	leaves := make([]*big.Int, circuits.BatchSize)
+	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
 	for i := 0; i < circuits.BatchSize; i++ {
 		h.Reset()
 
-		// Each field must be properly reduced before hashing
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		// Pack fields
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
 
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
@@ -674,18 +684,38 @@ func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
 
 // computeRollingHash computes the state root transition using rolling hash logic
 // This matches the circuit's computeStateTransition function
+// computeRollingHash computes the state root transition using rolling hash logic
+// This matches the circuit's computeStateTransition function
 func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transaction) *big.Int {
 	h := mimc.NewMiMC()
 	currentStateRoot := prevStateRoot
 
+	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
 	for i := 0; i < circuits.BatchSize; i++ {
+		// 1. Compute TxHash (Leaf)
 		h.Reset()
-		h.Write(BigIntTo32Bytes(currentStateRoot))
+
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
+		txHash := h.Sum(nil)
 
+		// 2. Update State Root: Hash(StateRoot, TxHash)
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(txHash)
 		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
 	return currentStateRoot
