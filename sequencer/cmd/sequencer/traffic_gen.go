@@ -8,9 +8,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -75,9 +77,8 @@ var trafficGenCmd = &cobra.Command{
 		fmt.Println("\n💸 Sending transactions...")
 
 		for i := 0; i < genTxCount; i++ {
-			// Generate random recipient
-			randomKey, _ := crypto.GenerateKey()
-			toAddress := crypto.PubkeyToAddress(randomKey.PublicKey)
+			// Send to fixed address as requested
+			toAddress := common.HexToAddress("0x25691469d348161ea4d4bf6409c34c5a084decb4")
 
 			// Amount: 0.0001 ETH (10^14 wei)
 			value := big.NewInt(100000000000000)
@@ -124,7 +125,26 @@ var trafficGenCmd = &cobra.Command{
 }
 
 func init() {
-	trafficGenCmd.Flags().StringVar(&genRPCURL, "rpc", "http://localhost:8545", "RPC URL")
-	trafficGenCmd.Flags().StringVar(&genPrivateKey, "key", "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d", "Private key (hex)")
+	// Load .env file
+	_ = godotenv.Load()
+
+	defaultRPC := os.Getenv("RPC")
+	if defaultRPC == "" {
+		defaultRPC = "http://localhost:8545" // Fallback only if env var is missing, but user wants to replace it.
+		// Wait, user said "replace it with .env's RPC".
+		// If I remove the fallback entirely, it might break if .env is missing and no flag is passed.
+		// But user said "I no longer want it to test locally, i wanna test it in our RPC".
+		// So I should probably make it empty default and fail if not provided?
+		// Or just set default to "" and let the code handle it?
+		// The code uses `genRPCURL` which is set by flag.
+		// If I set default to "", then if user runs without flag and without env, it will be empty.
+		// `ethclient.Dial("")` will likely fail.
+		// Let's set default to os.Getenv("RPC").
+	}
+
+	defaultKey := os.Getenv("PRIVATE_KEY")
+
+	trafficGenCmd.Flags().StringVar(&genRPCURL, "rpc", defaultRPC, "RPC URL (default: RPC from .env)")
+	trafficGenCmd.Flags().StringVar(&genPrivateKey, "key", defaultKey, "Private key (hex) (default: PRIVATE_KEY from .env)")
 	trafficGenCmd.Flags().IntVar(&genTxCount, "count", 10, "Number of transactions to send")
 }

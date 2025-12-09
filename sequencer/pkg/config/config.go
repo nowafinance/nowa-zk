@@ -19,12 +19,12 @@ func LoadFromEnv() (*types.Config, error) {
 	config := types.DefaultConfig()
 
 	// Load RPC URL (required)
-	if rpcURL := os.Getenv("TAN_ZK_RPC_URL"); rpcURL != "" {
+	if rpcURL := os.Getenv("RPC"); rpcURL != "" {
 		config.RPCURL = rpcURL
 	}
 
 	// Load WebSocket URL (optional)
-	if wsURL := os.Getenv("TAN_ZK_WS_URL"); wsURL != "" {
+	if wsURL := os.Getenv("WS"); wsURL != "" {
 		config.WSURL = wsURL
 	}
 
@@ -58,6 +58,15 @@ func LoadFromEnv() (*types.Config, error) {
 	// Load state DB path (optional)
 	if stateDBPath := os.Getenv("STATE_DB_PATH"); stateDBPath != "" {
 		config.StateDBPath = stateDBPath
+	}
+
+	// Load index starting block (optional)
+	if indexFromBlockStr := os.Getenv("INDEX_FROM_BLOCK"); indexFromBlockStr != "" {
+		indexFromBlock, err := strconv.ParseUint(indexFromBlockStr, 10, 64)
+		if err != nil {
+			return nil, errors.ErrConfig("invalid INDEX_FROM_BLOCK", err)
+		}
+		config.IndexFromBlock = indexFromBlock
 	}
 
 	return config, nil
@@ -112,6 +121,9 @@ func LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath string, batchSize,
 	}
 	if envConfig.StateDBPath != "" {
 		config.StateDBPath = envConfig.StateDBPath
+	}
+	if envConfig.IndexFromBlock > 0 {
+		config.IndexFromBlock = envConfig.IndexFromBlock
 	}
 
 	// 3. Apply command-line overrides

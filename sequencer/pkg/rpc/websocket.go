@@ -97,9 +97,9 @@ func NewWebSocketClient(wsURL string, opts ...WebSocketOption) (*WebSocketClient
 func NewWebSocketClientFromEnv() (*WebSocketClient, error) {
 	_ = godotenv.Load()
 
-	wsURL := os.Getenv("TAN_ZK_WS_URL")
+	wsURL := os.Getenv("WS")
 	if wsURL == "" {
-		return nil, fmt.Errorf("TAN_ZK_WS_URL environment variable is required")
+		return nil, fmt.Errorf("WS environment variable is required")
 	}
 
 	return NewWebSocketClient(wsURL)
@@ -428,4 +428,3 @@ func (w *WebSocketClient) Subscribe(method string, params []interface{}) (<-chan
 
 	return ch, nil
 }
-

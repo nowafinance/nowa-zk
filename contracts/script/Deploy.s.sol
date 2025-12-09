@@ -52,9 +52,9 @@ contract Deploy is Script {
             deployerPrivateKey = key;
         } catch {
             console.log(
-                "WARNING: PRIVATE_KEY not found, using Anvil default key"
+                unicode"❌ Error: PRIVATE_KEY environment variable not found."
             );
-            deployerPrivateKey = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+            revert("PRIVATE_KEY not found");
         }
         address deployer = vm.addr(deployerPrivateKey);
 
@@ -76,7 +76,11 @@ contract Deploy is Script {
         try vm.envUint("PRIVATE_KEY") returns (uint256 key) {
             deployerPrivateKey = key;
         } catch {
-            deployerPrivateKey = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+            console.log(
+                unicode"❌ Error: PRIVATE_KEY environment variable not found."
+            );
+            console.log("Please set PRIVATE_KEY in .env or environment.");
+            revert("PRIVATE_KEY not found");
         }
         vm.startBroadcast(deployerPrivateKey);
 
@@ -215,4 +219,3 @@ contract Deploy is Script {
         console.log("Deployment addresses saved to:", outputFile);
     }
 }
-    

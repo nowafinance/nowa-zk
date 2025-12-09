@@ -191,13 +191,14 @@ anvil
 **Terminal 2 - Deploy Contracts:**
 ```bash
 cd contracts
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+source .env
+forge script script/Deploy.s.sol --rpc-url $RPC --broadcast
 ```
 
 **Terminal 3 - Start Sequencer:**
 ```bash
 cd sequencer
-export RPC_URL=http://localhost:8545
+export RPC=http://localhost:8545
 ./sequencer-bin start
 ```
 
@@ -294,8 +295,8 @@ ws://localhost:8080/ws
 
 ```bash
 # Environment variables
-RPC_URL=http://localhost:8545      # Ethereum RPC endpoint
-WS_URL=ws://localhost:8546          # WebSocket endpoint
+RPC=http://localhost:8545           # Ethereum RPC endpoint
+WS=ws://localhost:8546              # WebSocket endpoint
 API_PORT=8080                       # API server port
 BATCH_SIZE=128                      # Transactions per batch
 STATE_DB_PATH=./data/state          # Database path

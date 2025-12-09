@@ -58,7 +58,6 @@ func (api *APIServer) Start() error {
 	// Batch endpoints
 	router.HandleFunc("/batch/latest", api.handleLatestBatch).Methods("GET")
 	router.HandleFunc("/batch/{number}", api.handleGetBatch).Methods("GET")
-	router.HandleFunc("/batches", api.handleGetAllBatches).Methods("GET")
 
 	// Prover endpoints
 	router.HandleFunc("/prover/batch/latest", api.handleLatestBatchForProver).Methods("GET")
@@ -155,7 +154,6 @@ func (api *APIServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 		{"path": "/status", "method": "GET", "description": "Get sequencer status", "link": "/status"},
 		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch", "link": "/batch/latest"},
 		{"path": "/batch/{number}", "method": "GET", "description": "Get batch by number"},
-		{"path": "/batches", "method": "GET", "description": "Get all batches", "link": "/batches"},
 		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover", "link": "/prover/batch/latest"},
 		{"path": "/prover/batch/{number}", "method": "GET", "description": "Get batch by number for prover"},
 		{"path": "/ws/batches", "method": "WS", "description": "WebSocket for real-time batch updates"},
@@ -227,18 +225,6 @@ func (api *APIServer) handleGetBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(batch); err != nil {
 		logger.Error("Failed to encode batch response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
-}
-
-func (api *APIServer) handleGetAllBatches(w http.ResponseWriter, r *http.Request) {
-	batches := api.store.GetAllBatches()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"batches": batches,
-		"count":   len(batches),
-	}); err != nil {
-		logger.Error("Failed to encode batches response: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 }

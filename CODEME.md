@@ -16,6 +16,27 @@ make setup
 make clean
 ```
 
+## Run Workflow (Makefile)
+
+The Makefile provides shortcuts for the entire development lifecycle:
+
+```bash
+# 1. Start Local Anvil Chain (Terminal 1)
+make anvil
+
+# 2. Deploy Contracts (Terminal 2)
+make deploy-local
+
+# 3. Start Sequencer (Terminal 3)
+make run-sequencer
+
+# 4. Start Prover (Terminal 4)
+make run-prover
+
+# Utilities
+make check-batch  # Check latest batch status
+```
+
 ## Manual Workflow
 
 ### 1. Setup (Prover)
@@ -37,10 +58,11 @@ cd ../contracts
 forge build
 
 # Deploy (Local Anvil)
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+source .env
+forge script script/Deploy.s.sol --rpc-url $RPC --broadcast
 
 # Deploy (Testnet)
-# forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
+# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
 ```
 
 ### 3. Sequencer
@@ -49,7 +71,7 @@ forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 cd ../sequencer
 
 # Start (Local)
-export RPC_URL=http://localhost:8545
+export RPC=http://localhost:8545
 go run ./cmd/sequencer start
 
 # Clear Data

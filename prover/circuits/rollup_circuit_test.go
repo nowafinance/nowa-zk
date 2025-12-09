@@ -19,13 +19,13 @@ func TestRollupCircuit(t *testing.T) {
 	transactions := make([]Transaction, BatchSize)
 	for i := 0; i < BatchSize; i++ {
 		transactions[i] = Transaction{
-			Nonce:    big.NewInt(int64(i)),           // Sender nonce
-			From:     big.NewInt(int64(1000 + i)),    // Sender address
-			To:       big.NewInt(int64(2000 + i)),    // Recipient address
-			Amount:   big.NewInt(int64(100 + i)),     // Amount in wei
-			GasPrice: big.NewInt(int64(20 * 1e9)),    // 20 Gwei
-			GasLimit: big.NewInt(int64(21000 + i)),   // Gas limit
-			Data:     big.NewInt(int64(3000 + i)),    // Data hash
+			Nonce:    big.NewInt(int64(i)),         // Sender nonce
+			From:     big.NewInt(int64(1000 + i)),  // Sender address
+			To:       big.NewInt(int64(2000 + i)),  // Recipient address
+			Amount:   big.NewInt(int64(100 + i)),   // Amount in wei
+			GasPrice: big.NewInt(int64(20 * 1e9)),  // 20 Gwei
+			GasLimit: big.NewInt(int64(21000 + i)), // Gas limit
+			Data:     big.NewInt(int64(3000 + i)),  // Data hash
 		}
 	}
 
@@ -326,14 +326,26 @@ func computeMerkleRoot(t *testing.T, transactions []Transaction) *big.Int {
 
 	// Compute leaf hashes
 	leaves := make([]*big.Int, BatchSize)
+
+	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
 	for i := 0; i < BatchSize; i++ {
 		h.Reset()
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+
+		// Pack fields: Nonce + (GasLimit << 64) + (GasPrice << 128)
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
 	}
@@ -359,14 +371,25 @@ func computeMerkleRootBench(transactions []Transaction) *big.Int {
 	h := mimc_offchain.NewMiMC()
 
 	leaves := make([]*big.Int, BatchSize)
+	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
 	for i := 0; i < BatchSize; i++ {
 		h.Reset()
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+
+		// Pack fields
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasPrice.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].GasLimit.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
 		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
 	}
@@ -393,12 +416,31 @@ func computeStateRoot(t *testing.T, prevRoot *big.Int, transactions []Transactio
 
 	// Process each transaction and update state root
 	for i := 0; i < BatchSize; i++ {
+		// 1. Compute TxHash (Leaf)
 		h.Reset()
-		h.Write(BigIntTo32Bytes(currentStateRoot))
+
+		shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+		shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
+		txHash := h.Sum(nil)
+
+		// 2. Update State Root: Hash(StateRoot, TxHash)
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(txHash)
 		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
 
@@ -411,12 +453,31 @@ func computeStateRootBench(prevRoot *big.Int, transactions []Transaction) *big.I
 	currentStateRoot := prevRoot
 
 	for i := 0; i < BatchSize; i++ {
+		// 1. Compute TxHash (Leaf)
 		h.Reset()
-		h.Write(BigIntTo32Bytes(currentStateRoot))
+
+		shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
+		shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
+
+		nonce := transactions[i].Nonce.(*big.Int)
+		gasLimit := transactions[i].GasLimit.(*big.Int)
+		gasPrice := transactions[i].GasPrice.(*big.Int)
+
+		packed := new(big.Int).Set(nonce)
+		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
+		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
+
+		h.Write(BigIntTo32Bytes(packed))
 		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
 		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Nonce.(*big.Int)))
+		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
+		txHash := h.Sum(nil)
+
+		// 2. Update State Root: Hash(StateRoot, TxHash)
+		h.Reset()
+		h.Write(BigIntTo32Bytes(currentStateRoot))
+		h.Write(txHash)
 		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
 

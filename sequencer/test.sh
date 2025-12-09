@@ -12,7 +12,7 @@ case "${1:-unit}" in
         go test ./pkg/rpc/... -short -v
         ;;
     integration|int)
-        echo "Running integration tests (requires .env with TAN_ZK_RPC_URL)..."
+        echo "Running integration tests (requires .env with RPC)..."
         if [ ! -f .env ]; then
             echo "⚠️  Warning: .env file not found. Creating from .env.example..."
             if [ -f .env.example ]; then

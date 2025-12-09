@@ -18,13 +18,13 @@ func TestNewClient(t *testing.T) {
 	}{
 		{
 			name:    "valid URL",
-			rpcURL:  "http://localhost:8545",
+			rpcURL:  "http://example.com",
 			opts:    nil,
 			wantErr: false,
 		},
 		{
 			name:    "valid URL with timeout",
-			rpcURL:  "http://localhost:8545",
+			rpcURL:  "http://example.com",
 			opts:    []Option{WithTimeout(60 * time.Second)},
 			wantErr: false,
 		},
@@ -36,7 +36,7 @@ func TestNewClient(t *testing.T) {
 		},
 		{
 			name:    "invalid timeout",
-			rpcURL:  "http://localhost:8545",
+			rpcURL:  "http://example.com",
 			opts:    []Option{WithTimeout(-1 * time.Second)},
 			wantErr: true,
 		},
@@ -68,7 +68,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &Config{
-				RPCURL:          "http://localhost:8545",
+				RPCURL:          "http://example.com",
 				Timeout:         30 * time.Second,
 				MaxRetries:      3,
 				RetryBackoff:    100 * time.Millisecond,
@@ -86,7 +86,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "negative timeout",
 			config: &Config{
-				RPCURL:  "http://localhost:8545",
+				RPCURL:  "http://example.com",
 				Timeout: -1 * time.Second,
 			},
 			wantErr: true,
@@ -94,7 +94,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "negative max retries",
 			config: &Config{
-				RPCURL:     "http://localhost:8545",
+				RPCURL:     "http://example.com",
 				MaxRetries: -1,
 			},
 			wantErr: true,
@@ -102,7 +102,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "max backoff less than backoff",
 			config: &Config{
-				RPCURL:          "http://localhost:8545",
+				RPCURL:          "http://example.com",
 				RetryBackoff:    10 * time.Second,
 				MaxRetryBackoff: 1 * time.Second,
 			},
@@ -255,4 +255,3 @@ func isErrorType(err error, target interface{}) bool {
 		return false
 	}
 }
-

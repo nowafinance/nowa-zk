@@ -8,6 +8,7 @@ build/
 *.dylib
 *.test
 *.out
+*.prof
 
 # Sequencer build files (Go binaries)
 sequencer/sequencer
@@ -31,12 +32,7 @@ node_modules/
 
 # Misc
 .env
-.env.*
 
-# Environment files
-.env
-.env.*
-contracts/.env
 
 # Logs
 *.log
@@ -51,7 +47,6 @@ Thumbs.db
 .idea/
 .history/
 *.swp
-+
 # Docker/local volumes (if created locally)
 .docker/
 **/tmp/
@@ -63,6 +58,8 @@ yarn-error.log*
 
 contracts/lib/
 prover/prover-bin 
-# contracts/deployments
+contracts/src/generated/
+contracts/broadcast/
 sequencer/sequencer-bin 
 .tan-zk
+contracts/deployments
