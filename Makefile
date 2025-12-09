@@ -5,6 +5,11 @@
 # Default target: Full fresh setup and test
 all: clean setup build test
 
+# Default target for CI dependencies
+deps:
+	@cd sequencer && go mod download
+	@cd prover && go mod download
+
 # --- 1. Clean ---
 
 clean:

@@ -45,28 +45,16 @@ contract BatchRegistry {
     );
 
     /// @notice Emitted when a batch is finalized
-    event BatchFinalized(
-        uint256 indexed batchNumber,
-        bytes32 indexed newStateRoot
-    );
+    event BatchFinalized(uint256 indexed batchNumber, bytes32 indexed newStateRoot);
 
     /// @notice Emitted when sequencer is updated
-    event SequencerUpdated(
-        address indexed oldSequencer,
-        address indexed newSequencer
-    );
+    event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer);
 
     /// @notice Emitted when ownership is transferred
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     /// @notice Emitted when the verifier is updated
-    event VerifierUpdated(
-        address indexed oldVerifier,
-        address indexed newVerifier
-    );
+    event VerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
 
     /// @notice Emitted when the contract is paused
     event Paused(address account);
@@ -126,10 +114,7 @@ contract BatchRegistry {
 
     /// @notice Internal function to check sequencer
     function _onlySequencer() internal view {
-        require(
-            msg.sender == sequencer,
-            "BatchRegistry: caller is not the sequencer"
-        );
+        require(msg.sender == sequencer, "BatchRegistry: caller is not the sequencer");
     }
 
     /// @notice Internal function to check if contract is not paused
@@ -144,18 +129,9 @@ contract BatchRegistry {
      * @param _sequencer Address of the authorized sequencer
      */
     constructor(address _verifier, address _stateManager, address _sequencer) {
-        require(
-            _verifier != address(0),
-            "BatchRegistry: verifier cannot be zero address"
-        );
-        require(
-            _stateManager != address(0),
-            "BatchRegistry: stateManager cannot be zero address"
-        );
-        require(
-            _sequencer != address(0),
-            "BatchRegistry: sequencer cannot be zero address"
-        );
+        require(_verifier != address(0), "BatchRegistry: verifier cannot be zero address");
+        require(_stateManager != address(0), "BatchRegistry: stateManager cannot be zero address");
+        require(_sequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
 
         owner = msg.sender;
         verifier = IVerifier(_verifier);
@@ -190,28 +166,13 @@ contract BatchRegistry {
         uint256[6] calldata publicInputs
     ) external onlySequencer whenNotPaused returns (uint256 batchNumber) {
         // Input validation
-        require(
-            batchHash != bytes32(0),
-            "BatchRegistry: batch hash cannot be zero"
-        );
-        require(
-            newStateRoot != bytes32(0),
-            "BatchRegistry: new state root cannot be zero"
-        );
-        require(
-            batchData.length > 0,
-            "BatchRegistry: batch data cannot be empty"
-        );
-        require(
-            batchHashToNumber[batchHash] == 0,
-            "BatchRegistry: batch hash already exists"
-        );
+        require(batchHash != bytes32(0), "BatchRegistry: batch hash cannot be zero");
+        require(newStateRoot != bytes32(0), "BatchRegistry: new state root cannot be zero");
+        require(batchData.length > 0, "BatchRegistry: batch data cannot be empty");
+        require(batchHashToNumber[batchHash] == 0, "BatchRegistry: batch hash already exists");
 
         // Verify batch hash matches data (data availability check)
-        require(
-            keccak256(batchData) == batchHash,
-            "BatchRegistry: batch hash mismatch"
-        );
+        require(keccak256(batchData) == batchHash, "BatchRegistry: batch hash mismatch");
 
         // Get expected old state root (chain from last batch or use finalized root)
         bytes32 expectedOldStateRoot;
@@ -226,10 +187,7 @@ contract BatchRegistry {
             bytes32(publicInputs[1]) == expectedOldStateRoot,
             "BatchRegistry: publicInputs[1] must match expected old state root"
         );
-        require(
-            bytes32(publicInputs[1]) != newStateRoot,
-            "BatchRegistry: state root unchanged"
-        );
+        require(bytes32(publicInputs[1]) != newStateRoot, "BatchRegistry: state root unchanged");
 
         // Assign batch number
         batchNumber = nextBatchNumber;
@@ -242,30 +200,13 @@ contract BatchRegistry {
         // publicInputs[4] = Timestamp
         // publicInputs[5] = SequencerAddr
 
-        require(
-            bytes32(publicInputs[2]) == newStateRoot,
-            "BatchRegistry: publicInputs[2] must match newStateRoot"
-        );
-        require(
-            publicInputs[3] == batchNumber,
-            "BatchRegistry: publicInputs[3] must match batchNumber"
-        );
-        require(
-            publicInputs[4] <= block.timestamp + 300,
-            "BatchRegistry: timestamp cannot be too far in future"
-        );
-        require(
-            publicInputs[5] == uint256(uint160(msg.sender)),
-            "BatchRegistry: sequencer address mismatch"
-        );
+        require(bytes32(publicInputs[2]) == newStateRoot, "BatchRegistry: publicInputs[2] must match newStateRoot");
+        require(publicInputs[3] == batchNumber, "BatchRegistry: publicInputs[3] must match batchNumber");
+        require(publicInputs[4] <= block.timestamp + 300, "BatchRegistry: timestamp cannot be too far in future");
+        require(publicInputs[5] == uint256(uint160(msg.sender)), "BatchRegistry: sequencer address mismatch");
 
         // Verify the ZK proof
-        bool proofValid = verifier.verifyProof(
-            proofA,
-            proofB,
-            proofC,
-            publicInputs
-        );
+        bool proofValid = verifier.verifyProof(proofA, proofB, proofC, publicInputs);
         require(proofValid, "BatchRegistry: invalid proof");
 
         // Store batch metadata (Finalized immediately)
@@ -286,14 +227,7 @@ contract BatchRegistry {
         // Update StateManager immediately
         STATE_MANAGER.updateStateRoot(newStateRoot, batchNumber);
 
-        emit BatchRegistered(
-            batchNumber,
-            batchHash,
-            expectedOldStateRoot,
-            newStateRoot,
-            msg.sender,
-            block.timestamp
-        );
+        emit BatchRegistered(batchNumber, batchHash, expectedOldStateRoot, newStateRoot, msg.sender, block.timestamp);
         emit BatchFinalized(batchNumber, newStateRoot);
 
         return batchNumber;
@@ -304,13 +238,8 @@ contract BatchRegistry {
      * @param batchNumber The batch number to query
      * @return batch The Batch struct for the given batch number
      */
-    function getBatch(
-        uint256 batchNumber
-    ) external view returns (Batch memory batch) {
-        require(
-            batchNumber > 0 && batchNumber < nextBatchNumber,
-            "BatchRegistry: invalid batch number"
-        );
+    function getBatch(uint256 batchNumber) external view returns (Batch memory batch) {
+        require(batchNumber > 0 && batchNumber < nextBatchNumber, "BatchRegistry: invalid batch number");
         return batches[batchNumber];
     }
 
@@ -319,9 +248,7 @@ contract BatchRegistry {
      * @param batchHash The batch hash to query
      * @return batchNumber The batch number associated with the hash, or zero if not found
      */
-    function getBatchNumber(
-        bytes32 batchHash
-    ) external view returns (uint256 batchNumber) {
+    function getBatchNumber(bytes32 batchHash) external view returns (uint256 batchNumber) {
         return batchHashToNumber[batchHash];
     }
 
@@ -330,9 +257,7 @@ contract BatchRegistry {
      * @param batchHash The batch hash to check
      * @return exists True if the batch hash has been registered
      */
-    function batchExists(
-        bytes32 batchHash
-    ) external view returns (bool exists) {
+    function batchExists(bytes32 batchHash) external view returns (bool exists) {
         return batchHashToNumber[batchHash] != 0;
     }
 
@@ -352,10 +277,7 @@ contract BatchRegistry {
      * @param newSequencer The address of the new sequencer
      */
     function updateSequencer(address newSequencer) external onlyOwner {
-        require(
-            newSequencer != address(0),
-            "BatchRegistry: sequencer cannot be zero address"
-        );
+        require(newSequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
         address oldSequencer = sequencer;
         sequencer = newSequencer;
         emit SequencerUpdated(oldSequencer, newSequencer);
@@ -367,10 +289,7 @@ contract BatchRegistry {
      * @param newVerifier The address of the new verifier contract
      */
     function updateVerifier(address newVerifier) external onlyOwner {
-        require(
-            newVerifier != address(0),
-            "BatchRegistry: verifier cannot be zero address"
-        );
+        require(newVerifier != address(0), "BatchRegistry: verifier cannot be zero address");
         address oldVerifier = address(verifier);
         verifier = IVerifier(newVerifier);
         emit VerifierUpdated(oldVerifier, newVerifier);
@@ -402,10 +321,7 @@ contract BatchRegistry {
      * @param newOwner The address of the new owner
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(
-            newOwner != address(0),
-            "BatchRegistry: new owner is the zero address"
-        );
+        require(newOwner != address(0), "BatchRegistry: new owner is the zero address");
         address oldOwner = owner;
         owner = newOwner;
         emit OwnershipTransferred(oldOwner, newOwner);
