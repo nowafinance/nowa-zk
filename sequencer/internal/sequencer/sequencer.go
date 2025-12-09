@@ -257,20 +257,8 @@ func (s *Service) catchUpBlocks() {
 	default:
 	}
 
-	// Load last processed block from database
-	lastBlockNum, err := s.batches.GetLastProcessedBlock()
-	if err != nil {
-		logger.Warn("Failed to get last processed block: %v, starting from 0", err)
-		lastBlockNum = 0
-	} else if lastBlockNum > 0 {
-		logger.Info("📦 Resuming from block #%d", lastBlockNum)
-	} else if s.config.IndexFromBlock > 0 {
-		// New configuration: Start from specific block if provided
-		lastBlockNum = s.config.IndexFromBlock - 1 // Make it start processing FROM IndexFromBlock
-		logger.Info("📦 Configuration overrides start block: starting from #%d", s.config.IndexFromBlock)
-	} else {
-		logger.Info("📦 Starting from block #0")
-	}
+	// Determine starting block
+	lastBlockNum := s.initStartingBlock()
 
 	// Get current block number
 	currentBlockNum, err := s.rpcClient.BlockNumber(s.ctx)
@@ -313,14 +301,8 @@ func (s *Service) catchUpBlocks() {
 func (s *Service) pollBlocks() {
 	logger.Info("📡 Polling for new blocks (every 2 seconds)")
 
-	// Load last processed block from database
-	lastBlockNum, err := s.batches.GetLastProcessedBlock()
-	if err != nil {
-		logger.Warn("Failed to get last processed block: %v, starting from 0", err)
-		lastBlockNum = 0
-	} else {
-		logger.Info("📦 Resuming from block #%d", lastBlockNum)
-	}
+	// Determine starting block
+	lastBlockNum := s.initStartingBlock()
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -640,4 +622,46 @@ func (s *Service) Info() string {
 		return "zk-sequencer initialized (not started)"
 	}
 	return "zk-sequencer running"
+}
+
+// initStartingBlock determines the starting block number and persists it to the DB if needed.
+// Priority:
+// 1. Database (Last Processed Block)
+// 2. Configuration (INDEX_FROM_BLOCK)
+// 3. Default (0)
+// Returns the block number representing the *last processed block*.
+func (s *Service) initStartingBlock() uint64 {
+	// 1. Try to load from database
+	lastBlock, err := s.batches.GetLastProcessedBlock()
+	if err == nil && lastBlock > 0 {
+		logger.Info("📦 Resuming from block #%d (found in DB)", lastBlock)
+		return lastBlock
+	}
+
+	if err != nil {
+		logger.Warn("Failed to get last processed block from DB: %v (will check config)", err)
+	}
+
+	var startFrom uint64
+
+	// 2. Check configuration (Env / flag)
+	if s.config.IndexFromBlock > 0 {
+		// We subtract 1 because the caller will start processing at lastBlock + 1
+		startFrom = s.config.IndexFromBlock - 1
+		logger.Info("📦 Configuration overrides start block: starting from #%d (INDEX_FROM_BLOCK=%d)",
+			s.config.IndexFromBlock, s.config.IndexFromBlock)
+	} else {
+		// 3. Default to 0
+		logger.Info("📦 Starting from block #0 (default)")
+		startFrom = 0
+	}
+
+	// Persist this decision to DB so it is "initialized"
+	if err := s.batches.SetLastProcessedBlock(startFrom); err != nil {
+		logger.Warn("Failed to persist initial start block #%d to DB: %v", startFrom, err)
+	} else {
+		logger.Info("💾 Persisted initial start block #%d to DB", startFrom)
+	}
+
+	return startFrom
 }

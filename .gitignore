@@ -47,7 +47,6 @@ Thumbs.db
 .idea/
 .history/
 *.swp
-+
 # Docker/local volumes (if created locally)
 .docker/
 **/tmp/
@@ -59,6 +58,8 @@ yarn-error.log*
 
 contracts/lib/
 prover/prover-bin 
-# contracts/deployments
+contracts/src/generated/
+contracts/broadcast/
 sequencer/sequencer-bin 
 .tan-zk
+contracts/deployments

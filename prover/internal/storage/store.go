@@ -128,3 +128,37 @@ func (s *ProverStore) GetProof(batchNumber uint64) (*ProofData, error) {
 	}
 	return &data, nil
 }
+
+// SaveLastStateRoot saves the last verified state root
+func (s *ProverStore) SaveLastStateRoot(stateRoot string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("last_state_root"), []byte(stateRoot))
+	})
+}
+
+// GetLastStateRoot retrieves the last verified state root
+func (s *ProverStore) GetLastStateRoot() (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var stateRoot string
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("last_state_root"))
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			stateRoot = string(val)
+			return nil
+		})
+	})
+
+	return stateRoot, err
+}

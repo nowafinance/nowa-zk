@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
@@ -206,6 +207,39 @@ func start(cmd *cobra.Command, args []string) {
 		log.Printf("🔄 Resuming from batch #%d", lastProcessedBatch)
 	}
 
+	// Sync with contract state to avoid re-submitting finalized batches
+	onChainBatches, err := getTotalBatches(client, contractAddr)
+	if err != nil {
+		log.Printf("⚠️  Failed to fetch on-chain batch count: %v", err)
+	} else {
+		onChainBatchesU64 := onChainBatches.Uint64()
+		if onChainBatchesU64 > lastProcessedBatch {
+			log.Printf("⚠️  Local state is behind contract. Fast-forwarding %d -> %d", lastProcessedBatch, onChainBatchesU64)
+			lastProcessedBatch = onChainBatchesU64
+			if err := store.SaveLastProcessedBatch(lastProcessedBatch); err != nil {
+				log.Printf("⚠️  Failed to save synced state: %v", err)
+			}
+		} else if onChainBatchesU64 < lastProcessedBatch {
+			// This indicates a potential reorg or contract redeploy with old state
+			log.Printf("⚠️  WARNING: Contract has FEWER batches (%d) than local state (%d). Contract might have been reset.", onChainBatchesU64, lastProcessedBatch)
+			// We could reset local state here, but let's just warn for now.
+			// If we really want to recover, we should probably respect the contract?
+			// If contract is 0, we should probably start from 0.
+			if onChainBatchesU64 == 0 {
+				log.Printf("⚠️  Contract is empty. Resetting local progress to 0.")
+				lastProcessedBatch = 0
+			}
+		}
+	}
+
+	// Load last known state root from DB
+	localStateRootStr, err := store.GetLastStateRoot()
+	var localStateRoot *big.Int
+	if err == nil && localStateRootStr != "" {
+		localStateRoot = parseBigInt(localStateRootStr)
+		log.Printf("📦 Loaded last known state root from DB: %s", localStateRoot.String())
+	}
+
 	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
 	log.Println("   Polling for new batches...")
@@ -219,13 +253,17 @@ func start(cmd *cobra.Command, args []string) {
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
+		if latestBatch == nil {
+			log.Println("⏳ No batches generated yet. Waiting...")
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
 		log.Printf("✅ Fetched latest batch info: %v\n", latestBatch.Number)
 
 		// 2. Determine the next batch we want to process
 		nextBatchNum := lastProcessedBatch + 1
 
 		// 3. Check if we are strictly behind the latest batch (Process up to N-1)
-		// User requested: "if latest is 5 then process till 4 only"
 		if nextBatchNum >= latestBatch.Number {
 			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d, Target: < %d)\n", latestBatch.Number, lastProcessedBatch, latestBatch.Number)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
@@ -242,20 +280,25 @@ func start(cmd *cobra.Command, args []string) {
 
 		log.Printf("📦 Processing batch #%d (%d transactions)\n", batch.Number, len(batch.Transactions))
 
-		// 5. Get current state root from contract to ensure alignment
-		// This is critical: we must prove the transition from the CONTRACT's current state
-		contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
-		if err != nil {
-			log.Printf("⚠️  Failed to fetch contract state root: %v\n", err)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
+		// 5. Ensure we have a valid OldStateRoot
+		// If we don't have a local one (startup), fetch from contract
+		if localStateRoot == nil {
+			contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
+			if err != nil {
+				log.Printf("⚠️  Failed to fetch contract state root: %v\n", err)
+				time.Sleep(time.Duration(pollInterval) * time.Second)
+				continue
+			}
+			localStateRoot = contractStateRoot
+			log.Printf("   🏛️  Initialized State Root from Contract: %s\n", localStateRoot.String())
+		} else {
+			log.Printf("   💾 Using Local OldStateRoot: %s\n", localStateRoot.String())
 		}
-		log.Printf("   🏛️  Contract State Root: %s\n", contractStateRoot.String())
 
-		// Generate proof using CONTRACT's state root as PrevStateRoot
+		// Generate proof using LOCAL state root as PrevStateRoot
 		log.Println("   🔐 Generating proof...")
 		sequencerAddr := hashAddress(auth.From.Hex())
-		proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, contractStateRoot, sequencerAddr)
+		proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
 		if err != nil {
 			log.Printf("   ❌ Failed to generate proof: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
@@ -274,14 +317,48 @@ func start(cmd *cobra.Command, args []string) {
 		log.Println("   ✅ Proof verified locally")
 
 		// Submit proof to contract
+		// Submit proof to contract with retry logic
 		log.Println("   📡 Submitting proof to contract...")
-		txHash, err := submitProof(client, auth, contractAddr, batch, proof, contractStateRoot, calculatedNewStateRoot)
-		if err != nil {
-			log.Printf("   ❌ Failed to submit proof: %v\n", err)
+
+		var tx *types.Transaction
+		submitted := false
+
+		for attempt := 1; attempt <= 3; attempt++ {
+			tx, err = submitProof(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot)
+			if err == nil {
+				submitted = true
+				break
+			}
+
+			if attempt < 3 {
+				log.Printf("   ⚠️  Submission failed: %v. Retrying in 5s... (Attempt %d/3)\n", err, attempt)
+				time.Sleep(5 * time.Second)
+			}
+		}
+
+		if !submitted {
+			log.Printf("   ❌ Failed to submit proof after 3 attempts: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
-		log.Printf("   ✅ Proof submitted. TxHash: %s\n", txHash)
+
+		log.Printf("   ✅ Proof submitted. TxHash: %s\n", tx.Hash().Hex())
+		log.Println("   ⏳ Waiting for transaction to be mined...")
+
+		receipt, err := bind.WaitMined(context.Background(), client, tx)
+		if err != nil {
+			log.Printf("   ❌ Transaction mining failed: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
+
+		if receipt.Status != types.ReceiptStatusSuccessful {
+			log.Printf("   ❌ Transaction reverted with status: %v\n", receipt.Status)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
+
+		log.Printf("   ✅ Transaction mined. Block Number: %v\n", receipt.BlockNumber)
 		log.Println()
 
 		// Save state to store
@@ -291,6 +368,13 @@ func start(cmd *cobra.Command, args []string) {
 		if err := store.SaveProof(batch.Number, proof, publicWitness); err != nil {
 			log.Printf("⚠️  Failed to save proof data: %v", err)
 		}
+
+		// Update local state root and persist
+		localStateRoot = calculatedNewStateRoot
+		if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
+			log.Printf("⚠️  Failed to persist state root: %v", err)
+		}
+		log.Printf("   💾 Updated Local State Root to: %s\n", localStateRoot.String())
 
 		lastProcessedBatch = batch.Number
 	}
@@ -375,6 +459,10 @@ func fetchLatestBatch(sequencerURL string) (*Batch, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // No batches yet
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -477,7 +565,7 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 	return proof, publicWitness, circuit.NewStateRoot.(*big.Int), nil
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *Batch, proof groth16.Proof, prevStateRoot *big.Int, newStateRootBig *big.Int) (string, error) {
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *Batch, proof groth16.Proof, prevStateRoot *big.Int, newStateRootBig *big.Int) (*types.Transaction, error) {
 	// 1. Reconstruct batchData string
 	batchDataStr := fmt.Sprintf("%d:%s:%s:%d",
 		batch.Number,
@@ -492,7 +580,7 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	// 3. Extract proof points
 	bn254Proof, ok := proof.(*bn254.Proof)
 	if !ok {
-		return "", fmt.Errorf("invalid proof type")
+		return nil, fmt.Errorf("invalid proof type")
 	}
 
 	proofA := [2]*big.Int{bn254Proof.Ar.X.BigInt(new(big.Int)), bn254Proof.Ar.Y.BigInt(new(big.Int))}
@@ -551,7 +639,7 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	const abiJSON = `[{"inputs":[{"internalType":"bytes32","name":"batchHash","type":"bytes32"},{"internalType":"bytes32","name":"newStateRoot","type":"bytes32"},{"internalType":"bytes","name":"batchData","type":"bytes"},{"internalType":"uint256[2]","name":"proofA","type":"uint256[2]"},{"internalType":"uint256[2][2]","name":"proofB","type":"uint256[2][2]"},{"internalType":"uint256[2]","name":"proofC","type":"uint256[2]"},{"internalType":"uint256[6]","name":"publicInputs","type":"uint256[6]"}],"name":"registerBatch","outputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"}],"stateMutability":"nonpayable","type":"function"}, {"inputs":[],"name":"getCurrentStateRoot","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse ABI: %w", err)
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
 	}
 
 	// Debug logs
@@ -568,10 +656,10 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 	tx, err := contract.Transact(auth, "registerBatch", batchHash, newStateRoot, batchData, proofA, proofB, proofC, publicInputs)
 	if err != nil {
-		return "", fmt.Errorf("failed to send transaction: %w", err)
+		return nil, fmt.Errorf("failed to send transaction: %w", err)
 	}
 
-	return tx.Hash().Hex(), nil
+	return tx, nil
 }
 
 func getCurrentStateRoot(client *ethclient.Client, contractAddr string) (*big.Int, error) {
@@ -591,6 +679,23 @@ func getCurrentStateRoot(client *ethclient.Client, contractAddr string) (*big.In
 	// Convert bytes32 to big.Int
 	rootBytes := result[0].([32]byte)
 	return new(big.Int).SetBytes(rootBytes[:]), nil
+}
+
+func getTotalBatches(client *ethclient.Client, contractAddr string) (*big.Int, error) {
+	const abiJSON = `[{"inputs":[],"name":"totalBatches","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+	}
+
+	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
+	var result []interface{}
+	err = contract.Call(&bind.CallOpts{}, &result, "totalBatches")
+	if err != nil {
+		return nil, fmt.Errorf("failed to call totalBatches: %w", err)
+	}
+
+	return result[0].(*big.Int), nil
 }
 
 // Helper functions with proper field reduction
