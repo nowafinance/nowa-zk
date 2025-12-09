@@ -5,6 +5,11 @@
 # Default target: Full fresh setup and test
 all: clean setup build test
 
+# Default target for CI dependencies
+deps:
+	@cd sequencer && go mod download
+	@cd prover && go mod download
+
 # --- 1. Clean ---
 
 clean:
@@ -23,6 +28,8 @@ setup: build-prover
 	@echo "🔑 Running Prover Setup..."
 	@mkdir -p .tan-zk/keys
 	@./build/prover-bin setup --output-dir .tan-zk/keys --contract-output contracts/src/generated
+	@echo "📝 Formatting generated contract..."
+	@cd contracts && forge fmt src/generated/RollupVerifier.sol
 
 # --- 3. Build ---
 

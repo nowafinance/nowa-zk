@@ -58,7 +58,7 @@ yarn-error.log*
 
 contracts/lib/
 prover/prover-bin 
-contracts/src/generated/
+
 contracts/broadcast/
 sequencer/sequencer-bin 
 .tan-zk

@@ -35,6 +35,15 @@ jobs:
       - name: Show Forge version
         run: forge --version
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.10"
+          cache-dependency-path: prover/go.sum
+
+      - name: Generate Verifier
+        run: cd .. && make setup
+
       - name: Install Forge dependencies
         run: forge install foundry-rs/forge-std
 

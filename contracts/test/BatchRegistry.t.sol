@@ -31,10 +31,7 @@ contract BatchRegistryTest is Test {
         uint256 timestamp
     );
 
-    event BatchFinalized(
-        uint256 indexed batchNumber,
-        bytes32 indexed newStateRoot
-    );
+    event BatchFinalized(uint256 indexed batchNumber, bytes32 indexed newStateRoot);
 
     function setUp() public {
         owner = address(this);
@@ -44,11 +41,7 @@ contract BatchRegistryTest is Test {
         // Deploy contracts
         stateManager = new StateManager(INITIAL_STATE_ROOT);
         verifier = new MockVerifier();
-        batchRegistry = new BatchRegistry(
-            address(verifier),
-            address(stateManager),
-            sequencer
-        );
+        batchRegistry = new BatchRegistry(address(verifier), address(stateManager), sequencer);
 
         // Transfer StateManager ownership to BatchRegistry
         stateManager.transferOwnership(address(batchRegistry));
@@ -87,10 +80,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -103,26 +93,11 @@ contract BatchRegistryTest is Test {
 
         vm.prank(sequencer);
         vm.expectEmit(true, true, true, true);
-        emit BatchRegistered(
-            1,
-            batchHash,
-            INITIAL_STATE_ROOT,
-            newStateRoot,
-            sequencer,
-            block.timestamp
-        );
+        emit BatchRegistered(1, batchHash, INITIAL_STATE_ROOT, newStateRoot, sequencer, block.timestamp);
         vm.expectEmit(true, true, false, false);
         emit BatchFinalized(1, newStateRoot);
 
-        uint256 batchNumber = batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        uint256 batchNumber = batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
 
         assertEq(batchNumber, 1);
 
@@ -131,10 +106,7 @@ contract BatchRegistryTest is Test {
         assertEq(batch.oldStateRoot, INITIAL_STATE_ROOT);
         assertEq(batch.newStateRoot, newStateRoot);
         assertEq(batch.submitter, sequencer);
-        assertEq(
-            uint8(batch.status),
-            uint8(BatchRegistry.BatchStatus.Finalized)
-        ); // Should be Finalized immediately
+        assertEq(uint8(batch.status), uint8(BatchRegistry.BatchStatus.Finalized)); // Should be Finalized immediately
         assertEq(batchRegistry.totalBatches(), 1);
         assertEq(stateManager.getCurrentStateRoot(), newStateRoot); // State root updated immediately
     }
@@ -145,10 +117,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -161,15 +130,7 @@ contract BatchRegistryTest is Test {
 
         vm.prank(user);
         vm.expectRevert("BatchRegistry: caller is not the sequencer");
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
     }
 
     function testRevert_RegisterBatch_InvalidBatchHash() public {
@@ -178,10 +139,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -194,15 +152,7 @@ contract BatchRegistryTest is Test {
 
         vm.prank(sequencer);
         vm.expectRevert("BatchRegistry: batch hash mismatch");
-        batchRegistry.registerBatch(
-            wrongHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(wrongHash, newStateRoot, batchData, a, b, c, publicInputs);
     }
 
     function testRevert_RegisterBatch_DuplicateHash() public {
@@ -211,10 +161,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -226,27 +173,11 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
 
         vm.prank(sequencer);
         vm.expectRevert("BatchRegistry: batch hash already exists");
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
     }
 
     function testRevert_RegisterBatch_InvalidProof() public {
@@ -257,10 +188,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -273,15 +201,7 @@ contract BatchRegistryTest is Test {
 
         vm.prank(sequencer);
         vm.expectRevert("BatchRegistry: invalid proof");
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
     }
 
     function testRevert_RegisterBatch_WhenPaused() public {
@@ -292,10 +212,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -308,15 +225,7 @@ contract BatchRegistryTest is Test {
 
         vm.prank(sequencer);
         vm.expectRevert("BatchRegistry: contract is paused");
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
     }
 
     function test_SequentialFinalization() public {
@@ -324,15 +233,10 @@ contract BatchRegistryTest is Test {
         bytes memory batchData1 = abi.encode("test", 1);
         bytes32 batchHash1 = keccak256(batchData1);
         bytes32 oldStateRoot1 = stateManager.getCurrentStateRoot();
-        bytes32 newStateRoot1 = bytes32(
-            uint256(keccak256(abi.encode("newStateRoot", 1)))
-        );
+        bytes32 newStateRoot1 = bytes32(uint256(keccak256(abi.encode("newStateRoot", 1))));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs1 = [
             uint256(0),
@@ -344,23 +248,13 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        batchRegistry.registerBatch(
-            batchHash1,
-            newStateRoot1,
-            batchData1,
-            a,
-            b,
-            c,
-            publicInputs1
-        );
+        batchRegistry.registerBatch(batchHash1, newStateRoot1, batchData1, a, b, c, publicInputs1);
 
         // Register batch 2 (chained to batch 1)
         bytes memory batchData2 = abi.encode("test", 2);
         bytes32 batchHash2 = keccak256(batchData2);
         bytes32 oldStateRoot2 = newStateRoot1; // Chain from batch 1
-        bytes32 newStateRoot2 = bytes32(
-            uint256(keccak256(abi.encode("newStateRoot", 2)))
-        );
+        bytes32 newStateRoot2 = bytes32(uint256(keccak256(abi.encode("newStateRoot", 2))));
 
         uint256[6] memory publicInputs2 = [
             uint256(0),
@@ -372,24 +266,10 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        batchRegistry.registerBatch(
-            batchHash2,
-            newStateRoot2,
-            batchData2,
-            a,
-            b,
-            c,
-            publicInputs2
-        );
+        batchRegistry.registerBatch(batchHash2, newStateRoot2, batchData2, a, b, c, publicInputs2);
 
-        assertEq(
-            uint8(batchRegistry.getBatch(1).status),
-            uint8(BatchRegistry.BatchStatus.Finalized)
-        );
-        assertEq(
-            uint8(batchRegistry.getBatch(2).status),
-            uint8(BatchRegistry.BatchStatus.Finalized)
-        );
+        assertEq(uint8(batchRegistry.getBatch(1).status), uint8(BatchRegistry.BatchStatus.Finalized));
+        assertEq(uint8(batchRegistry.getBatch(2).status), uint8(BatchRegistry.BatchStatus.Finalized));
         assertEq(stateManager.getCurrentStateRoot(), newStateRoot2);
     }
 
@@ -404,19 +284,14 @@ contract BatchRegistryTest is Test {
 
             // Get actual current state root from StateManager
             bytes32 oldStateRoot = stateManager.getCurrentStateRoot();
-            bytes32 newStateRoot = bytes32(
-                uint256(keccak256(abi.encode(seed, i, block.timestamp)))
-            );
+            bytes32 newStateRoot = bytes32(uint256(keccak256(abi.encode(seed, i, block.timestamp))));
 
             // Ensure unique state roots
             vm.assume(oldStateRoot != newStateRoot);
             vm.assume(newStateRoot != bytes32(0));
 
             uint256[2] memory a = [uint256(1), uint256(2)];
-            uint256[2][2] memory b = [
-                [uint256(3), uint256(4)],
-                [uint256(5), uint256(6)]
-            ];
+            uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
             uint256[2] memory c = [uint256(7), uint256(8)];
             uint256[6] memory publicInputs = [
                 uint256(0),
@@ -428,22 +303,11 @@ contract BatchRegistryTest is Test {
             ];
 
             vm.prank(sequencer);
-            uint256 batchNumber = batchRegistry.registerBatch(
-                batchHash,
-                newStateRoot,
-                batchData,
-                a,
-                b,
-                c,
-                publicInputs
-            );
+            uint256 batchNumber = batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
             assertEq(batchNumber, i + 1);
 
             // Should be finalized immediately
-            assertEq(
-                uint8(batchRegistry.getBatch(batchNumber).status),
-                uint8(BatchRegistry.BatchStatus.Finalized)
-            );
+            assertEq(uint8(batchRegistry.getBatch(batchNumber).status), uint8(BatchRegistry.BatchStatus.Finalized));
         }
     }
 
@@ -482,10 +346,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -497,24 +358,13 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        uint256 batchNumber = batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        uint256 batchNumber = batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
 
         BatchRegistry.Batch memory batch = batchRegistry.getBatch(batchNumber);
         assertEq(batch.batchHash, batchHash);
         assertEq(batch.newStateRoot, newStateRoot);
         assertEq(batch.submitter, sequencer);
-        assertEq(
-            uint8(batch.status),
-            uint8(BatchRegistry.BatchStatus.Finalized)
-        );
+        assertEq(uint8(batch.status), uint8(BatchRegistry.BatchStatus.Finalized));
     }
 
     function test_GetBatchNumber() public {
@@ -523,10 +373,7 @@ contract BatchRegistryTest is Test {
         bytes32 newStateRoot = bytes32(uint256(2));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -538,15 +385,7 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        uint256 batchNumber = batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        uint256 batchNumber = batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
 
         assertEq(batchRegistry.getBatchNumber(batchHash), batchNumber);
         assertEq(batchRegistry.getBatchNumber(bytes32(uint256(999))), 0); // Non-existent
@@ -560,10 +399,7 @@ contract BatchRegistryTest is Test {
         assertFalse(batchRegistry.batchExists(batchHash));
 
         uint256[2] memory a = [uint256(1), uint256(2)];
-        uint256[2][2] memory b = [
-            [uint256(3), uint256(4)],
-            [uint256(5), uint256(6)]
-        ];
+        uint256[2][2] memory b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
         uint256[2] memory c = [uint256(7), uint256(8)];
         uint256[6] memory publicInputs = [
             uint256(0),
@@ -575,15 +411,7 @@ contract BatchRegistryTest is Test {
         ];
 
         vm.prank(sequencer);
-        batchRegistry.registerBatch(
-            batchHash,
-            newStateRoot,
-            batchData,
-            a,
-            b,
-            c,
-            publicInputs
-        );
+        batchRegistry.registerBatch(batchHash, newStateRoot, batchData, a, b, c, publicInputs);
 
         assertTrue(batchRegistry.batchExists(batchHash));
     }
