@@ -4,12 +4,13 @@ import "time"
 
 // Config holds sequencer configuration
 type Config struct {
-	RPCURL        string        `yaml:"rpc_url"`
-	WSURL         string        `yaml:"ws_url"`
-	BatchSize     int           `yaml:"batch_size"`
-	BatchInterval time.Duration `yaml:"batch_interval"`
-	APIPort       int           `yaml:"api_port"`
-	StateDBPath   string        `yaml:"state_db_path"`
+	RPCURL         string        `yaml:"rpc_url"`
+	WSURL          string        `yaml:"ws_url"`
+	BatchSize      int           `yaml:"batch_size"`
+	BatchInterval  time.Duration `yaml:"batch_interval"`
+	APIPort        int           `yaml:"api_port"`
+	StateDBPath    string        `yaml:"state_db_path"`
+	IndexFromBlock uint64        `yaml:"index_from_block"`
 }
 
 // DefaultConfig returns default configuration

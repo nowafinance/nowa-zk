@@ -264,6 +264,10 @@ func (s *Service) catchUpBlocks() {
 		lastBlockNum = 0
 	} else if lastBlockNum > 0 {
 		logger.Info("📦 Resuming from block #%d", lastBlockNum)
+	} else if s.config.IndexFromBlock > 0 {
+		// New configuration: Start from specific block if provided
+		lastBlockNum = s.config.IndexFromBlock - 1 // Make it start processing FROM IndexFromBlock
+		logger.Info("📦 Configuration overrides start block: starting from #%d", s.config.IndexFromBlock)
 	} else {
 		logger.Info("📦 Starting from block #0")
 	}

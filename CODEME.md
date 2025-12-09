@@ -58,10 +58,11 @@ cd ../contracts
 forge build
 
 # Deploy (Local Anvil)
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+source .env
+forge script script/Deploy.s.sol --rpc-url $RPC --broadcast
 
 # Deploy (Testnet)
-# forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
+# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
 ```
 
 ### 3. Sequencer
@@ -70,7 +71,7 @@ forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 cd ../sequencer
 
 # Start (Local)
-export RPC_URL=http://localhost:8545
+export RPC=http://localhost:8545
 go run ./cmd/sequencer start
 
 # Clear Data

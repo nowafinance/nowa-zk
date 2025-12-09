@@ -16,9 +16,9 @@ func LoadConfigFromEnv() (*Config, error) {
 	// Try to load .env file (ignore error if it doesn't exist)
 	_ = godotenv.Load()
 
-	rpcURL := os.Getenv("TAN_ZK_RPC_URL")
+	rpcURL := os.Getenv("RPC")
 	if rpcURL == "" {
-		return nil, fmt.Errorf("TAN_ZK_RPC_URL environment variable is required")
+		return nil, fmt.Errorf("RPC environment variable is required")
 	}
 
 	config := DefaultConfig()
@@ -85,4 +85,3 @@ func NewClientFromEnv() (*Client, error) {
 		url:        config.RPCURL,
 	}, nil
 }
-

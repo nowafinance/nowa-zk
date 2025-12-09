@@ -6,7 +6,7 @@ import (
 )
 
 func TestSubmitBatchProof_Stub(t *testing.T) {
-	client, err := NewClient("http://localhost:8545")
+	client, err := NewClient("http://example.com")
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
@@ -29,7 +29,7 @@ func TestSubmitBatchProof_Stub(t *testing.T) {
 }
 
 func TestSubmitBatchProof_Validation(t *testing.T) {
-	client, err := NewClient("http://localhost:8545")
+	client, err := NewClient("http://example.com")
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
@@ -86,7 +86,7 @@ func TestSubmitBatchProof_Validation(t *testing.T) {
 }
 
 func TestGetBatchStatus_Stub(t *testing.T) {
-	client, err := NewClient("http://localhost:8545")
+	client, err := NewClient("http://example.com")
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
@@ -99,7 +99,7 @@ func TestGetBatchStatus_Stub(t *testing.T) {
 }
 
 func TestGetBatchByHash_Stub(t *testing.T) {
-	client, err := NewClient("http://localhost:8545")
+	client, err := NewClient("http://example.com")
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
@@ -110,4 +110,3 @@ func TestGetBatchByHash_Stub(t *testing.T) {
 		t.Error("GetBatchByHash() expected error for stub implementation, got nil")
 	}
 }
-

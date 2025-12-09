@@ -70,9 +70,9 @@ func TestIntegration_Connection(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	rpcURL := os.Getenv("TAN_ZK_RPC_URL")
+	rpcURL := os.Getenv("RPC")
 	if rpcURL == "" {
-		t.Skip("Skipping integration test: TAN_ZK_RPC_URL not set")
+		t.Skip("Skipping integration test: RPC not set")
 	}
 
 	client, err := NewClient(rpcURL)
@@ -99,9 +99,9 @@ func TestIntegration_RetryLogic(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	rpcURL := os.Getenv("TAN_ZK_RPC_URL")
+	rpcURL := os.Getenv("RPC")
 	if rpcURL == "" {
-		t.Skip("Skipping integration test: TAN_ZK_RPC_URL not set")
+		t.Skip("Skipping integration test: RPC not set")
 	}
 
 	// Create client with aggressive retry settings
@@ -122,4 +122,3 @@ func TestIntegration_RetryLogic(t *testing.T) {
 
 	t.Logf("BlockNumber() succeeded with retries. Block: %d", blockNum)
 }
-

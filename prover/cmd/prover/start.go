@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/tannetwork/zk-sequencer/prover/bindings"
 	"github.com/tannetwork/zk-sequencer/prover/circuits"
@@ -56,7 +57,7 @@ func init() {
 	startCmd.Flags().StringVarP(&sequencerURL, "sequencer-url", "s", "http://localhost:8080", "")
 
 	// Ethereum RPC URL (default: http://localhost:8545)
-	startCmd.Flags().StringVarP(&rpcURL, "rpc-url", "r", "http://localhost:8545", "")
+	startCmd.Flags().StringVarP(&rpcURL, "rpc-url", "r", "", "Ethereum RPC URL")
 
 	// Contract address (required)
 	startCmd.Flags().StringVarP(&contractAddr, "contract", "c", "", "")
@@ -90,6 +91,22 @@ type Transaction struct {
 }
 
 func start(cmd *cobra.Command, args []string) {
+	// Load .env file
+	_ = godotenv.Load()
+
+	// Set defaults from env if not provided via flags
+	if rpcURL == "" {
+		if envRPC := os.Getenv("RPC"); envRPC != "" {
+			rpcURL = envRPC
+		}
+	}
+
+	if privateKeyHex == "" {
+		if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
+			privateKeyHex = envKey
+		}
+	}
+
 	// 1. Auto-load configuration if missing
 	if contractAddr == "" {
 		// Try to load from .tan-zk/deployments.json
@@ -540,7 +557,13 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	// Debug logs
 	log.Printf("DEBUG: BatchRoot (BigInt): %s\n", batchRoot.String())
 	log.Printf("DEBUG: BatchHash (Hex): %s\n", batchHash.Hex())
-	log.Printf("DEBUG: PublicInputs[0] (BigInt): %s\n", publicInputs[0].String())
+	log.Printf("DEBUG: PublicInputs[0] (BatchRoot): %s\n", publicInputs[0].String())
+	log.Printf("DEBUG: PublicInputs[1] (OldStateRoot): %s\n", publicInputs[1].String())
+	log.Printf("DEBUG: PublicInputs[2] (NewStateRoot): %s\n", publicInputs[2].String())
+	log.Printf("DEBUG: PublicInputs[3] (BatchNumber): %s\n", publicInputs[3].String())
+	log.Printf("DEBUG: PublicInputs[4] (Timestamp): %s\n", publicInputs[4].String())
+	log.Printf("DEBUG: PublicInputs[5] (Sequencer): %s\n", publicInputs[5].String())
+	log.Printf("DEBUG: Expected BatchNumber: %d\n", batch.Number)
 
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 	tx, err := contract.Transact(auth, "registerBatch", batchHash, newStateRoot, batchData, proofA, proofB, proofC, publicInputs)

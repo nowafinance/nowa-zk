@@ -90,8 +90,7 @@ func ExampleLoadConfigFromEnv() {
 
 func init() {
 	// Set a test RPC URL if not already set (for example tests)
-	if os.Getenv("TAN_ZK_RPC_URL") == "" {
-		os.Setenv("TAN_ZK_RPC_URL", "http://localhost:8545")
+	if os.Getenv("RPC") == "" {
+		os.Setenv("RPC", "http://localhost:8545")
 	}
 }
-

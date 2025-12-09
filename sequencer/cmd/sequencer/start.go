@@ -75,8 +75,8 @@ var startCmd = &cobra.Command{
 }
 
 func init() {
-	startCmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Tan-ZK RPC URL (overrides TAN_ZK_RPC_URL env var)")
-	startCmd.Flags().StringVar(&wsURL, "ws-url", "", "Tan-ZK WebSocket URL (overrides TAN_ZK_WS_URL env var)")
+	startCmd.Flags().StringVar(&rpcURL, "rpc-url", "", "Tan-ZK RPC URL (overrides RPC env var)")
+	startCmd.Flags().StringVar(&wsURL, "ws-url", "", "Tan-ZK WebSocket URL (overrides WS env var)")
 	startCmd.Flags().StringVar(&stateDBPath, "state-db-path", "", "Path to state database (overrides STATE_DB_PATH env var)")
 	startCmd.Flags().IntVar(&batchSize, "batch-size", 0, "Batch size (overrides BATCH_SIZE env var)")
 	startCmd.Flags().IntVar(&apiPort, "api-port", 0, "API server port (overrides API_PORT env var)")
