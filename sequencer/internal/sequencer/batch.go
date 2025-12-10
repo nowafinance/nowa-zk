@@ -35,14 +35,33 @@ func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string, rpcClient 
 	}
 }
 
+// filterProcessedTxs filters out transactions that have already been processed
+func (bb *BatchBuilder) filterProcessedTxs(txs []*rpc.Transaction) []*rpc.Transaction {
+	var uniqueTxs []*rpc.Transaction
+	for _, tx := range txs {
+		txKey := fmt.Sprintf("tx:%s", tx.Hash)
+		// Check if transaction hash already exists in SMT
+		if _, exists := bb.smt.Get(txKey); exists {
+			// Already processed, skip
+			fmt.Printf("⚠️  Skipping duplicate transaction %s (already processed)\n", tx.Hash)
+			continue
+		}
+		uniqueTxs = append(uniqueTxs, tx)
+	}
+	return uniqueTxs
+}
+
 // BuildBatch creates a new batch directly from provided transactions
 // blockNumber is used to query balances at the start of the block
 func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction, blockNumber uint64) (*types.Batch, error) {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
+	// Filter out already processed transactions
+	txs = bb.filterProcessedTxs(txs)
+
 	if len(txs) == 0 {
-		return nil, fmt.Errorf("no transactions provided")
+		return nil, fmt.Errorf("no transactions provided (or all were duplicates)")
 	}
 
 	// Generate execution traces (simplified for now)
@@ -112,8 +131,11 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
+	// Filter out already processed transactions
+	newTxs = bb.filterProcessedTxs(newTxs)
+
 	if len(newTxs) == 0 {
-		return fmt.Errorf("no transactions to append")
+		return fmt.Errorf("no transactions to append (or all were duplicates)")
 	}
 
 	// Generate execution traces for new transactions

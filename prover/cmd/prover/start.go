@@ -207,17 +207,43 @@ func start(cmd *cobra.Command, args []string) {
 		log.Printf("🔄 Resuming from batch #%d", lastProcessedBatch)
 	}
 
+	// Load last known state root from DB
+	localStateRootStr, err := store.GetLastStateRoot()
+	var localStateRoot *big.Int
+	if err == nil && localStateRootStr != "" {
+		localStateRoot = parseBigInt(localStateRootStr)
+		log.Printf("📦 Loaded last known state root from DB: %s", localStateRoot.String())
+	}
+
 	// Sync with contract state to avoid re-submitting finalized batches
 	onChainBatches, err := getTotalBatches(client, contractAddr)
 	if err != nil {
 		log.Printf("⚠️  Failed to fetch on-chain batch count: %v", err)
 	} else {
 		onChainBatchesU64 := onChainBatches.Uint64()
-		if onChainBatchesU64 > lastProcessedBatch {
-			log.Printf("⚠️  Local state is behind contract. Fast-forwarding %d -> %d", lastProcessedBatch, onChainBatchesU64)
-			lastProcessedBatch = onChainBatchesU64
-			if err := store.SaveLastProcessedBatch(lastProcessedBatch); err != nil {
-				log.Printf("⚠️  Failed to save synced state: %v", err)
+		// Always sync if local state is less than OR EQUAL to contract state
+		// Equal case handles crash-consistency (saved batch num but stale state root)
+		if onChainBatchesU64 >= lastProcessedBatch {
+			if onChainBatchesU64 > lastProcessedBatch {
+				log.Printf("⚠️  Local state is behind contract. Fast-forwarding %d -> %d", lastProcessedBatch, onChainBatchesU64)
+				lastProcessedBatch = onChainBatchesU64
+				if err := store.SaveLastProcessedBatch(lastProcessedBatch); err != nil {
+					log.Printf("⚠️  Failed to save synced state: %v", err)
+				}
+			} else {
+				log.Printf("ℹ️  Local batch matches contract (%d). Verifying state root consistency...", lastProcessedBatch)
+			}
+
+			// Sync localStateRoot to match the contract's current state root
+			contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
+			if err != nil {
+				log.Printf("❌ Failed to sync state root from contract: %v", err)
+			} else {
+				localStateRoot = contractStateRoot
+				if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
+					log.Printf("⚠️  Failed to save synced state root: %v", err)
+				}
+				log.Printf("🔄 Synced Local State Root to: %s", localStateRoot.String())
 			}
 		} else if onChainBatchesU64 < lastProcessedBatch {
 			// This indicates a potential reorg or contract redeploy with old state
@@ -230,14 +256,6 @@ func start(cmd *cobra.Command, args []string) {
 				lastProcessedBatch = 0
 			}
 		}
-	}
-
-	// Load last known state root from DB
-	localStateRootStr, err := store.GetLastStateRoot()
-	var localStateRoot *big.Int
-	if err == nil && localStateRootStr != "" {
-		localStateRoot = parseBigInt(localStateRootStr)
-		log.Printf("📦 Loaded last known state root from DB: %s", localStateRoot.String())
 	}
 
 	// Main prover loop
