@@ -158,14 +158,16 @@
   - Gas costs documented (target: < 500k gas)
 
 ### Milestone 3.4 — Prover HTTP Service
-- **Status**: PLANNED
+- **Status**: IN PROGRESS
 - **Due date**: TBD
 - **Description**: Prover API and worker queue.
 - **Scope**:
-  - POST /prove, GET /status/:id, GET /proof/:id
+  - POST /prove
+  - ✅ GET /status/:id
+  - ✅ GET /proof/:id
   - Metrics and health endpoints
   - Concurrent workers
-  - Basic persistence
+  - ✅ Basic persistence
 - **Acceptance**:
   - Sequencer → Prover request/response flow reliable
 
@@ -281,5 +283,6 @@
 
 **In Progress**: 1 milestone
 - 🔄 3.2 Batch Circuit (100 → 1000 txs)
+- 🔄 3.4 Prover HTTP Service (Partial)
 
 **Remaining**: 10 milestones

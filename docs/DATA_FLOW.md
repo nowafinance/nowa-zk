@@ -16,6 +16,7 @@ graph TD
         Prover -->|Get State Root| L1[L1 Smart Contract]
         Prover -->|Generate Proof| ProofGen[Proof Generation]
         ProofGen -->|Submit Proof| L1
+        Prover -->|Expose Status API| ProverAPI[Prover API]
     end
     
     subgraph L1 Ethereum

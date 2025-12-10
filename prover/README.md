@@ -63,7 +63,18 @@ Fetches batches from sequencer API, generates proofs, submits to contract.
 - `Nonce` - Sender nonce
 - `InputHash` - Hash of transaction data
 
-## Testing
+## API
+
+The prover exposes an HTTP API (default port 8081) for monitoring and status checks.
+
+### Endpoints
+
+- `GET /status/:id` - Check proof generation status for a batch.
+- `GET /proof/:id` - Retrieve the full binary proof data for a batch.
+- `GET /batches/latest` - Get details of the latest verified batch from L1.
+- `GET /batches/:id` - Get details of a specific batch from L1.
+
+## testing
 
 ```bash
 # Run all tests
