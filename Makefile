@@ -67,7 +67,7 @@ test-prover:
 
 # --- 5. Run (Development Workflow) ---
 
-# Terminal 1: Start local Anvil chain
+# Terminal 1: Start local Anvil chain ( for testing, or If don't have a target blockchain )
 anvil:
 	@anvil --port 8545
 
@@ -105,14 +105,6 @@ run-sequencer: build-sequencer
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
 	./build/sequencer-bin start --rpc-url $${RPC:-http://localhost:8545} --state-db-path .tan-zk/sequencer/data
 
-# Run Sequencer with Reset (Clears DB)
-reset-sequencer: build-sequencer
-	@echo "🗑️  Hard Reset: Deleting sequencer data..."
-	@rm -rf .tan-zk/sequencer/data
-	@mkdir -p .tan-zk/sequencer/data
-	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	./build/sequencer-bin start --rpc-url $${RPC:-http://localhost:8545} --state-db-path .tan-zk/sequencer/data
-
 # Terminal 4: Run Prover
 # Usage: make run-prover [CONTRACT=...] [KEY=...]
 #   If CONTRACT/KEY are omitted, they are auto-loaded from .tan-zk/deployments.json and .tan-zk/secrets.env
@@ -135,17 +127,3 @@ help:
 	@echo "  make run-sequencer   - 7. Start sequencer (Term 3)"
 	@echo "  make run-prover      - 8. Start prover (Term 4)"
 	@echo "  make check-batch     - 9. Check latest batch info"
-
-# --- 6. Utilities ---
-
-check-batch:
-	@echo "🔍 Checking Batch Registry..."
-	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	TOTAL=$$(cast call 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 "totalBatches()(uint256)" --rpc-url $${RPC:-http://localhost:8545}); \
-	echo "📊 Total Batches: $$TOTAL"; \
-	if [ "$$TOTAL" -gt 0 ]; then \
-		echo "📄 Latest Batch Details:"; \
-		cast call 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 "getBatch(uint256)(tuple(bytes32,bytes32,bytes32,address,uint256,uint256,uint8))" $$TOTAL --rpc-url $${RPC:-http://localhost:8545}; \
-	else \
-		echo "⚠️  No batches registered yet."; \
-	fi

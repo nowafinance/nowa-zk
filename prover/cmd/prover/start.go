@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -184,9 +186,6 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to instantiate BatchRegistry contract: %v", err)
 	}
 
-	// Start API Server
-	go startAPIServer(batchRegistry)
-
 	// Initialize storage
 	storePath := ".tan-zk/prover/data"
 	if err := os.MkdirAll(storePath, 0755); err != nil {
@@ -198,6 +197,9 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to initialize storage: %v", err)
 	}
 	defer store.Close()
+
+	// Start API Server
+	go startAPIServer(batchRegistry, store)
 
 	// Load last processed batch
 	lastProcessedBatch, err := store.GetLastProcessedBatch()
@@ -880,7 +882,7 @@ type BatchResponse struct {
 	Status       uint8  `json:"status"`
 }
 
-func startAPIServer(registry *bindings.BatchRegistry) {
+func startAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -930,6 +932,16 @@ func startAPIServer(registry *bindings.BatchRegistry) {
                 <td><span class="method">GET</span></td>
                 <td><code>/batches/{id}</code></td>
                 <td>Get details of a specific batch by ID (e.g., <a href="/batches/1">/batches/1</a>)</td>
+            </tr>
+            <tr>
+                <td><span class="method">GET</span></td>
+                <td><code>/status/{id}</code></td>
+                <td>Get proof generation status for a batch (e.g., <a href="/status/1">/status/1</a>)</td>
+            </tr>
+            <tr>
+                <td><span class="method">GET</span></td>
+                <td><code>/proof/{id}</code></td>
+                <td>Get full proof data for a batch (e.g., <a href="/proof/1">/proof/1</a>)</td>
             </tr>
         </tbody>
     </table>
@@ -1004,6 +1016,85 @@ func startAPIServer(registry *bindings.BatchRegistry) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
+	})
+
+	// GET /status/:id
+	mux.HandleFunc("/status/", func(w http.ResponseWriter, r *http.Request) {
+		idStr := strings.TrimPrefix(r.URL.Path, "/status/")
+		if idStr == "" {
+			http.Error(w, "Batch ID required", http.StatusBadRequest)
+			return
+		}
+
+		batchNumber, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
+			return
+		}
+
+		// Check ProverStore specifically for local proof status
+		// This tells us if *we* (this prover) generated it
+		proof, err := store.GetProof(batchNumber)
+		if err == nil && proof != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":       "COMPLETED",
+				"batch_number": batchNumber,
+				"timestamp":    proof.Timestamp,
+			})
+			return
+		}
+
+		// If not found in local store, it might be PROCESSING or PENDING
+		// We can check the contract to see if it's already verified by someone else
+		batchID := new(big.Int).SetUint64(batchNumber)
+		batch, err := registry.GetBatch(&bind.CallOpts{}, batchID)
+		if err == nil && batch.VerifiedAt.Uint64() > 0 {
+			// Verified on chain but not by us locally? Or we lost local data?
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":       "VERIFIED_ON_CHAIN",
+				"batch_number": batchNumber,
+				"note":         "Proof verified but local proof data not found",
+			})
+			return
+		}
+
+		// If not on chain and not in local store, assume PENDING or PROCESSING
+		// Real implementation would check active jobs map
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":       "PENDING",
+			"batch_number": batchNumber,
+		})
+	})
+
+	// GET /proof/:id
+	mux.HandleFunc("/proof/", func(w http.ResponseWriter, r *http.Request) {
+		idStr := strings.TrimPrefix(r.URL.Path, "/proof/")
+		if idStr == "" {
+			http.Error(w, "Batch ID required", http.StatusBadRequest)
+			return
+		}
+
+		batchNumber, err := strconv.ParseUint(idStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
+			return
+		}
+
+		proof, err := store.GetProof(batchNumber)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				http.Error(w, "Proof not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(proof)
 	})
 
 	log.Println("🌍 Starting Prover API on :8081")
