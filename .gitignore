@@ -24,6 +24,8 @@ yarn-error.log*
 __pycache__/
 *.pyc
 
+# --- Documentation (GitBooks) ---
+
 # --- IDE / Editor ---
 .vscode/
 .idea/
@@ -60,3 +62,5 @@ prover/prover-bin
 contracts/lib/
 contracts/broadcast/
 contracts/deployments/
+
+

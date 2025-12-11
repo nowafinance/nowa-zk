@@ -1,27 +1,27 @@
 package sequencer
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"html/template"
-	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/swagger"
+	"github.com/gofiber/websocket/v2"
+
+	_ "github.com/tannetwork/zk-sequencer/sequencer/docs" // Swagger docs
 	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
+	pkgLogger "github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
 )
 
 // APIServer provides REST API and WebSocket for the prover
 type APIServer struct {
 	store         *BatchStore
 	port          int
-	server        *http.Server
-	wsUpgrader    websocket.Upgrader
+	app           *fiber.App
 	wsClients     map[*websocket.Conn]bool
 	wsClientsMu   sync.RWMutex
 	batchNotifier chan *types.Batch
@@ -29,241 +29,184 @@ type APIServer struct {
 
 // NewAPIServer creates a new API server
 func NewAPIServer(store *BatchStore, port int) *APIServer {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		AppName:               "Tan-ZK Sequencer",
+		JSONEncoder:           json.Marshal,
+		JSONDecoder:           json.Unmarshal,
+	})
+
+	// Middleware
+	app.Use(logger.New())
+	app.Use(cors.New())
+
 	return &APIServer{
 		store:         store,
 		port:          port,
+		app:           app,
 		wsClients:     make(map[*websocket.Conn]bool),
 		batchNotifier: make(chan *types.Batch, 100),
-		wsUpgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true // Allow all origins in development
-			},
-		},
 	}
 }
 
 // Start starts the API server
+// @title Tan-ZK Sequencer API
+// @version 1.0
+// @description REST API for the Tan-ZK Rollup Sequencer
+// @host localhost:8080
+// @BasePath /
 func (api *APIServer) Start() error {
-	router := mux.NewRouter()
+	// Swagger
+	api.app.Get("/swagger/*", swagger.New(swagger.Config{
+		Title:       "Tan-ZK Sequencer API",
+		CustomStyle: `.swagger-ui .topbar { display: none }`,
+	}))
 
 	// Root endpoint
-	router.HandleFunc("/", api.handleRoot).Methods("GET")
+	api.app.Get("/", api.handleRoot)
 
 	// Health check
-	router.HandleFunc("/health", api.handleHealth).Methods("GET")
+	api.app.Get("/health", api.handleHealth)
 
 	// Status endpoint
-	router.HandleFunc("/status", api.handleStatus).Methods("GET")
+	api.app.Get("/status", api.handleStatus)
 
 	// Batch endpoints
-	router.HandleFunc("/batch/latest", api.handleLatestBatch).Methods("GET")
-	router.HandleFunc("/batch/{number}", api.handleGetBatch).Methods("GET")
+	api.app.Get("/batch/latest", api.handleLatestBatch)
+	api.app.Get("/batch/:number", api.handleGetBatch)
 
 	// Prover endpoints
-	router.HandleFunc("/prover/batch/latest", api.handleLatestBatchForProver).Methods("GET")
-	router.HandleFunc("/prover/batch/{number}", api.handleGetBatchForProver).Methods("GET")
+	api.app.Get("/prover/batch/latest", api.handleLatestBatchForProver)
+	api.app.Get("/prover/batch/:number", api.handleGetBatchForProver)
 
-	// WebSocket endpoint for real-time batch updates
-	router.HandleFunc("/ws/batches", api.handleWebSocket)
+	// WebSocket endpoint
+	api.app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	api.app.Get("/ws/batches", websocket.New(api.handleWebSocket))
 
-	// Start broadcast loop for WebSocket notifications
+	// Start broadcast loop
 	go api.broadcastLoop()
 
 	addr := fmt.Sprintf(":%d", api.port)
-	api.server = &http.Server{
-		Addr:    addr,
-		Handler: router,
-	}
+	pkgLogger.Info("🌐 REST API server listening on %s", addr)
+	pkgLogger.Info("🔌 WebSocket endpoint available at ws://localhost%s/ws/batches", addr)
+	pkgLogger.Info("📖 Swagger UI available at http://localhost%s/swagger/index.html", addr)
 
-	logger.Info("🌐 REST API server listening on %s", addr)
-	logger.Info("🔌 WebSocket endpoint available at ws://localhost%s/ws/batches", addr)
-	return api.server.ListenAndServe()
+	return api.app.Listen(addr)
 }
 
 // Stop stops the API server gracefully
 func (api *APIServer) Stop() error {
-	if api.server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := api.server.Shutdown(ctx); err != nil {
-			// If graceful shutdown fails, force close
-			api.server.Close()
-			return err
-		}
+	if api.app != nil {
+		return api.app.Shutdown()
 	}
 	return nil
 }
 
-const rootTemplate = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sequencer API</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
-        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
-        th { background-color: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background-color: #f8f9fa; }
-        code { background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9em; color: #d63384; }
-        a { color: #228be6; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .method { font-weight: bold; color: #228be6; }
-    </style>
-</head>
-<body>
-    <h1>Sequencer API</h1>
-    <p>Available endpoints for the ZK Rollup Sequencer.</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Method</th>
-                <th>Endpoint</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .endpoints}}
-            <tr>
-                <td><span class="method">{{.method}}</span></td>
-                <td>
-                    {{if .link}}
-                    <a href="{{.link}}">{{.path}}</a>
-                    {{else}}
-                    <code>{{.path}}</code>
-                    {{end}}
-                </td>
-                <td>{{.description}}</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-</body>
-</html>
-`
-
-func (api *APIServer) handleRoot(w http.ResponseWriter, r *http.Request) {
-	endpoints := []map[string]string{
-		{"path": "/", "method": "GET", "description": "List all available endpoints", "link": "/"},
-		{"path": "/health", "method": "GET", "description": "Health check", "link": "/health"},
-		{"path": "/status", "method": "GET", "description": "Get sequencer status", "link": "/status"},
-		{"path": "/batch/latest", "method": "GET", "description": "Get latest batch", "link": "/batch/latest"},
-		{"path": "/batch/{number}", "method": "GET", "description": "Get batch by number"},
-		{"path": "/prover/batch/latest", "method": "GET", "description": "Get latest batch for prover", "link": "/prover/batch/latest"},
-		{"path": "/prover/batch/{number}", "method": "GET", "description": "Get batch by number for prover"},
-		{"path": "/ws/batches", "method": "WS", "description": "WebSocket for real-time batch updates"},
-	}
-
-	tmpl, err := template.New("root").Parse(rootTemplate)
-	if err != nil {
-		logger.Error("Failed to parse root template: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.Execute(w, map[string]interface{}{
-		"endpoints": endpoints,
-	}); err != nil {
-		logger.Error("Failed to execute root template: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+// handleRoot godoc
+// @Summary List available endpoints
+// @Description Redirects to Swagger UI
+// @Tags Meta
+// @Success 302
+// @Router / [get]
+func (api *APIServer) handleRoot(c *fiber.Ctx) error {
+	return c.Redirect("/swagger/index.html")
 }
 
-func (api *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		logger.Error("Failed to encode health response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+// handleHealth godoc
+// @Summary Health check
+// @Description Checks if the service is up
+// @Tags Meta
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /health [get]
+func (api *APIServer) handleHealth(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"status": "ok"})
 }
 
-func (api *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+// handleStatus godoc
+// @Summary Get sequencer status
+// @Description Returns current status and batch count
+// @Tags Meta
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /status [get]
+func (api *APIServer) handleStatus(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
 		"status":      "running",
 		"batch_count": api.store.Count(),
-	}); err != nil {
-		logger.Error("Failed to encode status response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+	})
 }
 
-func (api *APIServer) handleLatestBatch(w http.ResponseWriter, r *http.Request) {
+// handleLatestBatch godoc
+// @Summary Get latest batch
+// @Description Returns the most recently created batch
+// @Tags Batches
+// @Produce json
+// @Success 200 {object} types.Batch
+// @Failure 404 {string} string "Not found"
+// @Router /batch/latest [get]
+func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
 	batch, err := api.store.GetLatestBatch()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
+		return c.Status(fiber.StatusNotFound).SendString(err.Error())
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(batch); err != nil {
-		logger.Error("Failed to encode batch response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+	return c.JSON(batch)
 }
 
-func (api *APIServer) handleGetBatch(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	number, err := strconv.ParseUint(vars["number"], 10, 64)
+// handleGetBatch godoc
+// @Summary Get batch by number
+// @Description Returns a specific batch by its number
+// @Tags Batches
+// @Param number path int true "Batch Number"
+// @Produce json
+// @Success 200 {object} types.Batch
+// @Failure 400 {string} string "Invalid ID"
+// @Failure 404 {string} string "Not found"
+// @Router /batch/{number} [get]
+func (api *APIServer) handleGetBatch(c *fiber.Ctx) error {
+	number, err := c.ParamsInt("number")
 	if err != nil {
-		http.Error(w, "invalid batch number", http.StatusBadRequest)
-		return
+		return c.Status(fiber.StatusBadRequest).SendString("invalid batch number")
 	}
 
-	batch, err := api.store.GetBatch(number)
+	batch, err := api.store.GetBatch(uint64(number))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
+		return c.Status(fiber.StatusNotFound).SendString(err.Error())
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(batch); err != nil {
-		logger.Error("Failed to encode batch response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+	return c.JSON(batch)
 }
 
-func (api *APIServer) handleGetBatchForProver(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	number, err := strconv.ParseUint(vars["number"], 10, 64)
-	if err != nil {
-		http.Error(w, "invalid batch number", http.StatusBadRequest)
-		return
-	}
-
-	batch, err := api.store.GetBatch(number)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	// Return batch with traces for prover
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(batch); err != nil {
-		logger.Error("Failed to encode batch response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+// handleLatestBatchForProver godoc
+// @Summary Get latest batch for prover
+// @Description Returns the latest batch including execution traces for the prover
+// @Tags Prover
+// @Produce json
+// @Success 200 {object} types.Batch
+// @Failure 404 {string} string "Not found"
+// @Router /prover/batch/latest [get]
+func (api *APIServer) handleLatestBatchForProver(c *fiber.Ctx) error {
+	// Same as standard handler for now, but logical separation for the future
+	return api.handleLatestBatch(c)
 }
 
-func (api *APIServer) handleLatestBatchForProver(w http.ResponseWriter, r *http.Request) {
-	batch, err := api.store.GetLatestBatch()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	// Return batch with traces for prover
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(batch); err != nil {
-		logger.Error("Failed to encode batch response: %v", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
+// handleGetBatchForProver godoc
+// @Summary Get batch by number for prover
+// @Description Returns a specific batch including execution traces for the prover
+// @Tags Prover
+// @Param number path int true "Batch Number"
+// @Produce json
+// @Success 200 {object} types.Batch
+// @Failure 400 {string} string "Invalid ID"
+// @Failure 404 {string} string "Not found"
+// @Router /prover/batch/{number} [get]
+func (api *APIServer) handleGetBatchForProver(c *fiber.Ctx) error {
+	return api.handleGetBatch(c)
 }
 
 // NotifyNewBatch notifies all WebSocket clients about a new batch
@@ -275,89 +218,79 @@ func (api *APIServer) NotifyNewBatch(batch *types.Batch) {
 	}
 }
 
-// handleWebSocket handles WebSocket connections for real-time batch updates
-func (api *APIServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := api.wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		logger.Error("WebSocket upgrade failed: %v", err)
-		return
-	}
-
+// handleWebSocket handles WebSocket connections
+func (api *APIServer) handleWebSocket(c *websocket.Conn) {
 	// Register client
 	api.wsClientsMu.Lock()
-	api.wsClients[conn] = true
+	api.wsClients[c] = true
 	api.wsClientsMu.Unlock()
 
-	logger.Info("WebSocket client connected (total clients: %d)", len(api.wsClients))
+	pkgLogger.Info("WebSocket client connected (total clients: %d)", len(api.wsClients))
 
 	// Send welcome message
-	welcomeMsg := map[string]interface{}{
+	welcomeMsg := fiber.Map{
 		"type":    "welcome",
 		"message": "Connected to sequencer WebSocket",
 		"time":    time.Now().Unix(),
 	}
-	if err := conn.WriteJSON(welcomeMsg); err != nil {
-		logger.Error("Failed to send welcome message: %v", err)
-		conn.Close()
-		return
+	if err := c.WriteJSON(welcomeMsg); err != nil {
+		return // Connection likely closed
 	}
 
-	// Handle incoming messages (ping/pong, subscriptions, etc.)
+	// Read loop (keep connection alive)
+	var (
+		mt  int
+		msg []byte
+		err error
+	)
 	for {
-		var msg map[string]interface{}
-		if err := conn.ReadJSON(&msg); err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logger.Error("WebSocket error: %v", err)
-			}
+		if mt, msg, err = c.ReadMessage(); err != nil {
 			break
 		}
 
-		// Handle ping
-		if msgType, ok := msg["type"].(string); ok && msgType == "ping" {
-			if err := conn.WriteJSON(map[string]interface{}{
-				"type": "pong",
-				"time": time.Now().Unix(),
-			}); err != nil {
-				logger.Error("Failed to send pong: %v", err)
-				break
+		// Handle simple ping/pong
+		var parsed map[string]interface{}
+		if json.Unmarshal(msg, &parsed) == nil {
+			if parsed["type"] == "ping" {
+				c.WriteJSON(fiber.Map{
+					"type": "pong",
+					"time": time.Now().Unix(),
+				})
 			}
 		}
+
+		// Currently we don't process other incoming messages, just echo or ignore
+		_ = mt
 	}
 
-	// Unregister client
+	// Cleanup
 	api.wsClientsMu.Lock()
-	delete(api.wsClients, conn)
+	delete(api.wsClients, c)
 	api.wsClientsMu.Unlock()
-	conn.Close()
 
-	logger.Info("WebSocket client disconnected (remaining clients: %d)", len(api.wsClients))
+	pkgLogger.Info("WebSocket client disconnected")
 }
 
-// broadcastLoop broadcasts batch notifications to all connected clients
+// broadcastLoop broadcasts batch notifications
 func (api *APIServer) broadcastLoop() {
 	for batch := range api.batchNotifier {
 		api.wsClientsMu.RLock()
+		// Copy connections to avoid holding lock during write
 		clients := make([]*websocket.Conn, 0, len(api.wsClients))
 		for conn := range api.wsClients {
 			clients = append(clients, conn)
 		}
 		api.wsClientsMu.RUnlock()
 
-		// Prepare batch notification message
-		msg := map[string]interface{}{
+		msg := fiber.Map{
 			"type":  "new_batch",
 			"batch": batch,
 			"time":  time.Now().Unix(),
 		}
 
-		// Broadcast to all clients
 		for _, conn := range clients {
 			if err := conn.WriteJSON(msg); err != nil {
-				logger.Error("Failed to send WebSocket message: %v", err)
-				// Remove dead connection
-				api.wsClientsMu.Lock()
-				delete(api.wsClients, conn)
-				api.wsClientsMu.Unlock()
+				// We don't remove here, the read loop will handle disconnection
 				conn.Close()
 			}
 		}

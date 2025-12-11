@@ -1,0 +1,226 @@
+basePath: /
+definitions:
+  big.Int:
+    type: object
+  github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch:
+    properties:
+      hash:
+        type: string
+      newStateRoot:
+        type: string
+      number:
+        type: integer
+      oldStateRoot:
+        type: string
+      status:
+        description: '"pending", "proving", "ready", "submitted"'
+        type: string
+      timestamp:
+        type: integer
+      traces:
+        items:
+          $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace'
+        type: array
+      transactions:
+        items:
+          $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction'
+        type: array
+    type: object
+  github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace:
+    properties:
+      contractAddress:
+        description: Set for contract deployments
+        type: string
+      from:
+        type: string
+      isContractDeployment:
+        description: True if this is a contract deployment
+        type: boolean
+      newBalance:
+        type: string
+      nonce:
+        type: integer
+      oldBalance:
+        type: string
+      to:
+        description: Empty for contract deployments
+        type: string
+      txHash:
+        type: string
+      value:
+        type: string
+    type: object
+  github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction:
+    properties:
+      blockHash:
+        type: string
+      blockNumber:
+        $ref: '#/definitions/big.Int'
+      contractAddress:
+        description: Set for contract deployments
+        type: string
+      from:
+        type: string
+      gas:
+        type: integer
+      gasPrice:
+        $ref: '#/definitions/big.Int'
+      hash:
+        type: string
+      input:
+        type: string
+      isContractDeployment:
+        description: True if this is a contract deployment
+        type: boolean
+      maxFeePerGas:
+        allOf:
+        - $ref: '#/definitions/big.Int'
+        description: EIP-1559
+      maxPriorityFeePerGas:
+        allOf:
+        - $ref: '#/definitions/big.Int'
+        description: EIP-1559
+      nonce:
+        type: integer
+      to:
+        description: Empty for contract deployments
+        type: string
+      transactionIndex:
+        type: integer
+      value:
+        $ref: '#/definitions/big.Int'
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: REST API for the Tan-ZK Rollup Sequencer
+  title: Tan-ZK Sequencer API
+  version: "1.0"
+paths:
+  /:
+    get:
+      description: Redirects to Swagger UI
+      responses:
+        "302":
+          description: Found
+      summary: List available endpoints
+      tags:
+      - Meta
+  /batch/{number}:
+    get:
+      description: Returns a specific batch by its number
+      parameters:
+      - description: Batch Number
+        in: path
+        name: number
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+        "400":
+          description: Invalid ID
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+      summary: Get batch by number
+      tags:
+      - Batches
+  /batch/latest:
+    get:
+      description: Returns the most recently created batch
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+        "404":
+          description: Not found
+          schema:
+            type: string
+      summary: Get latest batch
+      tags:
+      - Batches
+  /health:
+    get:
+      description: Checks if the service is up
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - Meta
+  /prover/batch/{number}:
+    get:
+      description: Returns a specific batch including execution traces for the prover
+      parameters:
+      - description: Batch Number
+        in: path
+        name: number
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+        "400":
+          description: Invalid ID
+          schema:
+            type: string
+        "404":
+          description: Not found
+          schema:
+            type: string
+      summary: Get batch by number for prover
+      tags:
+      - Prover
+  /prover/batch/latest:
+    get:
+      description: Returns the latest batch including execution traces for the prover
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+        "404":
+          description: Not found
+          schema:
+            type: string
+      summary: Get latest batch for prover
+      tags:
+      - Prover
+  /status:
+    get:
+      description: Returns current status and batch count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get sequencer status
+      tags:
+      - Meta
+swagger: "2.0"

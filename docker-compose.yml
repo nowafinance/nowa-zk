@@ -1,0 +1,49 @@
+services:
+  # --- Local Blockchain (Anvil) ---
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: tan-zk-anvil
+    command: anvil --host 0.0.0.0 --port 8545 --block-time 2
+    ports:
+      - "8545:8545"
+    networks:
+      - tan-zk-net
+
+  # --- Sequencer Service ---
+  sequencer:
+    build: .
+    container_name: tan-zk-sequencer
+    command: sequencer start --rpc-url http://anvil:8545 --state-db-path /app/data/state
+    ports:
+      - "8080:8080"
+    environment:
+      - RPC=http://anvil:8545
+      - BATCH_SIZE=10
+      - API_PORT=8080
+    volumes:
+      - ./dir_data/sequencer:/app/data
+    depends_on:
+      - anvil
+    networks:
+      - tan-zk-net
+    restart: on-failure
+
+  # --- Prover Service ---
+  prover:
+    build: .
+    container_name: tan-zk-prover
+    command: prover start --rpc-url http://anvil:8545 --keys-dir /app/keys
+    volumes:
+      # Mount generated keys from host to container
+      - ./.tan-zk/keys:/app/keys:ro
+    environment:
+      - RPC=http://anvil:8545
+    depends_on:
+      - anvil
+    networks:
+      - tan-zk-net
+    restart: on-failure
+
+networks:
+  tan-zk-net:
+    driver: bridge

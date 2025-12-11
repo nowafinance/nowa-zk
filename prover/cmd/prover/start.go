@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
-	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tannetwork/zk-sequencer/prover/bindings"
 	"github.com/tannetwork/zk-sequencer/prover/circuits"
+	"github.com/tannetwork/zk-sequencer/prover/internal/api"
 	"github.com/tannetwork/zk-sequencer/prover/internal/storage"
 )
 
@@ -199,7 +198,13 @@ func start(cmd *cobra.Command, args []string) {
 	defer store.Close()
 
 	// Start API Server
-	go startAPIServer(batchRegistry, store)
+	// Start API server
+	apiServer := api.NewAPIServer(batchRegistry, store, 8081)
+	go func() {
+		if err := apiServer.Start(); err != nil {
+			log.Fatalf("❌ Failed to start API server: %v", err)
+		}
+	}()
 
 	// Load last processed batch
 	lastProcessedBatch, err := store.GetLastProcessedBatch()
@@ -870,235 +875,3 @@ func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transact
 }
 
 // API Server Implementation
-
-type BatchResponse struct {
-	BatchNumber  uint64 `json:"batchNumber"`
-	BatchHash    string `json:"batchHash"`
-	OldStateRoot string `json:"oldStateRoot"`
-	NewStateRoot string `json:"newStateRoot"`
-	Submitter    string `json:"submitter"`
-	Timestamp    uint64 `json:"timestamp"`
-	VerifiedAt   uint64 `json:"verifiedAt"`
-	Status       uint8  `json:"status"`
-}
-
-func startAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore) {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		html := `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prover API</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
-        h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #eee; }
-        th { background-color: #f8f9fa; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background-color: #f8f9fa; }
-        code { background-color: #f1f3f5; padding: 2px 5px; border-radius: 4px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 0.9em; color: #d63384; }
-        a { color: #228be6; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .method { font-weight: bold; color: #228be6; }
-    </style>
-</head>
-<body>
-    <h1>Prover API</h1>
-    <p>Available endpoints for querying batch status from the ZK Rollup Prover.</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Method</th>
-                <th>Endpoint</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td><span class="method">GET</span></td>
-                <td><a href="/batches/latest">/batches/latest</a></td>
-                <td>Get details of the latest verified batch</td>
-            </tr>
-            <tr>
-                <td><span class="method">GET</span></td>
-                <td><code>/batches/{id}</code></td>
-                <td>Get details of a specific batch by ID (e.g., <a href="/batches/1">/batches/1</a>)</td>
-            </tr>
-            <tr>
-                <td><span class="method">GET</span></td>
-                <td><code>/status/{id}</code></td>
-                <td>Get proof generation status for a batch (e.g., <a href="/status/1">/status/1</a>)</td>
-            </tr>
-            <tr>
-                <td><span class="method">GET</span></td>
-                <td><code>/proof/{id}</code></td>
-                <td>Get full proof data for a batch (e.g., <a href="/proof/1">/proof/1</a>)</td>
-            </tr>
-        </tbody>
-    </table>
-</body>
-</html>`
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(html))
-	})
-
-	mux.HandleFunc("/batches/latest", func(w http.ResponseWriter, r *http.Request) {
-		totalBatches, err := registry.TotalBatches(&bind.CallOpts{})
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get total batches: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		if totalBatches.Cmp(big.NewInt(0)) == 0 {
-			http.Error(w, "No batches found", http.StatusNotFound)
-			return
-		}
-
-		batch, err := registry.GetBatch(&bind.CallOpts{}, totalBatches)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get batch: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		resp := BatchResponse{
-			BatchNumber:  totalBatches.Uint64(),
-			BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-			OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
-			NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
-			Submitter:    batch.Submitter.Hex(),
-			Timestamp:    batch.Timestamp.Uint64(),
-			VerifiedAt:   batch.VerifiedAt.Uint64(),
-			Status:       batch.Status,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	})
-
-	mux.HandleFunc("/batches/", func(w http.ResponseWriter, r *http.Request) {
-		idStr := strings.TrimPrefix(r.URL.Path, "/batches/")
-		if idStr == "" {
-			http.Error(w, "Batch ID required", http.StatusBadRequest)
-			return
-		}
-
-		batchID, ok := new(big.Int).SetString(idStr, 10)
-		if !ok {
-			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
-			return
-		}
-
-		batch, err := registry.GetBatch(&bind.CallOpts{}, batchID)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get batch: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		resp := BatchResponse{
-			BatchNumber:  batchID.Uint64(),
-			BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-			OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
-			NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
-			Submitter:    batch.Submitter.Hex(),
-			Timestamp:    batch.Timestamp.Uint64(),
-			VerifiedAt:   batch.VerifiedAt.Uint64(),
-			Status:       batch.Status,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	})
-
-	// GET /status/:id
-	mux.HandleFunc("/status/", func(w http.ResponseWriter, r *http.Request) {
-		idStr := strings.TrimPrefix(r.URL.Path, "/status/")
-		if idStr == "" {
-			http.Error(w, "Batch ID required", http.StatusBadRequest)
-			return
-		}
-
-		batchNumber, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
-			return
-		}
-
-		// Check ProverStore specifically for local proof status
-		// This tells us if *we* (this prover) generated it
-		proof, err := store.GetProof(batchNumber)
-		if err == nil && proof != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status":       "COMPLETED",
-				"batch_number": batchNumber,
-				"timestamp":    proof.Timestamp,
-			})
-			return
-		}
-
-		// If not found in local store, it might be PROCESSING or PENDING
-		// We can check the contract to see if it's already verified by someone else
-		batchID := new(big.Int).SetUint64(batchNumber)
-		batch, err := registry.GetBatch(&bind.CallOpts{}, batchID)
-		if err == nil && batch.VerifiedAt.Uint64() > 0 {
-			// Verified on chain but not by us locally? Or we lost local data?
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status":       "VERIFIED_ON_CHAIN",
-				"batch_number": batchNumber,
-				"note":         "Proof verified but local proof data not found",
-			})
-			return
-		}
-
-		// If not on chain and not in local store, assume PENDING or PROCESSING
-		// Real implementation would check active jobs map
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":       "PENDING",
-			"batch_number": batchNumber,
-		})
-	})
-
-	// GET /proof/:id
-	mux.HandleFunc("/proof/", func(w http.ResponseWriter, r *http.Request) {
-		idStr := strings.TrimPrefix(r.URL.Path, "/proof/")
-		if idStr == "" {
-			http.Error(w, "Batch ID required", http.StatusBadRequest)
-			return
-		}
-
-		batchNumber, err := strconv.ParseUint(idStr, 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid batch ID", http.StatusBadRequest)
-			return
-		}
-
-		proof, err := store.GetProof(batchNumber)
-		if err != nil {
-			if err == badger.ErrKeyNotFound {
-				http.Error(w, "Proof not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(proof)
-	})
-
-	log.Println("🌍 Starting Prover API on :8081")
-	if err := http.ListenAndServe(":8081", mux); err != nil {
-		log.Fatalf("❌ Failed to start API server: %v", err)
-	}
-}

@@ -3,7 +3,6 @@ package sequencer
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -117,7 +116,7 @@ func (s *Service) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.api.Start(); err != nil && err != http.ErrServerClosed {
+		if err := s.api.Start(); err != nil {
 			logger.Error("API server error: %v", err)
 		}
 	}()

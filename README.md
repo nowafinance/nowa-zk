@@ -9,7 +9,7 @@ This repository contains the official implementation of the **ZK-Sequencer** for
 
 ---
 
-## 🌟 About Tan-ZK
+## About Tan-ZK
 
 **Tan-ZK** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Tan-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
 
@@ -58,32 +58,23 @@ tan-zk/
 │   │   ├── BatchRegistry.sol    # Batch registration & verification
 │   │   ├── StateManager.sol     # State root management
 │   │   └── interfaces/          # Contract interfaces
-│   ├── test/                    # Contract tests (59 tests)
+│   ├── test/                    # Contract tests
 │   └── script/                  # Deployment scripts
 │
 ├── sequencer/          # Go sequencer service
 │   ├── cmd/sequencer/           # CLI entry point
 │   ├── internal/sequencer/      # Core sequencer logic
-│   │   ├── sequencer.go         # Main service
-│   │   ├── batch.go             # Batch builder with SMT
-│   │   ├── store.go             # BadgerDB persistence
-│   │   └── api.go               # REST API + WebSocket
-│   └── pkg/
-│       ├── rpc/                 # Ethereum RPC client
-│       ├── smt/                 # Sparse Merkle Tree
-│       ├── logger/              # Logging utilities
-│       └── config/              # Configuration
+│   └── pkg/                     # Shared packages
 │
 ├── prover/             # Go ZK prover (Gnark)
 │   ├── cmd/prover/              # CLI entry point
-│   ├── circuits/                # ZK circuits
-│   │   ├── batch_circuit.go     # Batch verification circuit
-│   │   └── simple_circuit.go    # Example circuit
-│   └── prover/                  # Prover orchestration
+│   └── circuits/                # ZK circuits
 │
 ├── docs/               # Documentation
 ├── scripts/            # Utility scripts
-└── docker/             # Docker configurations
+├── Dockerfile          # Multi-stage Docker build
+├── docker-compose.yml  # Docker Compose orchestration
+└── Makefile            # Project management commands
 ```
 
 ---
@@ -123,6 +114,7 @@ source ~/.bashrc
 
 # Foundry (Forge, Cast, Anvil)
 curl -L https://foundry.paradigm.xyz | bash
+source ~/.bashrc
 foundryup
 
 # Docker (optional)

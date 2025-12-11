@@ -2,28 +2,6 @@
 
 .PHONY: all clean setup build test anvil deploy-local run-sequencer run-prover help check-batch
 
-# Install dependencies
-install:
-	@echo "🛠️  Installing System Dependencies..."
-	@sudo apt update
-	@sudo apt install -y make git build-essential curl
-	@echo "🐹 Installing Go 1.23.2..."
-	@curl -OL https://go.dev/dl/go1.23.2.linux-amd64.tar.gz
-	@sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
-	@rm go1.23.2.linux-amd64.tar.gz
-	@if ! grep -q "/usr/local/go/bin" $(HOME)/.bashrc; then \
-		echo 'export PATH=$$PATH:/usr/local/go/bin' >> $(HOME)/.bashrc; \
-	fi
-	@echo "🔨 Installing Foundry..."
-	@curl -L https://foundry.paradigm.xyz | bash
-	@if [ -f $(HOME)/.foundry/bin/foundryup ]; then \
-		$(HOME)/.foundry/bin/foundryup; \
-	else \
-		echo "⚠️  Foundryup not found automatically. Please run 'foundryup' manually."; \
-	fi
-	@echo "🎉 Installation complete! Please run 'source ~/.bashrc' to update your current shell."
-
-
 # Default target: Full fresh setup and test
 all: clean setup build test
 
@@ -65,6 +43,14 @@ build-prover:
 build-contracts:
 	@echo "🏗️  Building Contracts..."
 	@cd contracts && forge build
+
+swagger:
+	@echo "📜 Generating Sequencer Swagger Docs..."
+	@cd sequencer && $(HOME)/go/bin/swag init -g internal/sequencer/api.go --output docs --parseDependency --parseInternal
+
+swagger-prover:
+	@echo "📜 Generating Prover Swagger Docs..."
+	@cd prover && $(HOME)/go/bin/swag init -g internal/api/server.go --output docs --parseDependency --parseInternal
 
 build-sequencer:
 	@echo "🏗️  Building Sequencer..."

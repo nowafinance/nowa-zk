@@ -143,21 +143,7 @@
   - 500 txs: < 5 min proving time
   - 1000 txs: < 10 min proving time
 
-### Milestone 3.3 — Solidity Verifier Export
-- **Status**: PLANNED
-- **Due date**: TBD
-- **Description**: Export and integrate verifier contract.
-- **Scope**:
-  - Export Solidity verifier from verification key
-  - Deploy verifier contract
-  - Wire into BatchRegistry
-  - Move generated Verifier.sol to contracts/src/generated/
-  - Gas optimization for verification
-- **Acceptance**:
-  - On-chain verification passes for sample proofs
-  - Gas costs documented (target: < 500k gas)
-
-### Milestone 3.4 — Prover HTTP Service
+### Milestone 3.3 — Prover HTTP Service
 - **Status**: IN PROGRESS
 - **Due date**: TBD
 - **Description**: Prover API and worker queue.
@@ -171,11 +157,40 @@
 - **Acceptance**:
   - Sequencer → Prover request/response flow reliable
 
+
+
 ---
 
 ## Phase 4: Integration & Testing
 
-### Milestone 4.1 — Local Integration Testing
+### Milestone 4.1 — Documentation & API Specs
+- **Status**: IN PROGRESS
+- **Due date**: TBD
+- **Description**: Dev/architecture/API/ops docs + OpenAPI.
+- **Scope**:
+  - docs/ structure complete (getting-started, architecture, api, ops)
+  - Quickstart guide tested by external contributor
+  - ✅ Cloud setup guide (systemd)
+  - OpenAPI 3.0 spec for sequencer and prover APIs
+  - Configuration reference with all env vars
+- **Acceptance**:
+  - New contributor can run E2E locally using only docs
+  - All API endpoints documented with examples
+
+### Milestone 4.2— Docker & CI/CD
+- **Status**: IN PROGRESS
+- **Due date**: TBD
+- **Description**: Production containers and automation.
+- **Scope**:
+  - ✅ Unified Dockerfile (multi-stage)
+  - ✅ docker-compose.yml (all services)
+  - ❌ Fix CI/CD Pipeline (Currently Failing)
+  - Verify Docker build on production env
+- **Acceptance**:
+  - docker-compose up runs full stack
+  - CI builds green
+
+### Milestone 5.1 — Local Integration Testing
 - **Status**: PLANNED
 - **Due date**: TBD
 - **Description**: End-to-end testing on localhost.
@@ -187,7 +202,7 @@
   - E2E flow completes without errors
   - Performance meets targets
 
-### Milestone 4.2 — End-to-End Integration with Tan-ZK
+### Milestone 5.2 — End-to-End Integration with Tan-ZK
 - **Status**: PLANNED
 - **Due date**: TBD
 - **Description**: Full flow on local Tan-ZK devnet.
@@ -203,11 +218,7 @@
   - Batch verified on-chain on Tan-ZK
   - State roots match between sequencer and Tan-ZK
 
----
-
-## Phase 5: Production Readiness
-
-### Milestone 5.1 — Monitoring & Observability
+### Milestone 5.3 — Monitoring & Observability
 - **Status**: PLANNED
 - **Due date**: TBD
 - **Description**: Production monitoring setup.
@@ -220,37 +231,6 @@
   - All critical metrics exposed
   - Dashboards functional
   - Alerts trigger correctly
-
-### Milestone 5.2 — Documentation & API Specs
-- **Status**: PLANNED
-- **Due date**: TBD
-- **Description**: Dev/architecture/API/ops docs + OpenAPI.
-- **Scope**:
-  - docs/ structure complete (getting-started, architecture, api, ops)
-  - Quickstart guide tested by external contributor
-  - OpenAPI 3.0 spec for sequencer and prover APIs
-  - Configuration reference with all env vars
-  - Troubleshooting common issues
-  - Architecture diagrams (system, data flow, components)
-- **Acceptance**:
-  - New contributor can run E2E locally using only docs
-  - OpenAPI spec validates and generates client SDKs
-  - All API endpoints documented with examples
-
-### Milestone 5.3 — Docker & CI/CD
-- **Status**: PLANNED
-- **Due date**: TBD
-- **Description**: Production containers and automation.
-- **Scope**:
-  - Dockerfile.sequencer (multi-stage, optimized)
-  - Dockerfile.prover (multi-stage, with keys)
-  - docker-compose.yml (all services + monitoring)
-  - GitHub Actions for build/test/release
-  - Container registry publishing
-- **Acceptance**:
-  - docker-compose up runs full stack
-  - CI builds and pushes images on merge
-  - Release workflow creates tagged builds
 
 ### Milestone 5.4 — Security Audit & Hardening
 - **Status**: PLANNED
@@ -270,7 +250,7 @@
 
 ## Progress Tracking
 
-**Completed**: 9/20+ milestones (45%)
+**Completed**: 9/19 milestones (47%)
 - ✅ 1.1 Repository Structure
 - ✅ 1.2 Smart Contract Foundation
 - ✅ 1.3 Tan-ZK RPC Client
@@ -281,8 +261,10 @@
 - ✅ 2.4 REST API
 - ✅ 3.1 Gnark Project Setup
 
-**In Progress**: 1 milestone
+**In Progress**: 4 milestones
 - 🔄 3.2 Batch Circuit (100 → 1000 txs)
-- 🔄 3.4 Prover HTTP Service (Partial)
+- 🔄 3.3 Prover HTTP Service (Partial)
+- 🔄 4.1 Documentation & API Specs (Cloud Guide Done)
+- 🔄 4.2 Docker & CI/CD (CI Failing / Untested)
 
-**Remaining**: 10 milestones
+**Remaining**: 6 milestones
