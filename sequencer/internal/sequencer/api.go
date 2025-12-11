@@ -93,8 +93,8 @@ func (api *APIServer) Start() error {
 
 	addr := fmt.Sprintf(":%d", api.port)
 	pkgLogger.Info("🌐 REST API server listening on %s", addr)
-	pkgLogger.Info("🔌 WebSocket endpoint available at ws://localhost%s/ws/batches", addr)
-	pkgLogger.Info("📖 Swagger UI available at http://localhost%s/swagger/index.html", addr)
+	pkgLogger.Info("🔌 WebSocket endpoint available at ws://<HOST>%s/ws/batches", addr)
+	pkgLogger.Info("📖 Swagger UI available at http://<HOST>%s/swagger/index.html", addr)
 
 	return api.app.Listen(addr)
 }

@@ -9,6 +9,11 @@ all: clean setup build test
 deps:
 	@cd sequencer && go mod download
 	@cd prover && go mod download
+	@make install-swag
+
+install-swag:
+	@echo "⬇️  Installing Swag CLI..."
+	@go install github.com/swaggo/swag/cmd/swag@latest
 
 # --- 1. Clean ---
 
@@ -33,7 +38,7 @@ setup: build-prover
 
 # --- 3. Build ---
 
-build: build-prover build-contracts build-sequencer
+build: install-swag swagger swagger-prover build-prover build-contracts build-sequencer
 
 build-prover:
 	@echo "🏗️  Building Prover..."
