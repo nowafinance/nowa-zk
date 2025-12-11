@@ -71,7 +71,6 @@ func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, 
 // @title Tan-ZK Prover API
 // @version 1.0
 // @description API for the Tan-ZK Rollup Prover
-// @host localhost:8081
 // @BasePath /
 func (api *APIServer) Start() error {
 	// Swagger

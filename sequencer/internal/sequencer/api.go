@@ -53,7 +53,6 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 // @title Tan-ZK Sequencer API
 // @version 1.0
 // @description REST API for the Tan-ZK Rollup Sequencer
-// @host localhost:8080
 // @BasePath /
 func (api *APIServer) Start() error {
 	// Swagger

@@ -39,7 +39,6 @@ definitions:
       timestamp:
         type: integer
     type: object
-host: localhost:8081
 info:
   contact: {}
   description: API for the Tan-ZK Rollup Prover
