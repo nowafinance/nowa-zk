@@ -1,4 +1,4 @@
-# Go build artifacts
+# --- Golang ---
 bin/
 build/
 *.exe
@@ -9,57 +9,54 @@ build/
 *.test
 *.out
 *.prof
-
-# Sequencer build files (Go binaries)
-sequencer/sequencer
-sequencer/cmd/sequencer/sequencer
-sequencer/data/
-
-prover/keys/
-
-# Go workspace
-*.log
+go.work
+go.work.sum
 coverage/
 
-# IDE/editor
-.vscode/
-.idea/
-.DS_Store
-
-# Node/JS (existing contracts dir)
+# --- Node / JavaScript ---
 node_modules/
-**/node_modules/
-
-# Misc
-.env
-
-
-# Logs
-*.log
-logs/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor/IDE
-.vscode/
-.idea/
-.history/
-*.swp
-# Docker/local volumes (if created locally)
-.docker/
-**/tmp/
-
-# Misc
+dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-contracts/lib/
-prover/prover-bin 
+# --- Python ---
+__pycache__/
+*.pyc
 
-contracts/broadcast/
-sequencer/sequencer-bin 
+# --- IDE / Editor ---
+.vscode/
+.idea/
+.history/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Environment & Secrets ---
+.env
+.env.*
 .tan-zk
-contracts/deployments
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Docker ---
+.docker/
+**/tmp/
+
+# --- Sequencer Specific ---
+sequencer/sequencer
+sequencer/sequencer-bin
+sequencer/cmd/sequencer/sequencer
+sequencer/data/
+
+# --- Prover Specific ---
+prover/keys/
+prover/prover-bin
+
+# --- Smart Contracts Specific ---
+contracts/lib/
+contracts/broadcast/
+contracts/deployments/

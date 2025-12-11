@@ -111,8 +111,15 @@ tan-zk/
 Install the required tools:
 
 ```bash
-# Go 1.21+
-sudo apt install golang-go
+sudo apt update
+sudo apt install -y make git build-essential curl
+
+# Go 1.23.2
+curl -OL https://go.dev/dl/go1.23.2.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
 
 # Foundry (Forge, Cast, Anvil)
 curl -L https://foundry.paradigm.xyz | bash
