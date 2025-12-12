@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -390,8 +391,17 @@ func start(cmd *cobra.Command, args []string) {
 		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 			log.Printf("⚠️  Failed to save last processed batch: %v", err)
 		}
-		if err := store.SaveProof(batch.Number, proof, publicWitness); err != nil {
-			log.Printf("⚠️  Failed to save proof data: %v", err)
+
+		// Serialize witness to bytes for storage (JSON doesn't handle the interface well)
+		var witnessBuf bytes.Buffer
+		if _, err := publicWitness.WriteTo(&witnessBuf); err != nil {
+			log.Printf("⚠️  Failed to serialize witness: %v", err)
+		} else {
+			// We save the raw bytes (which will be base64 encoded in JSON)
+			// OR we could save a map if we wanted fields, but raw bytes is safer for reconstruction
+			if err := store.SaveProof(batch.Number, proof, witnessBuf.Bytes()); err != nil {
+				log.Printf("⚠️  Failed to save proof data: %v", err)
+			}
 		}
 
 		// Update local state root and persist
