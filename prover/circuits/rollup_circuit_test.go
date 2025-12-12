@@ -10,8 +10,36 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/stretchr/testify/require"
 
+	"os"
+
 	mimc_offchain "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/consensys/gnark/constraint"
 )
+
+var (
+	ccs constraint.ConstraintSystem
+	pk  groth16.ProvingKey
+	vk  groth16.VerifyingKey
+)
+
+func TestMain(m *testing.M) {
+	// Compile circuit once
+	var circuit Circuit
+	var err error
+	ccs, err = frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
+	if err != nil {
+		panic("Failed to compile circuit: " + err.Error())
+	}
+
+	// Setup once
+	pk, vk, err = groth16.Setup(ccs)
+	if err != nil {
+		panic("Failed to setup circuit: " + err.Error())
+	}
+
+	// Run tests
+	os.Exit(m.Run())
+}
 
 // TestRollupCircuit tests the basic rollup circuit with valid transactions
 func TestRollupCircuit(t *testing.T) {
@@ -53,14 +81,7 @@ func TestRollupCircuit(t *testing.T) {
 	publicWitness, err := witness.Public()
 	require.NoError(t, err, "Failed to extract public witness")
 
-	// Compile circuit
-	emptyCircuit := Circuit{}
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
-	require.NoError(t, err, "Circuit compilation failed")
-
-	// Setup
-	pk, vk, err := groth16.Setup(ccs)
-	require.NoError(t, err, "Trusted setup failed")
+	// Compile and Setup are done in TestMain
 
 	// Prove
 	proof, err := groth16.Prove(ccs, pk, witness)
@@ -107,14 +128,7 @@ func TestRollupCircuitInvalidRoot(t *testing.T) {
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
 
-	// Compile circuit
-	emptyCircuit := Circuit{}
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
-	require.NoError(t, err)
-
-	// Setup
-	pk, _, err := groth16.Setup(ccs)
-	require.NoError(t, err)
+	// Compile and Setup are done in TestMain
 
 	// Prove should fail because constraint is not satisfied
 	_, err = groth16.Prove(ccs, pk, witness)
@@ -156,14 +170,7 @@ func TestRollupCircuitInvalidStateRoot(t *testing.T) {
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
 
-	// Compile circuit
-	emptyCircuit := Circuit{}
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
-	require.NoError(t, err)
-
-	// Setup
-	pk, _, err := groth16.Setup(ccs)
-	require.NoError(t, err)
+	// Compile and Setup are done in TestMain
 
 	// Prove should fail because state root constraint is not satisfied
 	_, err = groth16.Prove(ccs, pk, witness)
@@ -209,13 +216,7 @@ func TestRollupCircuitEmptyBatch(t *testing.T) {
 	publicWitness, err := witness.Public()
 	require.NoError(t, err)
 
-	// Compile and verify
-	emptyCircuit := Circuit{}
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
-	require.NoError(t, err)
-
-	pk, vk, err := groth16.Setup(ccs)
-	require.NoError(t, err)
+	// Compile and Setup are done in TestMain
 
 	proof, err := groth16.Prove(ccs, pk, witness)
 	require.NoError(t, err)
@@ -259,12 +260,7 @@ func TestRollupCircuitInvalidTimestamp(t *testing.T) {
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
 
-	emptyCircuit := Circuit{}
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
-	require.NoError(t, err)
-
-	pk, _, err := groth16.Setup(ccs)
-	require.NoError(t, err)
+	// Compile and Setup are done in TestMain
 
 	_, err = groth16.Prove(ccs, pk, witness)
 	require.Error(t, err, "Expected proof to fail with invalid timestamp")
