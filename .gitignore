@@ -47,6 +47,7 @@ logs/
 # --- Docker ---
 .docker/
 **/tmp/
+dir_data 
 
 # --- Sequencer Specific ---
 sequencer/sequencer
@@ -59,8 +60,6 @@ prover/keys/
 prover/prover-bin
 
 # --- Smart Contracts Specific ---
-contracts/lib/
-contracts/broadcast/
-contracts/deployments/
-
-
+contracts/lib/*
+contracts/broadcast/*
+contracts/deployments/*
