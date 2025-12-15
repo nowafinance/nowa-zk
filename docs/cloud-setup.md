@@ -1,11 +1,12 @@
-# Cloud Setup Guide (Root User)
+# Cloud Setup Guide
 
-This guide describes how to deploy the **Tan-ZK Sequencer and Prover** on a Linux server assuming a **single user (root)** setup. 
+This guide describes how to deploy the **Tan-ZK Sequencer and Prover** on a Linux cloud server.
 
-This setup assumes:
-*   **User**: `tan` (Current User)
-*   **Repo Path**: `/home/tan/tan-zk`
-*   **Persistence**: `/var/lib/tan-zk`
+## Prerequisites
+
+*   Linux server (Ubuntu 20.04+ recommended)
+*   `sudo` access
+*   Git, Make, curl installed
 
 ---
 
@@ -17,22 +18,25 @@ sudo mkdir -p /var/lib/tan-zk/sequencer/state
 sudo mkdir -p /var/lib/tan-zk/prover/keys
 sudo mkdir -p /var/lib/tan-zk/prover/data
 
-# Set ownership to current user (so service can access it)
+# Set ownership to current user
 sudo chown -R $USER:$USER /var/lib/tan-zk
 ```
 
+---
+
 ## 2. SSH Key Setup
 
-Generate an SSH key to clone the private repo.
+Generate an SSH key to clone the private repository.
 
 ```bash
-# 1. Generate SSH key
-ssh-keygen -t ed25519 -C "root-server"
+# Generate SSH key
+ssh-keygen -t ed25519 -C "your-server-name"
 
-# 2. Add this key to GitHub
+# Display public key
 cat ~/.ssh/id_ed25519.pub
 ```
-*   Add to **GitHub Repo Settings** -> **Deploy Keys**.
+
+*   Add this key to **GitHub Repo Settings** → **Deploy Keys**.
 
 **Test Connection:**
 ```bash
@@ -41,81 +45,155 @@ ssh -T git@github.com
 
 ---
 
-## 3. Clone & Build
+## 3. Install Dependencies
 
 ```bash
-# 1. Clone the repository
-git clone git@github.com:tannetwork/tan-zk.git ~/tan-zk
-cd ~/tan-zk
+# Update system
+sudo apt update && sudo apt upgrade -y
 
-# 2. Initialize submodules
-git submodule update --init --recursive
+# Install build tools
+sudo apt install -y make git build-essential curl
 
-# 3. Install dependencies
-apt update && apt install -y make git build-essential curl
-
-# 4. Install Go 1.23.2
+# Install Go 1.23.2
 curl -OL https://go.dev/dl/go1.23.2.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 
-# 5. Install Foundry
+# Verify Go installation
+go version
+
+# Install Foundry
 curl -L https://foundry.paradigm.xyz | bash
 source ~/.bashrc
 foundryup
 
-# 6. Run Setup (Generates Keys)
-make setup
-
-# 7. Persist Keys
-cp -r .tan-zk/keys/* /var/lib/tan-zk/prover/keys/
-
-# 8. Build
-make build
+# Verify Foundry installation
+forge --version
+cast --version
 ```
 
 ---
 
-## 4. Environment Configuration
-
-We will store configuration in `/etc/tan/`.
+## 4. Clone & Build
 
 ```bash
-mkdir -p /etc/tan
-sudo nano /etc/tan/.env
-sudo chmod 600 /etc/tan/.env
+# Clone the repository
+git clone git@github.com:tannetwork/tan-zk.git ~/tan-zk
+cd ~/tan-zk
+
+# Initialize submodules (if any)
+git submodule update --init --recursive
 ```
-### `/etc/tan/.env`
+
+### Build Prover Keys
+
 ```bash
-# Core Configuration
-RPC=http://localhost:8545
-PRIVATE_KEY=0x...
+cd ~/tan-zk/prover
+
+# Build prover binary first
+go build -o ../build/prover-bin ./cmd/prover
+
+# Generate keys and verifier contract
+../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
+
+cd ..
+```
+
+### Build Contracts
+
+```bash
+cd ~/tan-zk/contracts
+
+# Build all contracts
+forge build
+
+cd ..
+```
+
+### Build Sequencer
+
+```bash
+cd ~/tan-zk/sequencer
+
+# Build sequencer binary
+go build -o ../build/sequencer-bin ./cmd/sequencer
+
+cd ..
+```
+
+### Persist Keys
+
+```bash
+# Copy keys to persistent storage
+sudo cp -r ~/tan-zk/keys/* /var/lib/tan-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/tan-zk
+```
+
+---
+
+## 5. Environment Configuration
+
+Create environment configuration file.
+
+```bash
+sudo mkdir -p /etc/tan
+sudo nano /etc/tan/.env
+```
+
+### `/etc/tan/.env`
+
+```bash
+# RPC URL (Your blockchain network endpoint)
+RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+
+# Private Key for deployment and proof submission
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
+
+# Start indexing from this block
 INDEX_FROM_BLOCK=0
 
-# Server Persistence Overrides
+# Etherscan API key (for contract verification)
+ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
+
+# Server Persistence Paths
 STATE_DB_PATH=/var/lib/tan-zk/sequencer/state
 ```
 
-## 5. Deploy Contracts
-
-Contracts must be deployed to the target chain (L2) so the Prover knows where to submit proofs.
-
+**Secure the file:**
 ```bash
-# 1. Symlink config to project root (so Make/Foundry can find it)
-ln -sf /etc/tan/.env ~/tan-zk/.env
-
-# 2. Deploy Contracts
-cd ~/tan-zk
-make deploy
+sudo chmod 600 /etc/tan/.env
 ```
-*   **Result**: Creates `.tan-zk/deployments.json` containing the contract addresses.
 
 ---
 
-## 6. Systemd Services (Root)
+## 6. Deploy Contracts
 
-### Sequencer: `/etc/systemd/system/tan-sequencer.service`
+```bash
+cd ~/tan-zk
+
+# Load environment variables
+source /etc/tan/.env
+
+# Deploy contracts
+cd contracts
+forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+
+# Optional: Verify on Etherscan
+# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
+
+cd ..
+```
+
+**Save the deployed contract address** - you'll need it for the prover service configuration.
+
+---
+
+## 7. Systemd Services
+
+### Sequencer Service
+
+Create `/etc/systemd/system/tan-sequencer.service`:
 
 ```bash
 sudo nano /etc/systemd/system/tan-sequencer.service
@@ -127,11 +205,11 @@ Description=Tan-ZK Sequencer Service
 After=network-online.target
 
 [Service]
-User=tan
-Group=tan
-WorkingDirectory=/home/tan/tan-zk
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/tan/tan-zk/build/sequencer-bin start --rpc-url ${RPC}
+ExecStart=/home/YOUR_USERNAME/tan-zk/build/sequencer-bin start --rpc-url ${RPC} --state-db-path ${STATE_DB_PATH}
 Restart=always
 RestartSec=5
 
@@ -139,7 +217,9 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-### Prover: `/etc/systemd/system/tan-prover.service`
+### Prover Service
+
+Create `/etc/systemd/system/tan-prover.service`:
 
 ```bash
 sudo nano /etc/systemd/system/tan-prover.service
@@ -151,11 +231,11 @@ Description=Tan-ZK Prover Service
 After=network-online.target
 
 [Service]
-User=tan
-Group=tan
-WorkingDirectory=/home/tan/tan-zk
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/tan/tan-zk/build/prover-bin start --keys-dir /var/lib/tan-zk/prover/keys
+ExecStart=/home/YOUR_USERNAME/tan-zk/build/prover-bin start --keys-dir /var/lib/tan-zk/prover/keys --contract YOUR_CONTRACT_ADDRESS --private-key ${PRIVATE_KEY}
 Restart=always
 RestartSec=5
 
@@ -163,20 +243,22 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+> [!IMPORTANT]
+> Replace `YOUR_USERNAME` with your actual username and `YOUR_CONTRACT_ADDRESS` with the deployed contract address from step 6.
+
 ---
 
-## 7. Start Services
+## 8. Start Services
 
-### 1. Reload & Enable
-> [!NOTE]
-> If you edit the `.service` files later, you MUST run `sudo systemctl daemon-reload` before restarting the services.
+### Enable Services
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable tan-sequencer tan-prover
 ```
 
-### 2. Start Sequencer
+### Start Sequencer
+
 ```bash
 sudo systemctl start tan-sequencer
 ```
@@ -188,8 +270,10 @@ sudo journalctl -u tan-sequencer -f
 # Wait until you see "Sequencer started" or block imports
 ```
 
-### 3. Start Prover
+### Start Prover
+
 Once the sequencer is running smoothly:
+
 ```bash
 sudo systemctl start tan-prover
 ```
@@ -198,4 +282,65 @@ sudo systemctl start tan-prover
 ```bash
 sudo systemctl status tan-prover
 sudo journalctl -u tan-prover -f
+```
+
+---
+
+## 9. Verify Deployment
+
+### Check Service Status
+
+```bash
+# Check both services
+sudo systemctl status tan-sequencer tan-prover
+
+# Follow logs
+sudo journalctl -u tan-sequencer -f
+sudo journalctl -u tan-prover -f
+```
+
+### Test API Endpoints
+
+```bash
+# Check sequencer status
+curl http://localhost:8080/status
+
+# Check latest batch
+curl http://localhost:8080/batch/latest
+```
+
+---
+
+## Troubleshooting
+
+### Services Won't Start
+
+```bash
+# Check logs
+sudo journalctl -u tan-sequencer -n 50
+sudo journalctl -u tan-prover -n 50
+
+# Verify binaries exist
+ls -lh ~/tan-zk/build/
+
+# Verify permissions
+ls -lh /var/lib/tan-zk/
+```
+
+### Connection Issues
+
+*   Verify RPC URL is accessible: `curl -X POST $RPC -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'`
+*   Check firewall rules
+*   Ensure private key has sufficient funds
+
+### Key Issues
+
+```bash
+# Verify keys exist
+ls -lh /var/lib/tan-zk/prover/keys/
+
+# Regenerate if needed
+cd ~/tan-zk/prover
+../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
+sudo cp -r ../keys/* /var/lib/tan-zk/prover/keys/
 ```

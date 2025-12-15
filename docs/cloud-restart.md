@@ -7,7 +7,7 @@ This guide provides a script to completely **rebuild**, **redeploy**, **reset th
 
 ## Automated Restart Script
 
-```sh
+```bash
 #!/bin/bash
 set -e
 
@@ -41,24 +41,61 @@ fi
 echo "🏗️  Rebuilding..."
 cd ~/tan-zk
 git pull origin main
-make clean
-make deps
-make setup    # Generates NEW keys
-make build
+
+# Clean old artifacts
+cd prover
+go clean
+cd ../sequencer
+go clean
+cd ../contracts
+forge clean
+cd ..
+
+# Generate NEW prover keys and verifier contract
+echo "🔑 Generating new keys..."
+cd prover
+go run ./cmd/prover setup --output-dir ../keys --contract-output ../contracts/src/generated
+cd ..
+
+# Build contracts
+echo "🏗️  Building contracts..."
+cd contracts
+forge build
+cd ..
+
+# Build Go binaries
+echo "🏗️  Building binaries..."
+cd sequencer
+go build -o ../build/sequencer-bin ./cmd/sequencer
+cd ../prover
+go build -o ../build/prover-bin ./cmd/prover
+cd ..
 
 # --- 4. Persist New Keys ---
 echo "🔑 Updating persistent keys..."
-sudo cp -r .tan-zk/keys/* /var/lib/tan-zk/prover/keys/
-# Fix permissions so the 'tan' user can read them
+sudo mkdir -p /var/lib/tan-zk/prover/keys
+sudo cp -r keys/* /var/lib/tan-zk/prover/keys/
+# Fix permissions so the service user can read them
 sudo chown -R $USER:$USER /var/lib/tan-zk
 
 # --- 5. Redeploy Contracts ---
 echo "🚀 Redeploying contracts..."
-# Ensure we are using the correct env
-if [ ! -f .env ]; then
-    ln -sf /etc/tan/.env .env
+# Load environment variables
+if [ ! -f /etc/tan/.env ]; then
+    echo "❌ Error: /etc/tan/.env not found!"
+    exit 1
 fi
-make deploy
+
+source /etc/tan/.env
+
+cd contracts
+forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+cd ..
+
+# Save deployment info
+CHAIN_ID=$(cast chain-id --rpc-url $RPC)
+mkdir -p deployments
+cp contracts/deployments/$CHAIN_ID.json deployments/deployment.json
 
 # --- 6. Restart Services ---
 echo "✅ Restarting services..."
@@ -70,4 +107,15 @@ echo "🎉 Reset Complete!"
 echo "Check status:"
 echo "  sudo systemctl status tan-sequencer"
 echo "  sudo systemctl status tan-prover"
+echo "  sudo journalctl -u tan-sequencer -f"
+echo "  sudo journalctl -u tan-prover -f"
 ```
+
+## Usage
+
+1. Save this script as `restart.sh` in your home directory
+2. Make it executable: `chmod +x restart.sh`
+3. Run it: `./restart.sh`
+
+> [!CAUTION]
+> This script will **permanently delete** all existing chain data. Make sure you have backups if needed.

@@ -1,71 +1,135 @@
 # 🐳 Docker Setup Guide
 
-This guide describes how to run the **Tan-ZK** system (Sequencer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Cloud Testnet, Sepolia, or a local node running on host).
+This guide describes how to run the **Tan-ZK** system (Sequencer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Sepolia, or any EVM-compatible chain).
+
+---
 
 ## Prerequisites
 
-*   **Docker** installed (includes `docker compose`).
-*   **Go** & **Make** (for generating keys and deploying contracts on the host).
-*   **Foundry** (for `cast` and `forge`).
+*   **Docker** installed (includes `docker compose`)
+*   **Go 1.23+** (for generating keys)
+*   **Foundry** (for deploying contracts)
 
-## Configuration
+---
 
-The system uses the `.env` file for configuration. Ensure your `.env` file is set up correctly in the project root.
+## Setup Steps
 
-**Required `.env` Variables:**
+### 1. Generate Prover Keys
+
+Keys must be generated on the host machine first.
+
 ```bash
-# RPC URL of the Layer 1 Blockchain
-# If connecting to a node on the host machine, use http://host.docker.internal:8545
-RPC=http://host.docker.internal:8545
+cd prover
 
-# Private Key for transactions (Sequencer/Prover address)
-PRIVATE_KEY=your_private_key_here
+# Build prover binary
+go build -o ../build/prover-bin ./cmd/prover
 
-# start indexing from block
+# Generate keys and verifier contract
+../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
+
+cd ..
+```
+
+**Output:**
+- `keys/rollup.pk` - Proving key
+- `keys/rollup.vk` - Verification key
+- `contracts/src/generated/RollupVerifier.sol` - Verifier contract
+
+---
+
+### 2. Configure Environment
+
+Create a `.env` file in the project root:
+
+```bash
+cat > .env << 'EOF'
+# RPC URL of your target blockchain
+RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+
+# Private Key for deployment and proof submission
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
+
+# Start indexing from this block
 INDEX_FROM_BLOCK=0
+
+# Optional: Etherscan API key for verification
+ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
+EOF
 ```
 
-## Quick Start
+**Edit the values:**
+- `RPC`: Your Ethereum node RPC URL (Alchemy, Infura, etc.)
+- `PRIVATE_KEY`: Your wallet private key (must have funds)
+- `INDEX_FROM_BLOCK`: Block number to start indexing from
 
-### 1. Setup & Key Generation (Host)
+> [!WARNING]
+> Never commit `.env` to version control. Keep your private key secure!
 
-Generate cryptographic keys and compile contracts locally.
+---
+
+### 3. Build Contracts
 
 ```bash
-# Clean previous artifacts
-make clean
+cd contracts
 
-# Install dependencies
-make deps
+# Build contracts (includes generated verifier)
+forge build
 
-# Generate Zero-Knowledge Keys (Stored in .tan-zk/keys)
-make setup
+cd ..
 ```
 
-### 2. Deploy Contracts (Host)
+---
 
-Deploy the smart contracts to your target network.
+### 4. Deploy Contracts
+
+Deploy contracts to your target network:
 
 ```bash
-# Ensure your .env has the correct RPC and PRIVATE_KEY before running this!
-make deploy
+cd contracts
+source ../.env
+
+# Deploy
+forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+
+# Optional: Verify on Etherscan
+# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
+
+cd ..
 ```
-> **Note:** This command updates `.tan-zk/deployments.json` and `.tan-zk/secrets.env`.
 
-### 3. Start Services
+**Note the deployed contract address** - the prover will need this.
 
-Start the Sequencer and Prover containers. They will automatically load the `RPC` and `PRIVATE_KEY` from your `.env` file.
+---
+
+### 5. Start Docker Services
+
+Start the Sequencer and Prover containers:
 
 ```bash
 docker compose up -d
 ```
 
+This will:
+- Build Docker images for both services
+- Start the Sequencer on port `8080`
+- Start the Prover service
+- Automatically load configuration from `.env`
+
 ---
 
 ## Verifying the System
 
-### Check Logs
-View the logs for each service to ensure they are connected and running:
+### Check Container Status
+
+```bash
+# List running containers
+docker compose ps
+
+# Check if healthy
+docker compose ps
+```
+
+### View Logs
 
 ```bash
 # Follow sequencer logs
@@ -73,35 +137,146 @@ docker compose logs -f sequencer
 
 # Follow prover logs
 docker compose logs -f prover
+
+# View both
+docker compose logs -f
 ```
 
-### Interact with API
-The Sequencer API is exposed on port **8080**.
+### Test API Endpoints
+
+The Sequencer API is exposed on port **8080**:
 
 ```bash
-# Check Status
+# Check sequencer status
 curl http://localhost:8080/status
 
-# Check Latest Batch
+# Check latest batch
 curl http://localhost:8080/batch/latest
+
+# View Swagger docs
+open http://localhost:8080/swagger/index.html
+```
+
+---
+
+## Managing Services
+
+### Stop Services
+
+```bash
+docker compose down
+```
+
+### Restart Services
+
+```bash
+docker compose restart
+```
+
+### Rebuild After Code Changes
+
+```bash
+# Rebuild and restart
+docker compose up -d --build
+```
+
+### View Resource Usage
+
+```bash
+docker compose stats
 ```
 
 ---
 
 ## Troubleshooting
 
-### "Connection refused"
-*   Ensure your RPC node is running and accessible.
-*   If using a local node on the host, ensure you use `http://host.docker.internal:PORT` instead of `localhost`.
+### "Connection refused" or RPC errors
+
+*   Ensure your RPC endpoint is accessible from within Docker
+*   Verify `.env` has correct RPC URL
+*   Check if your RPC provider has rate limits
 
 ### "Contract address required"
-*   Ensure `make deploy` ran successfully.
-*   Check that `.tan-zk/deployments.json` exists and contains the correct address.
 
-### Resetting Data
-To wipe the container data (database) and start fresh:
+*   Ensure you ran `forge script` for deployment
+*   Check that deployment was successful
+*   Verify `.env` has correct PRIVATE_KEY with funds
+
+### "Keys not found"
+
+*   Make sure you ran step 1 (Generate Prover Keys)
+*   Verify `keys/` directory exists with `.pk` and `.vk` files
+*   Check that docker-compose mounts keys correctly
+
+### Sequencer not processing blocks
 
 ```bash
+# Check logs for errors
+docker compose logs sequencer | grep -i error
+
+# Verify RPC connection
+docker compose exec sequencer curl -X POST $RPC \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+### Reset Everything
+
+To wipe all container data and start fresh:
+
+```bash
+# Stop and remove containers and volumes
 docker compose down -v
+
+# Remove local state data
 rm -rf dir_data/
+
+# Restart
+docker compose up -d
+```
+
+---
+
+## Advanced Configuration
+
+### Custom State Persistence Path
+
+By default, state is stored in `dir_data/`. To change this, edit `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./your-custom-path:/app/data
+```
+
+### Resource Limits
+
+Limit CPU and memory usage in `docker-compose.yml`:
+
+```yaml
+services:
+  prover:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+```
+
+### Using Different Networks
+
+To connect to different networks, just update `.env`:
+
+```bash
+# For Mainnet
+RPC=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+
+# For custom network
+RPC=https://your-custom-node.example.com
+```
+
+Then restart:
+
+```bash
+docker compose down
+docker compose up -d
 ```
