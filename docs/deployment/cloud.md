@@ -96,7 +96,7 @@ go build -o ../build/prover-bin ./cmd/prover
 
 # Generate keys and verifier contract
 ../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-    
+
 cd ..
 ```
 
@@ -181,6 +181,9 @@ set +a
 # Navigate to contracts directory
 cd ~/tan-zk/contracts
 
+# Create deployments directory (required for saving deployment addresses)
+mkdir -p deployments
+
 # Deploy
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 
@@ -191,66 +194,101 @@ cd ..
 
 ---
 
-## 7. Systemd Services
+## 7. Configure Deployment Info
+
+The prover service needs to know the deployed contract address. After deployment, copy the deployment info to the expected location.
+
+```bash
+# Get the chain ID from your RPC endpoint
+CHAIN_ID=$(cast chain-id --rpc-url $RPC)
+
+# Create the .tan-zk directory in your home folder
+mkdir -p ~/.tan-zk
+
+# Copy the deployment file 
+cp ~/tan-zk/contracts/deployments/${CHAIN_ID}.json ~/.tan-zk/deployments.json
+
+# Verify the file was copied correctly
+cat ~/.tan-zk/deployments.json
+```
+
+You should see output similar to:
+```json
+{
+  "StateManager": "0x...",
+  "GnarkVerifier": "0x...",
+  "VerifierAdapter": "0x...",
+  "BatchRegistry": "0x...",
+  "Sequencer": "0x...",
+  "InitialStateRoot": "0x..."
+}
+```
+
+> [!IMPORTANT]
+> The prover auto-loads the `BatchRegistry` contract address from this file. If you redeploy contracts, you must update this file with the new addresses.
+
+---
+
+## 8. Systemd Services
+
+First, set your username (this only needs to be done once):
+
+```bash
+# Set your username here (e.g., tan, ubuntu, etc.)
+USERNAME=tan
+```
 
 ### Sequencer Service
 
-Create `/etc/systemd/system/tan-sequencer.service`:
+Create the sequencer service file:
 
 ```bash
-sudo nano /etc/systemd/system/tan-sequencer.service
-```
-
-```ini
+sudo tee /etc/systemd/system/tan-sequencer.service > /dev/null <<EOF
 [Unit]
 Description=Tan-ZK Sequencer Service
 After=network-online.target
 
 [Service]
-User=YOUR_USERNAME
-Group=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/tan-zk
+User=$USERNAME
+Group=$USERNAME
+WorkingDirectory=/home/$USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/YOUR_USERNAME/tan-zk/build/sequencer-bin start --rpc-url ${RPC} --state-db-path ${STATE_DB_PATH}
+ExecStart=/home/$USERNAME/tan-zk/build/sequencer-bin start --rpc-url \${RPC} --state-db-path \${STATE_DB_PATH}
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
 
 ### Prover Service
 
-Create `/etc/systemd/system/tan-prover.service`:
+Create the prover service file:
 
 ```bash
-sudo nano /etc/systemd/system/tan-prover.service
-```
-
-```ini
+sudo tee /etc/systemd/system/tan-prover.service > /dev/null <<EOF
 [Unit]
 Description=Tan-ZK Prover Service
 After=network-online.target
 
 [Service]
-User=YOUR_USERNAME
-Group=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/tan-zk
+User=$USERNAME
+Group=$USERNAME
+WorkingDirectory=/home/$USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/YOUR_USERNAME/tan-zk/build/prover-bin start --keys-dir /var/lib/tan-zk/prover/keys --contract YOUR_CONTRACT_ADDRESS --private-key ${PRIVATE_KEY}
+ExecStart=/home/$USERNAME/tan-zk/build/prover-bin start --keys-dir /var/lib/tan-zk/prover/keys
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
-
-> [!IMPORTANT]
-> Replace `YOUR_USERNAME` with your actual username and `YOUR_CONTRACT_ADDRESS` with the deployed contract address from step 6.
 
 ---
 
-## 8. Start Services
+## 9. Start Services
 
 ### Enable Services
 
@@ -288,7 +326,7 @@ sudo journalctl -u tan-prover -f
 
 ---
 
-## 9. Verify Deployment
+## 10. Verify Deployment
 
 ### Check Service Status
 

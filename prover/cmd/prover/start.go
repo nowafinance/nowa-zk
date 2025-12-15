@@ -112,18 +112,22 @@ func start(cmd *cobra.Command, args []string) {
 
 	// 1. Auto-load configuration if missing
 	if contractAddr == "" {
-		// Try to load from .tan-zk/deployments.json
-		if data, err := os.ReadFile(".tan-zk/deployments.json"); err == nil {
-			// Simple string parsing to avoid importing complex JSON struct
-			// Looking for "BatchRegistry": "0x..."
-			content := string(data)
-			if idx := strings.Index(content, "\"BatchRegistry\""); idx != -1 {
-				rest := content[idx:]
-				if start := strings.Index(rest, ":"); start != -1 {
-					if quote1 := strings.Index(rest[start:], "\""); quote1 != -1 {
-						if quote2 := strings.Index(rest[start+quote1+1:], "\""); quote2 != -1 {
-							contractAddr = rest[start+quote1+1 : start+quote1+1+quote2]
-							log.Printf("ℹ️  Auto-loaded Contract: %s", contractAddr)
+		// Try to load from ~/.tan-zk/deployments.json
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			deploymentsPath := homeDir + "/.tan-zk/deployments.json"
+			if data, err := os.ReadFile(deploymentsPath); err == nil {
+				// Simple string parsing to avoid importing complex JSON struct
+				// Looking for "BatchRegistry": "0x..."
+				content := string(data)
+				if idx := strings.Index(content, "\"BatchRegistry\""); idx != -1 {
+					rest := content[idx:]
+					if start := strings.Index(rest, ":"); start != -1 {
+						if quote1 := strings.Index(rest[start:], "\""); quote1 != -1 {
+							if quote2 := strings.Index(rest[start+quote1+1:], "\""); quote2 != -1 {
+								contractAddr = rest[start+quote1+1 : start+quote1+1+quote2]
+								log.Printf("ℹ️  Auto-loaded Contract: %s", contractAddr)
+							}
 						}
 					}
 				}
