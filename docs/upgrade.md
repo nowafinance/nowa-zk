@@ -46,23 +46,56 @@ git pull origin main
 
 ### Step 3: Rebuild Components
 
-#### Update Prover Keys (if needed)
+#### If Circuit/Keys Changed (Check Release Notes First!)
 
-> [!NOTE]
-> Only regenerate keys if the prover circuit changed. Check release notes first.
+> [!CAUTION]
+> **If the ZK circuit changed, you MUST:**
+> 1. Regenerate prover keys
+> 2. Regenerate the `RollupVerifier.sol` contract
+> 3. **Redeploy ALL contracts** to the chain
+> 4. Update the prover service with the new contract address
+> 
+> The verification keys are cryptographically tied to the circuit. The old deployed contract cannot verify proofs from new keys.
+
+**If circuit changed, follow these steps:**
 
 ```bash
-cd ~/tan-zk/prover
+cd ~/tan-zk
 
-# Rebuild prover binary
+# 1. Rebuild prover binary
+cd prover
 go build -o ../build/prover-bin ./cmd/prover
-
-# If keys need regeneration:
-# ../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-# sudo cp -r ../keys/* /var/lib/tan-zk/prover/keys/
-
 cd ..
+
+# 2. Regenerate keys AND new RollupVerifier.sol
+./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
+
+# 3. Rebuild contracts (includes new verifier)
+cd contracts
+forge build
+cd ..
+
+# 4. Redeploy contracts
+cd contracts
+source /etc/tan/.env
+forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+cd ..
+# ⚠️ SAVE THE NEW CONTRACT ADDRESS from deploy output
+
+# 5. Copy new keys to persistent storage
+sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/tan-zk
+
+# 6. Update prover systemd service with NEW contract address
+sudo nano /etc/systemd/system/tan-prover.service
+# Update: ExecStart=.../prover-bin start --keys-dir ... --contract <NEW_ADDRESS> --private-key ...
+
+# 7. Reload systemd config
+sudo systemctl daemon-reload
 ```
+
+> [!WARNING]
+> After redeploying contracts, all previous on-chain state will be lost. Only do this when absolutely necessary.
 
 #### Rebuild Contracts (if needed)
 
