@@ -124,6 +124,79 @@ sudo systemctl start tan-sequencer tan-prover
 > [!WARNING]
 > This redeploys the contract, losing all previous on-chain state.
 
+### Prover Using Wrong Contract Address
+
+**Symptom:**
+```
+ℹ️  Auto-loaded Contract: 0xOLD_CONTRACT_ADDRESS
+🔄 Resuming from batch #347
+❌ Failed to generate proof: constraint #113964 is not satisfied
+```
+
+**Cause:**
+The prover auto-loads the contract address from `.tan-zk/deployments.json`, but this file has the OLD contract address after you redeployed.
+
+**Solution:**
+
+```bash
+# 1. Stop prover
+sudo systemctl stop tan-prover
+
+# 2. Find your new deployment file (replace CHAIN_ID with actual value from deployment)
+ls -lt ~/tan-zk/contracts/deployments/
+
+# 3. Update deployments.json with new contract
+cp ~/tan-zk/contracts/deployments/CHAIN_ID.json ~/tan-zk/.tan-zk/deployments.json
+
+# 4. Verify it updated
+cat ~/tan-zk/.tan-zk/deployments.json
+# Should show your NEW BatchRegistry address
+
+# 5. Delete prover database to start from batch 0
+find ~/tan-zk/.tan-zk/ -name "*.db" -delete
+find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
+
+# 6. Restart prover
+sudo systemctl start tan-prover
+
+# 7. Monitor - should see NEW contract address and start from batch 0
+sudo journalctl -u tan-prover -f
+```
+
+### Prover Resuming from Old Batch (Need to Start from 0)
+
+**Symptom:**
+```
+🔄 Resuming from batch #347
+📦 Loaded last known state root from DB
+```
+
+**Cause:**
+The prover stores its database in `~/tan-zk/.tan-zk/` directory (usually `prover.db` or `.bolt` files). After redeploying contracts, you need to delete this to start fresh.
+
+**Solution:**
+
+```bash
+# Stop prover
+sudo systemctl stop tan-prover
+
+# Find and delete prover database files
+find ~/tan-zk/.tan-zk/ -name "*.db" -ls
+find ~/tan-zk/.tan-zk/ -name "*.bolt" -ls
+
+# Delete them
+find ~/tan-zk/.tan-zk/ -name "*.db" -delete
+find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
+
+# Also clear any prover data in /var/lib
+sudo rm -rf /var/lib/tan-zk/prover/data/*
+
+# Restart
+sudo systemctl start tan-prover
+sudo journalctl -u tan-prover -f
+# Should see: "No previous state found" or "Starting from batch #0"
+```
+
 ---
 
 ## Service Not Starting

@@ -96,7 +96,7 @@ go build -o ../build/prover-bin ./cmd/prover
 
 # Generate keys and verifier contract
 ../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-
+    
 cd ..
 ```
 

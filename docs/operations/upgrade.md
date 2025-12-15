@@ -252,9 +252,6 @@ sudo systemctl stop tan-sequencer tan-prover
 
 # Backup state
 sudo cp -r /var/lib/tan-zk/sequencer/state /var/lib/tan-zk/sequencer/state.backup
-
-# Check state DB integrity (implementation specific)
-# If corrupted, restore from backup or resync
 ```
 
 ---

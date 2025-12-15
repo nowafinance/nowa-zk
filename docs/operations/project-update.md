@@ -1,6 +1,6 @@
-# Circuit Update & Full Reset Guide
+# Project Update & Full Reset Guide
 
-This guide covers procedures when the ZK circuit changes, requiring key regeneration and contract redeployment.
+This guide covers procedures when the ZK-Tan codes changes, most of the time it require key regeneration and contract redeployment again.
 
 ---
 
@@ -40,9 +40,15 @@ forge build
 cd ..
 
 # 6. Redeploy contracts to chain
-cd contracts
 
-# Load environment variables (verify they're loaded)
+# Fix .env permissions (if needed)
+sudo chmod 640 /etc/tan/.env
+sudo chown $USER:$USER /etc/tan/.env
+
+# Navigate to contracts directory
+cd ~/tan-zk/contracts
+
+# Load environment variables
 set -a  # Auto-export all variables
 source /etc/tan/.env
 set +a
@@ -55,23 +61,31 @@ echo "Private Key loaded: ${PRIVATE_KEY:0:10}..."
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 
 cd ..
-# ⚠️ SAVE THE NEW CONTRACT ADDRESS from deploy output
+# ⚠️ Note the CHAIN_ID and NEW CONTRACT ADDRESS from deploy output
 
-# 7. Copy new keys to persistent storage
+# 7. Update deployments.json (prover auto-loads from this)
+# Replace CHAIN_ID with your actual chain ID from deployment output
+cp ~/tan-zk/contracts/deployments/CHAIN_ID.json ~/tan-zk/.tan-zk/deployments.json
+
+# Verify it updated
+cat ~/tan-zk/.tan-zk/deployments.json
+
+# 8. Copy new keys to persistent storage
 sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
 sudo chown -R $USER:$USER /var/lib/tan-zk
 
-# 8. Update prover systemd service with NEW contract address
-sudo nano /etc/systemd/system/tan-prover.service
-# Update: ExecStart=...--contract <NEW_CONTRACT_ADDRESS>...
+# 9. Delete prover database to start from batch 0
+find ~/tan-zk/.tan-zk/ -name "*.db" -delete
+find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
 
-# 9. Reload systemd and restart both services
+# 10. Reload systemd and restart both services
 sudo systemctl daemon-reload
 sudo systemctl start tan-sequencer tan-prover
 
-# 10. Monitor
-sudo journalctl -u tan-sequencer -f
+# 11. Monitor (check that prover uses new contract and starts from batch 0)
 sudo journalctl -u tan-prover -f
+# You should see: "Auto-loaded Contract: 0x..." (your NEW address)
+# And: "Starting from batch #0" or "No previous state found"
 ```
 
 ---
@@ -131,11 +145,14 @@ cd ../contracts
 forge clean
 cd ..
 
+# Build prover binary first
+cd prover
+go build -o ../build/prover-bin ./cmd/prover
+cd ..
+
 # Generate NEW prover keys and verifier contract
 echo "🔑 Generating new keys..."
-cd prover
-go run ./cmd/prover setup --output-dir ../keys --contract-output ../contracts/src/generated
-cd ..
+./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
 
 # Build contracts
 echo "🏗️  Building contracts..."
@@ -174,17 +191,14 @@ cd contracts
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 cd ..
 
-# Save deployment info
+# Save deployment info and update deployments.json
 CHAIN_ID=$(cast chain-id --rpc-url $RPC)
-mkdir -p deployments
-cp contracts/deployments/$CHAIN_ID.json deployments/deployment.json
+cp contracts/deployments/$CHAIN_ID.json .tan-zk/deployments.json
+echo "✅ Updated .tan-zk/deployments.json with new contract"
 
-echo ""
-echo "⚠️  IMPORTANT: Update the contract address in prover service!"
-echo "   sudo nano /etc/systemd/system/tan-prover.service"
-echo "   Then run: sudo systemctl daemon-reload"
-echo ""
-read -p "Press Enter after updating the service file..."
+# Delete prover database to start from batch 0
+rm -f .tan-zk/*.db .tan-zk/*.bolt
+echo "✅ Deleted prover database"
 
 # --- 6. Restart Services ---
 echo "✅ Restarting services..."

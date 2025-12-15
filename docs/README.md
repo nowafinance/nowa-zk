@@ -24,7 +24,7 @@ Choose your deployment method:
 Daily operations and maintenance:
 
 - **[Upgrade Guide](operations/upgrade.md)** - Regular code updates (without circuit changes)
-- **[Circuit Update & Reset](operations/circuit-update.md)** - Key regeneration and contract redeployment when circuit changes
+- **[Project Update & Reset](operations/project-update.md)** - Key regeneration and contract redeployment when circuit changes
 - **[Troubleshooting](operations/troubleshooting.md)** - Common issues and solutions
 
 ### 📐 Architecture
@@ -52,7 +52,7 @@ Development tracking:
 ### Regular Maintenance
 
 - **Code update only**: Use [Upgrade Guide](operations/upgrade.md)
-- **Circuit changed**: Use [Circuit Update Guide](operations/circuit-update.md)
+- **Circuit changed**: Use [Project Update Guide](operations/project-update.md)
 
 ### When Things Go Wrong
 
@@ -74,7 +74,7 @@ docs/
 │
 ├── operations/                      # Operational guides
 │   ├── upgrade.md                   # Regular upgrades
-│   ├── circuit-update.md            # Circuit changes & resets
+│   ├── project-update.md            # Circuit changes & resets
 │   └── troubleshooting.md           # Problem solving
 │
 ├── architecture/                    # Technical documentation
