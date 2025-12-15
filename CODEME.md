@@ -67,13 +67,15 @@ EOF
 
 ```bash
 cd contracts
+set -a
 source .env
+set +a
 
 # Deploy to your network
-forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 
 # Optional: Verify on Etherscan
-# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
+# forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
 ```
 
 **Save the deployed contract address** - you'll need it for the prover service.

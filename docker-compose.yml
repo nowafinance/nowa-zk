@@ -1,6 +1,4 @@
 services:
-  # --- Local Blockchain (Anvil) ---
-
 
   # --- Sequencer Service ---
   sequencer:

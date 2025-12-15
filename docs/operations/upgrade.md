@@ -77,8 +77,10 @@ cd ..
 
 # 4. Redeploy contracts
 cd contracts
+set -a
 source /etc/tan/.env
-forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+set +a
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 cd ..
 # ⚠️ SAVE THE NEW CONTRACT ADDRESS from deploy output
 

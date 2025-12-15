@@ -145,16 +145,13 @@ sudo nano /etc/tan/.env
 
 ```bash
 # RPC URL (Your blockchain network endpoint)
-RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+RPC=https://RPC_HERE_OF_BLOCKCHAIN
 
 # Private Key for deployment and proof submission
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 
 # Start indexing from this block
 INDEX_FROM_BLOCK=0
-
-# Etherscan API key (for contract verification)
-ETHERSCAN_API_KEY=YOUR_ETHERSCAN_KEY
 
 # Server Persistence Paths
 STATE_DB_PATH=/var/lib/tan-zk/sequencer/state
@@ -170,17 +167,22 @@ sudo chmod 600 /etc/tan/.env
 ## 6. Deploy Contracts
 
 ```bash
-cd ~/tan-zk
+# Make it readable by owner and group
+sudo chmod 640 /etc/tan/.env
 
-# Load environment variables
+# Change ownership to your user
+sudo chown $USER:$USER /etc/tan/.env
+
+# Now you can read it
+set -a
 source /etc/tan/.env
+set +a
 
-# Deploy contracts
-cd contracts
-forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+# Navigate to contracts directory
+cd ~/tan-zk/contracts
 
-# Optional: Verify on Etherscan
-# forge script script/Deploy.s.sol --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast --verify
+# Deploy
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 
 cd ..
 ```
