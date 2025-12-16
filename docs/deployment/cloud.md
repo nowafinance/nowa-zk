@@ -384,3 +384,97 @@ cd ~/tan-zk/prover
 ../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
 sudo cp -r ../keys/* /var/lib/tan-zk/prover/keys/
 ```
+
+---
+
+## Disk Space Management
+
+Over time, system logs can consume significant disk space. This section covers how to manage disk usage and keep your server healthy.
+
+### Capping journald Logs
+
+Configure systemd-journald to limit log storage to **500 MB**:
+
+```bash
+sudo nano /etc/systemd/journald.conf
+```
+
+Add or modify these settings:
+
+```ini
+[Journal]
+SystemMaxUse=500M
+SystemKeepFree=1G
+```
+
+Apply the changes:
+
+```bash
+sudo systemctl restart systemd-journald
+```
+
+**Verify the configuration:**
+
+```bash
+# Check current log usage
+journalctl --disk-usage
+
+# Confirm limits are applied
+systemctl show systemd-journald | grep -E 'SystemMaxUse|SystemKeepFree'
+```
+
+### What This Fixes
+
+✅ journald logs are capped at **500 MB**  
+✅ Disk will not silently fill again  
+✅ System remains fully debuggable  
+✅ tan-zk services unaffected  
+
+---
+
+## Optional Optimizations
+
+### Reclaim Go Build Cache (Go Developers)
+
+Free up ~2.4 GB by cleaning Go caches:
+
+```bash
+go clean -modcache
+rm -rf ~/.cache/go-build
+```
+
+### tan-zk Disk Strategy
+
+Your sequencer state (`/var/lib/tan-zk`) will grow over time. Options:
+
+| Strategy | Description |
+|----------|-------------|
+| Periodic cleanup | Clear old data for dev environments |
+| Move to another disk | Relocate `/var/lib/tan-zk` to a larger partition |
+| Bind-mount to SSD | Mount external storage for performance |
+
+### LVM Expansion (Future-Proofing)
+
+If your system uses LVM (`ubuntu-vg/ubuntu-lv`) and has unallocated space, you can extend `/` **without reinstalling**:
+
+```bash
+# Check available space
+sudo vgdisplay
+
+# Extend the logical volume (example: add 10G)
+sudo lvextend -L +10G /dev/ubuntu-vg/ubuntu-lv
+
+# Resize the filesystem
+sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
+```
+
+---
+
+## System Health Checklist
+
+| Resource  | Status        |
+|-----------|---------------|
+| RAM       | 🟢 Excellent  |
+| Disk      | 🟢 Healthy    |
+| Logs      | 🟢 Controlled |
+| Stability | 🟢 Solid      |
