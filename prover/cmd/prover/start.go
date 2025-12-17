@@ -541,17 +541,48 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 	// Convert batch to circuit witness
 	var circuit circuits.Circuit
 
+	// Circuit constraint limits (from rollup_circuit.go)
+	maxNonce := big.NewInt(1000000)
+	maxAmount := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil) // 1e18
+	maxGasPrice := big.NewInt(100000000000)                            // 100 Gwei
+	maxGasLimit := big.NewInt(30000000)
+
 	// Fill transactions (pad with zeros if needed)
 	for i := 0; i < circuits.BatchSize; i++ {
 		if i < len(batch.Transactions) {
 			tx := batch.Transactions[i]
+			nonce := parseBigInt(string(tx.Nonce))
+			amount := parseBigInt(string(tx.Value))
+			gasPrice := big.NewInt(1000000000) // 1 Gwei default
+			gasLimit := big.NewInt(21000)      // Standard transfer gas limit
+
+			// Validate ranges BEFORE adding to circuit
+			if nonce.Cmp(maxNonce) > 0 {
+				log.Printf("   ⚠️  TX %d: Nonce %s exceeds max %s", i, nonce.String(), maxNonce.String())
+			}
+			if amount.Cmp(maxAmount) > 0 {
+				log.Printf("   ⚠️  TX %d: Amount %s exceeds max %s", i, amount.String(), maxAmount.String())
+			}
+			if gasPrice.Cmp(maxGasPrice) > 0 {
+				log.Printf("   ⚠️  TX %d: GasPrice %s exceeds max %s", i, gasPrice.String(), maxGasPrice.String())
+			}
+			if gasLimit.Cmp(maxGasLimit) > 0 {
+				log.Printf("   ⚠️  TX %d: GasLimit %s exceeds max %s", i, gasLimit.String(), maxGasLimit.String())
+			}
+
+			// Debug: log first few transactions
+			if i < 3 || i == len(batch.Transactions)-1 {
+				log.Printf("   DEBUG TX %d: Nonce=%s, Amount=%s, From=%s, To=%s",
+					i, nonce.String(), amount.String(), tx.From[:10]+"...", tx.To[:10]+"...")
+			}
+
 			circuit.Transactions[i] = circuits.Transaction{
-				Nonce:    parseBigInt(string(tx.Nonce)),
+				Nonce:    nonce,
 				From:     hashAddress(tx.From),
 				To:       hashAddress(tx.To),
-				Amount:   parseBigInt(string(tx.Value)),
-				GasPrice: big.NewInt(1000000000), // 1 Gwei default
-				GasLimit: big.NewInt(21000),      // Standard transfer gas limit
+				Amount:   amount,
+				GasPrice: gasPrice,
+				GasLimit: gasLimit,
 				Data:     hashData(tx.Data),
 			}
 		} else {
