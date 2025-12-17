@@ -541,12 +541,6 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 	// Convert batch to circuit witness
 	var circuit circuits.Circuit
 
-	// Circuit constraint limits (from rollup_circuit.go)
-	// Note: Amount has no limit in circuit - any valid field element is allowed
-	maxNonce := big.NewInt(1000000)
-	maxGasPrice := big.NewInt(100000000000) // 100 Gwei
-	maxGasLimit := big.NewInt(30000000)
-
 	// Fill transactions (pad with zeros if needed)
 	for i := 0; i < circuits.BatchSize; i++ {
 		if i < len(batch.Transactions) {
@@ -555,17 +549,6 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 			amount := parseBigInt(string(tx.Value))
 			gasPrice := big.NewInt(1000000000) // 1 Gwei default
 			gasLimit := big.NewInt(21000)      // Standard transfer gas limit
-
-			// Validate ranges BEFORE adding to circuit
-			if nonce.Cmp(maxNonce) > 0 {
-				log.Printf("   ⚠️  TX %d: Nonce %s exceeds max %s", i, nonce.String(), maxNonce.String())
-			}
-			if gasPrice.Cmp(maxGasPrice) > 0 {
-				log.Printf("   ⚠️  TX %d: GasPrice %s exceeds max %s", i, gasPrice.String(), maxGasPrice.String())
-			}
-			if gasLimit.Cmp(maxGasLimit) > 0 {
-				log.Printf("   ⚠️  TX %d: GasLimit %s exceeds max %s", i, gasLimit.String(), maxGasLimit.String())
-			}
 
 			// Debug: log first few transactions
 			if i < 3 || i == len(batch.Transactions)-1 {

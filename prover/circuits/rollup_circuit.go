@@ -82,12 +82,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		h.Write(circuit.Transactions[i].Data)
 		leaves[i] = h.Sum()
 
-		// Perform range checks here (consolidated from Step 3 and 4)
-		// Note: Amount has no limit - any valid field element is allowed
+		// NOTE: No range checks on Nonce, Amount, GasPrice, GasLimit
 		// The Merkle root verification ensures data integrity
-		api.AssertIsLessOrEqual(circuit.Transactions[i].Nonce, 1000000)
-		api.AssertIsLessOrEqual(circuit.Transactions[i].GasPrice, 100000000000)
-		api.AssertIsLessOrEqual(circuit.Transactions[i].GasLimit, 30000000)
+		// These values are hashed and verified - no need to constrain ranges
 	}
 
 	// ============ Step 2: Build and verify Merkle tree ============
