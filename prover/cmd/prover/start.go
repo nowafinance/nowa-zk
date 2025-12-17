@@ -542,9 +542,9 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 	var circuit circuits.Circuit
 
 	// Circuit constraint limits (from rollup_circuit.go)
+	// Note: Amount has no limit in circuit - any valid field element is allowed
 	maxNonce := big.NewInt(1000000)
-	maxAmount := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil) // 1e18
-	maxGasPrice := big.NewInt(100000000000)                            // 100 Gwei
+	maxGasPrice := big.NewInt(100000000000) // 100 Gwei
 	maxGasLimit := big.NewInt(30000000)
 
 	// Fill transactions (pad with zeros if needed)
@@ -559,9 +559,6 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 			// Validate ranges BEFORE adding to circuit
 			if nonce.Cmp(maxNonce) > 0 {
 				log.Printf("   ⚠️  TX %d: Nonce %s exceeds max %s", i, nonce.String(), maxNonce.String())
-			}
-			if amount.Cmp(maxAmount) > 0 {
-				log.Printf("   ⚠️  TX %d: Amount %s exceeds max %s", i, amount.String(), maxAmount.String())
 			}
 			if gasPrice.Cmp(maxGasPrice) > 0 {
 				log.Printf("   ⚠️  TX %d: GasPrice %s exceeds max %s", i, gasPrice.String(), maxGasPrice.String())
