@@ -36,6 +36,7 @@ var startCmd = &cobra.Command{
 		}
 
 		// Create sequencer service with config
+		logger.Info("🔧 Config: RPC=%s, BatchSize=%d", cfg.RPCURL, cfg.BatchSize)
 		s := sequencer.NewWithConfig(cfg)
 
 		// Clear all data if --reset flag is set

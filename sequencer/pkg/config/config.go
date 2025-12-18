@@ -19,7 +19,10 @@ func LoadFromEnv() (*types.Config, error) {
 	config := types.DefaultConfig()
 
 	// Load RPC URL (required)
-	if rpcURL := os.Getenv("RPC"); rpcURL != "" {
+	// Priority: RPC_SEQUENCER > RPC
+	if rpcSequencer := os.Getenv("RPC_SEQUENCER"); rpcSequencer != "" {
+		config.RPCURL = rpcSequencer
+	} else if rpcURL := os.Getenv("RPC"); rpcURL != "" {
 		config.RPCURL = rpcURL
 	}
 

@@ -94,11 +94,11 @@ deploy:
 	@mkdir -p contracts/deployments
 	@# Load .env variables from ROOT .env
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	cd contracts && forge script script/Deploy.s.sol --rpc-url $${RPC} --broadcast
+	cd contracts && forge script script/Deploy.s.sol --rpc-url $${RPC_PROVER} --broadcast
 	@mkdir -p .tan-zk
 	@# Dynamically find Chain ID to copy the correct file
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	CHAIN_ID=$$(cast chain-id --rpc-url $${RPC}); \
+	CHAIN_ID=$$(cast chain-id --rpc-url $${RPC_PROVER}); \
 	echo "📦 Detected Chain ID: $$CHAIN_ID"; \
 	cp contracts/deployments/$$CHAIN_ID.json .tan-zk/deployments.json
 	@if [ ! -f .tan-zk/secrets.env ]; then \
@@ -116,7 +116,7 @@ run-traffic-gen: build-sequencer
 run-sequencer: build-sequencer
 	@mkdir -p .tan-zk/sequencer/data
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	./build/sequencer-bin start --rpc-url $${RPC:-http://localhost:8545} --state-db-path .tan-zk/sequencer/data
+	./build/sequencer-bin start --rpc-url $${RPC_SEQUENCER:-http://localhost:8545} --state-db-path .tan-zk/sequencer/data
 
 # Terminal 4: Run Prover
 # Usage: make run-prover [CONTRACT=...] [KEY=...]

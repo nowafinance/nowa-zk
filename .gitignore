@@ -38,6 +38,7 @@ Thumbs.db
 # --- Environment & Secrets ---
 .env
 .env.*
+!.env.example
 .tan-zk
 
 # --- Logs ---

@@ -189,23 +189,32 @@ anvil
 
 **Terminal 2 - Deploy Contracts:**
 ```bash
+# Export env vars from .env so forge can see them
+set -a && source .env && set +a
 cd contracts
-source .env
-forge script script/Deploy.s.sol --rpc-url $RPC --broadcast
+mkdir deployments
+forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
+
+# Post-deploy: Setup for Prover/Sequencer
+mkdir -p .tan-zk
+# Copy deployment file (replace 11155111 with your Chain ID if different)
+cp contracts/deployments/11155111.json .tan-zk/deployments.json
+
 ```
 
 **Terminal 3 - Start Sequencer:**
 ```bash
-cd sequencer
-export RPC=http://localhost:8545
-./sequencer-bin start
+# Run from project root (reads .env automatically)
+./build/sequencer-bin start
 ```
 
 **Terminal 4 - Start Prover:**
 ```bash
-cd prover
-./prover-bin start
+# Run from project root (reads .env automatically)
+./build/prover-bin start --contract ./contracts/deployments/11155111.json --keys-dir ./.tan
+-zk/keys
 ```
+NOTE: --contract chagne path as per 
 
 For detailed commands, see **[CODEME.md](CODEME.md)**.
 

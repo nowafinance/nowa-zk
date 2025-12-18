@@ -99,7 +99,9 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Set defaults from env if not provided via flags
 	if rpcURL == "" {
-		if envRPC := os.Getenv("RPC"); envRPC != "" {
+		if envRPCProver := os.Getenv("RPC_PROVER"); envRPCProver != "" {
+			rpcURL = envRPCProver
+		} else if envRPC := os.Getenv("RPC"); envRPC != "" {
 			rpcURL = envRPC
 		}
 	}
@@ -112,22 +114,30 @@ func start(cmd *cobra.Command, args []string) {
 
 	// 1. Auto-load configuration if missing
 	if contractAddr == "" {
-		// Try to load from ~/.tan-zk/deployments.json
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			deploymentsPath := homeDir + "/.tan-zk/deployments.json"
-			if data, err := os.ReadFile(deploymentsPath); err == nil {
-				// Simple string parsing to avoid importing complex JSON struct
-				// Looking for "BatchRegistry": "0x..."
-				content := string(data)
-				if idx := strings.Index(content, "\"BatchRegistry\""); idx != -1 {
-					rest := content[idx:]
-					if start := strings.Index(rest, ":"); start != -1 {
-						if quote1 := strings.Index(rest[start:], "\""); quote1 != -1 {
-							if quote2 := strings.Index(rest[start+quote1+1:], "\""); quote2 != -1 {
-								contractAddr = rest[start+quote1+1 : start+quote1+1+quote2]
-								log.Printf("ℹ️  Auto-loaded Contract: %s", contractAddr)
-							}
+		// Priority 1: Check .tan-zk/deployments.json in CURRENT directory (where make deploy saves it)
+		localDeployPath := ".tan-zk/deployments.json"
+		if data, err := os.ReadFile(localDeployPath); err == nil {
+			var deployments map[string]string
+			if err := json.Unmarshal(data, &deployments); err == nil {
+				if addr, ok := deployments["BatchRegistry"]; ok {
+					contractAddr = addr
+					log.Printf("ℹ️  Auto-loaded Contract: %s (from local .tan-zk)", contractAddr)
+				}
+			}
+		}
+
+		// Priority 2: Check ~/.tan-zk/deployments.json (Global/Home directory)
+		if contractAddr == "" {
+			homeDir, err := os.UserHomeDir()
+			if err == nil {
+				deploymentsPath := homeDir + "/.tan-zk/deployments.json"
+				if data, err := os.ReadFile(deploymentsPath); err == nil {
+					// Parse JSON to map
+					var deployments map[string]string
+					if err := json.Unmarshal(data, &deployments); err == nil {
+						if addr, ok := deployments["BatchRegistry"]; ok {
+							contractAddr = addr
+							log.Printf("ℹ️  Auto-loaded Contract: %s (from home dir)", contractAddr)
 						}
 					}
 				}
