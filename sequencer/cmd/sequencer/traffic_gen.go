@@ -142,9 +142,9 @@ func init() {
 		// Let's set default to os.Getenv("RPC").
 	}
 
-	defaultKey := os.Getenv("PRIVATE_KEY")
+	defaultKey := os.Getenv("TRAFFIC_GEN_KEY")
 
 	trafficGenCmd.Flags().StringVar(&genRPCURL, "rpc", defaultRPC, "RPC URL (default: RPC from .env)")
-	trafficGenCmd.Flags().StringVar(&genPrivateKey, "key", defaultKey, "Private key (hex) (default: PRIVATE_KEY from .env)")
+	trafficGenCmd.Flags().StringVar(&genPrivateKey, "key", defaultKey, "Private key (hex) (default: TRAFFIC_GEN_KEY from .env)")
 	trafficGenCmd.Flags().IntVar(&genTxCount, "count", 10, "Number of transactions to send")
 }
