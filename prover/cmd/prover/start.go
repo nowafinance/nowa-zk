@@ -392,7 +392,7 @@ func start(cmd *cobra.Command, args []string) {
 		sequencerAddr := hashAddress(auth.From.Hex())
 
 		// Use paranoid mode submission (handles proof generation, verification, submission, and rebuild)
-		_, _, calculatedNewStateRoot, err := submitProofWithParanoidMode(
+		tx, _, calculatedNewStateRoot, err := submitProofWithParanoidMode(
 			client, auth, contractAddr, batch, ccs, pk, vk, localStateRoot, sequencerAddr,
 			store, enableParanoidMode, maxRebuildAttempts, testFailure,
 		)
@@ -418,6 +418,22 @@ func start(cmd *cobra.Command, args []string) {
 		// Save state to store
 		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 			log.Printf("⚠️  Failed to save last processed batch: %v", err)
+		}
+
+		// Save proof data with tx hash (no witness needed, too large)
+		txHash := ""
+		if tx != nil {
+			txHash = tx.Hash().Hex()
+		}
+
+		// Extract L2 transaction hashes
+		txHashes := make([]string, len(batch.Transactions))
+		for i, tr := range batch.Transactions {
+			txHashes[i] = tr.Hash
+		}
+
+		if err := store.SaveProof(batch.Number, nil, nil, txHash, txHashes); err != nil {
+			log.Printf("⚠️  Failed to save proof metadata: %v", err)
 		}
 
 		// Update local state root and persist

@@ -42,6 +42,14 @@ cd tan-zk
 git submodule update --init --recursive
 ```
 
+### clean old data (optional)
+
+It will delete any old build data and ZK keys.
+
+```bash 
+make clean
+```
+
 ### Key Generation & Build
 
 Run the full setup command to compile binaries and generate ZK keys:
@@ -93,6 +101,8 @@ forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
 
 # Copy deployment file to home directory so prover can auto-load it
 cp deployments/deployments.json ~/.tan-zk/deployments.json
+
+cd ..
 ```
 
 ### Terminal 3: Start Sequencer
@@ -106,5 +116,24 @@ make run-sequencer
 
 ```bash
 # Run from project root (reads .env automatically)
+make run-prover
+```
+
+----------------------
+
+### all in one code 
+```bash
+make clean
+make setup
+make test
+set -a && source .env && set +a
+cd contracts
+mkdir deployments
+forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
+cp deployments/deployments.json ~/.tan-zk/deployments.json
+cd ..
+make run-sequencer
+```
+```bash
 make run-prover
 ```

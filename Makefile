@@ -109,10 +109,10 @@ deploy:
 	@echo "✅ Deployment info saved to .tan-zk/deployments.json"
 
 # Optional: ( New Terminal ) Run Traffic Generator
-# Usage: make run-traffic-gen [COUNT=5000]
+# Usage: make run-traffic-gen [COUNT=10000]
 run-traffic-gen: build-sequencer
 	@if [ -f .env ]; then export $$(grep -v '^[[:space:]]*#' .env | xargs); fi; \
-	./build/sequencer-bin traffic-gen --count $(or $(COUNT), 5000) --rpc $${RPC_SEQUENCER}
+	./build/sequencer-bin traffic-gen --count $(or $(COUNT), 10000) --rpc $${RPC_SEQUENCER}
 
 # Terminal 3: Run Sequencer
 run-sequencer: build-sequencer

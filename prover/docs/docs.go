@@ -196,6 +196,16 @@ const docTemplate = `{
                 "timestamp": {
                     "type": "integer"
                 },
+                "tx_hash": {
+                    "type": "string"
+                },
+                "tx_hashes": {
+                    "description": "L2 transaction hashes in batch",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "witness": {}
             }
         },
@@ -222,6 +232,16 @@ const docTemplate = `{
                 },
                 "timestamp": {
                     "type": "integer"
+                },
+                "txHash": {
+                    "type": "string"
+                },
+                "txHashes": {
+                    "description": "L2 transaction hashes",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "verifiedAt": {
                     "type": "integer"

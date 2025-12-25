@@ -76,11 +76,13 @@ type ProofData struct {
 	BatchNumber uint64      `json:"batch_number"`
 	Proof       interface{} `json:"proof"`
 	Witness     interface{} `json:"witness"`
+	TxHash      string      `json:"tx_hash,omitempty"`
+	TxHashes    []string    `json:"tx_hashes,omitempty"` // L2 transaction hashes in batch
 	Timestamp   int64       `json:"timestamp"`
 }
 
 // SaveProof saves the proof data for a batch
-func (s *ProverStore) SaveProof(batchNumber uint64, proof interface{}, witness interface{}) error {
+func (s *ProverStore) SaveProof(batchNumber uint64, proof interface{}, witness interface{}, txHash string, txHashes []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -88,6 +90,8 @@ func (s *ProverStore) SaveProof(batchNumber uint64, proof interface{}, witness i
 		BatchNumber: batchNumber,
 		Proof:       proof,
 		Witness:     witness,
+		TxHash:      txHash,
+		TxHashes:    txHashes,
 		Timestamp:   time.Now().Unix(),
 	}
 

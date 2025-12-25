@@ -28,14 +28,16 @@ type APIServer struct {
 
 // BatchResponse represents the batch data returned by API
 type BatchResponse struct {
-	BatchNumber  uint64 `json:"batchNumber"`
-	BatchHash    string `json:"batchHash"`
-	OldStateRoot string `json:"oldStateRoot"`
-	NewStateRoot string `json:"newStateRoot"`
-	Submitter    string `json:"submitter"`
-	Timestamp    uint64 `json:"timestamp"`
-	VerifiedAt   uint64 `json:"verifiedAt"`
-	Status       uint8  `json:"status"`
+	BatchNumber  uint64   `json:"batchNumber"`
+	BatchHash    string   `json:"batchHash"`
+	OldStateRoot string   `json:"oldStateRoot"`
+	NewStateRoot string   `json:"newStateRoot"`
+	Submitter    string   `json:"submitter"`
+	Timestamp    uint64   `json:"timestamp"`
+	VerifiedAt   uint64   `json:"verifiedAt"`
+	Status       uint8    `json:"status"`
+	TxHash       string   `json:"txHash,omitempty"`
+	TxHashes     []string `json:"txHashes,omitempty"` // L2 transaction hashes
 }
 
 // StatusResponse represents the proof status
@@ -131,6 +133,14 @@ func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get batch: %v", err))
 	}
 
+	// Try to get tx hash and tx hashes from local storage
+	txHash := ""
+	var txHashes []string
+	if proofData, err := api.store.GetProof(totalBatches.Uint64()); err == nil && proofData != nil {
+		txHash = proofData.TxHash
+		txHashes = proofData.TxHashes
+	}
+
 	resp := BatchResponse{
 		BatchNumber:  totalBatches.Uint64(),
 		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
@@ -140,6 +150,8 @@ func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
 		Timestamp:    batch.Timestamp.Uint64(),
 		VerifiedAt:   batch.VerifiedAt.Uint64(),
 		Status:       batch.Status,
+		TxHash:       txHash,
+		TxHashes:     txHashes,
 	}
 
 	return c.JSON(resp)
@@ -167,6 +179,14 @@ func (api *APIServer) handleGetBatch(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get batch: %v", err))
 	}
 
+	// Try to get tx hash and tx hashes from local storage
+	txHash := ""
+	var txHashes []string
+	if proofData, err := api.store.GetProof(batchID.Uint64()); err == nil && proofData != nil {
+		txHash = proofData.TxHash
+		txHashes = proofData.TxHashes
+	}
+
 	resp := BatchResponse{
 		BatchNumber:  batchID.Uint64(),
 		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
@@ -176,6 +196,8 @@ func (api *APIServer) handleGetBatch(c *fiber.Ctx) error {
 		Timestamp:    batch.Timestamp.Uint64(),
 		VerifiedAt:   batch.VerifiedAt.Uint64(),
 		Status:       batch.Status,
+		TxHash:       txHash,
+		TxHashes:     txHashes,
 	}
 
 	return c.JSON(resp)

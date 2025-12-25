@@ -272,20 +272,30 @@ func (s *Service) catchUpBlocks() {
 	}
 
 	if currentBlockNum > lastBlockNum {
-		logger.Info("📦 Catching up on %d unprocessed blocks...", currentBlockNum-lastBlockNum)
-		// Process blocks sequentially
-		for i := lastBlockNum + 1; i <= currentBlockNum; i++ {
+		blocksBehind := currentBlockNum - lastBlockNum
+		logger.Info("📦 Catching up on %d unprocessed blocks...", blocksBehind)
+
+		// Process blocks in chunks of 100 for deterministic ordering
+		for startBlock := lastBlockNum + 1; startBlock <= currentBlockNum; {
 			select {
 			case <-s.ctx.Done():
-				logger.Warn("Context canceled during catch-up, stopping at block #%d", i-1)
+				logger.Warn("Context canceled during catch-up, stopping at block #%d", startBlock-1)
 				return
 			default:
-				if s.processBlock(i) {
-					if err := s.batches.SetLastProcessedBlock(i); err != nil {
+				// Process up to 100 blocks at once
+				endBlock := startBlock + 99
+				if endBlock > currentBlockNum {
+					endBlock = currentBlockNum
+				}
+
+				if s.processBlockRange(startBlock, endBlock) {
+					// Successfully processed range, update last processed block
+					if err := s.batches.SetLastProcessedBlock(endBlock); err != nil {
 						logger.Warn("Failed to save last processed block: %v", err)
 					}
+					startBlock = endBlock + 1
 				} else {
-					logger.Warn("Stopping catch-up at block #%d (will retry)", i)
+					logger.Warn("Stopping catch-up at block #%d (will retry)", startBlock)
 					return
 				}
 			}
@@ -298,9 +308,9 @@ func (s *Service) catchUpBlocks() {
 
 // pollBlocks polls for new blocks periodically
 func (s *Service) pollBlocks() {
-	logger.Info("📡 Polling for new blocks (every 2 seconds)")
+	logger.Info("📡 Polling for new blocks every 2 seconds (processing 100 blocks per batch)")
 
-	// Determine starting block
+	// Determine starting block - initialize ONCE
 	lastBlockNum := s.initStartingBlock()
 
 	ticker := time.NewTicker(2 * time.Second)
@@ -311,6 +321,7 @@ func (s *Service) pollBlocks() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
+			// Get current block number from chain
 			blockNum, err := s.rpcClient.BlockNumber(s.ctx)
 			if err != nil {
 				logger.Warn("Failed to get block number: %v", err)
@@ -318,25 +329,29 @@ func (s *Service) pollBlocks() {
 			}
 
 			if blockNum > lastBlockNum {
-				// Process blocks sequentially - only advance when block is fully processed
-			blockLoop:
-				for i := lastBlockNum + 1; i <= blockNum; i++ {
+				// Process blocks in chunks of 100
+				for startBlock := lastBlockNum + 1; startBlock <= blockNum; startBlock += 100 {
 					select {
 					case <-s.ctx.Done():
 						return
 					default:
-						// Process block - only advance if successfully processed
-						if s.processBlock(i) {
+						// Process up to 100 blocks at once
+						endBlock := startBlock + 99
+						if endBlock > blockNum {
+							endBlock = blockNum
+						}
+
+						// Process block range - only advance if successfully processed
+						if s.processBlockRange(startBlock, endBlock) {
 							// Update last processed block only after successful processing
-							if err := s.batches.SetLastProcessedBlock(i); err != nil {
+							if err := s.batches.SetLastProcessedBlock(endBlock); err != nil {
 								logger.Warn("Failed to save last processed block: %v", err)
 							}
-							lastBlockNum = i
+							lastBlockNum = endBlock
 						} else {
-							// Block processing failed or incomplete, stop here
-							// Will retry on next poll
-							logger.Warn("Stopping block processing at block #%d (will retry)", i)
-							break blockLoop
+							// Block range processing failed, stop and retry on next poll
+							logger.Warn("Stopping block processing at block #%d (will retry)", startBlock)
+							break
 						}
 					}
 				}
@@ -575,6 +590,7 @@ func (s *Service) handleReorg(forkPoint uint64) error {
 }
 
 // createBatchFromTransactions creates a new batch directly from provided transactions
+// Only finalizes the batch if it has EXACTLY 128 transactions (config.BatchSize)
 func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumber uint64) {
 	// Check if context is canceled
 	select {
@@ -603,16 +619,21 @@ func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumbe
 		return
 	}
 
-	// Notify WebSocket clients about new batch
-	if s.api != nil {
-		s.api.NotifyNewBatch(batch)
+	// Only notify and log if batch is complete (exactly 128 transactions)
+	if len(batch.Transactions) >= s.config.BatchSize {
+		// Notify WebSocket clients about new batch
+		if s.api != nil {
+			s.api.NotifyNewBatch(batch)
+		}
+
+		logger.Info("🎉 Batch #%d COMPLETE: %d transactions (batch hash: %s)",
+			batch.Number, len(batch.Transactions), batch.Hash)
+		logger.Info("✅ Ready for proof generation!")
+	} else {
+		// Batch is incomplete, just save it silently
+		logger.Info("📝 Batch #%d incomplete: %d/%d transactions",
+			batch.Number, len(batch.Transactions), s.config.BatchSize)
 	}
-
-	logger.Info("✅ Batch #%d created: %d transactions (batch hash: %s)",
-		batch.Number, len(batch.Transactions), batch.Hash)
-
-	// TODO: Request proof from prover
-	// This will be implemented when prover service is ready
 }
 
 // Info returns service information

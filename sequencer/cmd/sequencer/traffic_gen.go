@@ -78,7 +78,8 @@ var trafficGenCmd = &cobra.Command{
 
 		for i := 0; i < genTxCount; i++ {
 			// Send to fixed address as requested
-			toAddress := common.HexToAddress("0x25691469d348161ea4d4bf6409c34c5a084decb4")
+			// toAddress := common.HexToAddress("0x25691469d348161ea4d4bf6409c34c5a084decb4")
+			toAddress := common.HexToAddress("0xBa2dF2424b6AC806C16Ebba254fc93b468102274")
 
 			// Amount: 0.0001 ETH (10^14 wei)
 			value := big.NewInt(100000000000000)

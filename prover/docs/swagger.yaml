@@ -7,6 +7,13 @@ definitions:
       proof: {}
       timestamp:
         type: integer
+      tx_hash:
+        type: string
+      tx_hashes:
+        description: L2 transaction hashes in batch
+        items:
+          type: string
+        type: array
       witness: {}
     type: object
   internal_api.BatchResponse:
@@ -25,6 +32,13 @@ definitions:
         type: string
       timestamp:
         type: integer
+      txHash:
+        type: string
+      txHashes:
+        description: L2 transaction hashes
+        items:
+          type: string
+        type: array
       verifiedAt:
         type: integer
     type: object
