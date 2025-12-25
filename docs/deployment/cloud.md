@@ -185,10 +185,14 @@ cd ~/tan-zk/contracts
 mkdir -p deployments
 
 # Deploy
-forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
+
+# Optional: Verify contracts on block explorer
+# forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --verify --etherscan-api-key $ETHERSCAN_API_KEY
 
 cd ..
 ```
+
 
 **Save the deployed contract address** - you'll need it for the prover service configuration.
 
@@ -199,14 +203,11 @@ cd ..
 The prover service needs to know the deployed contract address. After deployment, copy the deployment info to the expected location.
 
 ```bash
-# Get the chain ID from your RPC endpoint
-CHAIN_ID=$(cast chain-id --rpc-url $RPC)
-
 # Create the .tan-zk directory in your home folder
 mkdir -p ~/.tan-zk
 
 # Copy the deployment file 
-cp ~/tan-zk/contracts/deployments/${CHAIN_ID}.json ~/.tan-zk/deployments.json
+cp ~/tan-zk/contracts/deployments/deployments.json ~/.tan-zk/deployments.json
 
 # Verify the file was copied correctly
 cat ~/.tan-zk/deployments.json

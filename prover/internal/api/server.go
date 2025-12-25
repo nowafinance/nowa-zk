@@ -92,7 +92,7 @@ func (api *APIServer) Start() error {
 
 	addr := fmt.Sprintf(":%d", api.port)
 	fmt.Printf("🌍 Starting Prover API on %s\n", addr)
-	fmt.Printf("📖 Swagger UI available at http://<HOST>%s/swagger/index.html\n", addr)
+	fmt.Printf("📖 Swagger UI available at http://localhost%s/swagger/index.html\n", addr)
 
 	return api.app.Listen(addr)
 }

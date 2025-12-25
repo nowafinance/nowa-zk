@@ -64,15 +64,39 @@ func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction, blockNumber uint64) (
 		return nil, fmt.Errorf("no transactions provided (or all were duplicates)")
 	}
 
-	// Generate execution traces (simplified for now)
+	// Generate execution traces with balance tracking
 	traces := make([]*types.ExecutionTrace, len(txs))
+
+	// Query balances at block start (blockNumber - 1, or blockNumber if first tx in block)
+	blockNumForBalance := blockNumber
+	if blockNumber > 0 {
+		blockNumForBalance = blockNumber - 1 // Balance at start of block
+	}
+
 	for i, tx := range txs {
+		// Get sender's old balance before transaction
+		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
+		var oldSenderBalance *big.Int
+		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
+			oldSenderBalance = new(big.Int).SetBytes(balanceBytes)
+		} else {
+			// Query from blockchain
+			balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, tx.From, blockNumForBalance)
+			if err == nil {
+				oldSenderBalance = balance
+			} else {
+				oldSenderBalance = big.NewInt(0)
+			}
+		}
+
 		trace := &types.ExecutionTrace{
 			TxHash:               tx.Hash,
 			From:                 tx.From,
 			Value:                tx.Value.String(),
 			Nonce:                tx.Nonce,
 			IsContractDeployment: tx.IsContractDeployment,
+			OldBalance:           oldSenderBalance.String(),
+			// NewBalance will be set after state update
 		}
 
 		// For contract deployments, use contract address instead of to
@@ -89,15 +113,18 @@ func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction, blockNumber uint64) (
 	oldRoot := bb.stateRoot
 
 	// Update SMT with transaction state changes
-	// Query balances at block start (blockNumber - 1, or blockNumber if first tx in block)
-	blockNumForBalance := blockNumber
-	if blockNumber > 0 {
-		blockNumForBalance = blockNumber - 1 // Balance at start of block
-	}
-
-	for _, tx := range txs {
+	for i, tx := range txs {
 		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
 			return nil, fmt.Errorf("failed to update state from transaction: %w", err)
+		}
+
+		// After updating state, populate newBalance in trace
+		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
+		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
+			newBalance := new(big.Int).SetBytes(balanceBytes)
+			traces[i].NewBalance = newBalance.String()
+		} else {
+			traces[i].NewBalance = "0"
 		}
 	}
 
@@ -138,15 +165,39 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 		return fmt.Errorf("no transactions to append (or all were duplicates)")
 	}
 
-	// Generate execution traces for new transactions
+	// Generate execution traces for new transactions with balance tracking
 	newTraces := make([]*types.ExecutionTrace, len(newTxs))
+
+	// Query balances at block start
+	blockNumForBalance := blockNumber
+	if blockNumber > 0 {
+		blockNumForBalance = blockNumber - 1 // Balance at start of block
+	}
+
 	for i, tx := range newTxs {
+		// Get sender's old balance before transaction
+		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
+		var oldSenderBalance *big.Int
+		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
+			oldSenderBalance = new(big.Int).SetBytes(balanceBytes)
+		} else {
+			// Query from blockchain
+			balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, tx.From, blockNumForBalance)
+			if err == nil {
+				oldSenderBalance = balance
+			} else {
+				oldSenderBalance = big.NewInt(0)
+			}
+		}
+
 		trace := &types.ExecutionTrace{
 			TxHash:               tx.Hash,
 			From:                 tx.From,
 			Value:                tx.Value.String(),
 			Nonce:                tx.Nonce,
 			IsContractDeployment: tx.IsContractDeployment,
+			OldBalance:           oldSenderBalance.String(),
+			// NewBalance will be set after state update
 		}
 
 		// For contract deployments, use contract address instead of to
@@ -164,14 +215,21 @@ func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transact
 	batch.Traces = append(batch.Traces, newTraces...)
 
 	// Update SMT with new transaction state changes
-	blockNumForBalance := blockNumber
-	if blockNumber > 0 {
-		blockNumForBalance = blockNumber - 1 // Balance at start of block
-	}
-
-	for _, tx := range newTxs {
+	for i, tx := range newTxs {
 		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
 			return fmt.Errorf("failed to update state from transaction: %w", err)
+		}
+
+		// After updating state, populate newBalance in trace
+		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
+		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
+			newBalance := new(big.Int).SetBytes(balanceBytes)
+			// Find the trace we just added (it's at the end of the batch.Traces array)
+			traceIndex := len(batch.Traces) - len(newTxs) + i
+			batch.Traces[traceIndex].NewBalance = newBalance.String()
+		} else {
+			traceIndex := len(batch.Traces) - len(newTxs) + i
+			batch.Traces[traceIndex].NewBalance = "0"
 		}
 	}
 

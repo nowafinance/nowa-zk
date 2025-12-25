@@ -217,11 +217,11 @@ contract Deploy is Script {
             vm.projectRoot(),
             "/deployments/"
         );
-        string memory chainId = vm.toString(block.chainid);
-        string memory outputFile = string.concat(outputDir, chainId, ".json");
+        string memory outputFile = string.concat(outputDir, "deployments.json");
 
         vm.writeJson(finalJson, outputFile);
         console.log("");
         console.log("Deployment addresses saved to:", outputFile);
+        console.log("Chain ID:", block.chainid);
     }
 }

@@ -99,7 +99,10 @@ forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KE
 cd ..
 ```
 
-**Note the deployed contract address** - the prover will need this.
+**Deployment addresses saved to:** `contracts/deployments/deployments.json`
+
+> [!TIP]
+> The deployment script automatically saves contract addresses to `deployments/deployments.json`. Docker Compose will mount this file so the Prover can auto-load contract addresses.
 
 ---
 
