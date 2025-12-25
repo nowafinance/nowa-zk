@@ -43,13 +43,17 @@ var startCmd = &cobra.Command{
 }
 
 var (
-	keysDir       string
-	sequencerURL  string
-	rpcURL        string
-	contractAddr  string
-	privateKeyHex string
-	pollInterval  int
-	configPath    string
+	keysDir            string
+	sequencerURL       string
+	rpcURL             string
+	contractAddr       string
+	privateKeyHex      string
+	pollInterval       int
+	configPath         string
+	enableParanoidMode bool
+	maxRebuildAttempts int
+	clearHalt          bool
+	testFailure        bool
 )
 
 func init() {
@@ -71,6 +75,14 @@ func init() {
 	// Poll interval in seconds (default: 10)
 	startCmd.Flags().IntVarP(&pollInterval, "poll-interval", "i", 10, "")
 	startCmd.Flags().StringVar(&configPath, "config", "", "Path to YAML config file")
+
+	// Paranoid mode flags
+	startCmd.Flags().BoolVar(&enableParanoidMode, "paranoid-mode", true, "Enable proof rebuild on verification failure")
+	startCmd.Flags().IntVar(&maxRebuildAttempts, "max-rebuilds", 1, "Maximum proof rebuild attempts")
+	startCmd.Flags().BoolVar(&clearHalt, "clear-halt", false, "Clear halt state and resume processing")
+
+	// Testing flags
+	startCmd.Flags().BoolVar(&testFailure, "test-failure", false, "[TESTING] Intentionally corrupt proof to test error handling")
 }
 
 // Batch represents a batch from sequencer API
@@ -174,6 +186,15 @@ func start(cmd *cobra.Command, args []string) {
 	log.Printf("RPC URL: %s\n", rpcURL)
 	log.Printf("Contract: %s\n", contractAddr)
 	log.Printf("Poll interval: %d seconds\n", pollInterval)
+
+	// Test mode warning
+	if testFailure {
+		log.Println()
+		log.Println("⚠️  ⚠️  ⚠️  WARNING: TEST FAILURE MODE ENABLED ⚠️  ⚠️  ⚠️")
+		log.Println("Proofs will be intentionally corrupted to test error handling!")
+		log.Println("This mode should ONLY be used for testing.")
+		log.Println()
+	}
 	log.Println()
 
 	// Load circuit and keys
@@ -211,6 +232,37 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to initialize storage: %v", err)
 	}
 	defer store.Close()
+
+	// Check if --clear-halt flag was provided
+	if clearHalt {
+		if err := store.ClearHaltState(); err != nil {
+			log.Printf("⚠️  Failed to clear halt state: %v", err)
+		} else {
+			log.Println("✅ Halt state cleared. Prover will resume normal operation.")
+		}
+	}
+
+	// Check if prover was previously halted
+	halted, reason, err := store.GetHaltState()
+	if err != nil {
+		log.Printf("⚠️  Failed to check halt state: %v", err)
+	} else if halted {
+		log.Println("========================================")
+		log.Println("❌ PROVER IS HALTED")
+		log.Println("========================================")
+		log.Printf("Reason: %s\n", reason)
+		log.Println()
+		log.Println("Troubleshooting Steps:")
+		log.Println("1. Review failure logs in ~/.tan-zk/prover/data/")
+		log.Println("2. Check verification failure details in storage")
+		log.Println("3. Verify circuit constraints match contract verifier")
+		log.Println("4. After fixing, restart with --clear-halt flag:")
+		log.Printf("   ./build/prover-bin start --keys-dir %s --clear-halt\n", keysDir)
+		log.Println()
+		log.Println("For support, visit: https://github.com/tannetwork/tan-zk/issues")
+		log.Println("========================================")
+		return
+	}
 
 	// Start API Server
 	// Start API server
@@ -338,84 +390,34 @@ func start(cmd *cobra.Command, args []string) {
 		// Generate proof using LOCAL state root as PrevStateRoot
 		log.Println("   🔐 Generating proof...")
 		sequencerAddr := hashAddress(auth.From.Hex())
-		proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
+
+		// Use paranoid mode submission (handles proof generation, verification, submission, and rebuild)
+		_, _, calculatedNewStateRoot, err := submitProofWithParanoidMode(
+			client, auth, contractAddr, batch, ccs, pk, vk, localStateRoot, sequencerAddr,
+			store, enableParanoidMode, maxRebuildAttempts, testFailure,
+		)
+
 		if err != nil {
-			log.Printf("   ❌ Failed to generate proof: %v\n", err)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
-		}
-		log.Println("   ✅ Proof generated")
-		log.Printf("   🧮 Calculated New State Root: %s\n", calculatedNewStateRoot.String())
-
-		// Verify locally
-		log.Println("   🔍 Verifying proof locally...")
-		if err := verifyLocal(proof, vk, publicWitness); err != nil {
-			log.Printf("   ❌ Local verification failed: %v\n", err)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
-		}
-		log.Println("   ✅ Proof verified locally")
-
-		// Submit proof to contract
-		// Submit proof to contract with retry logic
-		log.Println("   📡 Submitting proof to contract...")
-
-		var tx *types.Transaction
-		submitted := false
-
-		for attempt := 1; attempt <= 3; attempt++ {
-			tx, err = submitProof(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot)
-			if err == nil {
-				submitted = true
-				break
+			// Check if this is a halt error
+			if strings.HasPrefix(err.Error(), "HALTED:") {
+				// Prover has been halted - exit the main loop
+				log.Println()
+				log.Println("Exiting prover due to halt state...")
+				return
 			}
 
-			if attempt < 3 {
-				log.Printf("   ⚠️  Submission failed: %v. Retrying in 5s... (Attempt %d/3)\n", err, attempt)
-				time.Sleep(5 * time.Second)
-			}
-		}
-
-		if !submitted {
-			log.Printf("   ❌ Failed to submit proof after 3 attempts: %v\n", err)
+			// Other errors - log and retry after interval
+			log.Printf("   ❌ Failed to process batch #%d: %v\n", batch.Number, err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 
-		log.Printf("   ✅ Proof submitted. TxHash: %s\n", tx.Hash().Hex())
-		log.Println("   ⏳ Waiting for transaction to be mined...")
-
-		receipt, err := bind.WaitMined(context.Background(), client, tx)
-		if err != nil {
-			log.Printf("   ❌ Transaction mining failed: %v\n", err)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
-		}
-
-		if receipt.Status != types.ReceiptStatusSuccessful {
-			log.Printf("   ❌ Transaction reverted with status: %v\n", receipt.Status)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
-		}
-
-		log.Printf("   ✅ Transaction mined. Block Number: %v\n", receipt.BlockNumber)
+		log.Printf("   ✅ Batch #%d successfully processed!\n", batch.Number)
 		log.Println()
 
 		// Save state to store
 		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 			log.Printf("⚠️  Failed to save last processed batch: %v", err)
-		}
-
-		// Serialize witness to bytes for storage (JSON doesn't handle the interface well)
-		var witnessBuf bytes.Buffer
-		if _, err := publicWitness.WriteTo(&witnessBuf); err != nil {
-			log.Printf("⚠️  Failed to serialize witness: %v", err)
-		} else {
-			// We save the raw bytes (which will be base64 encoded in JSON)
-			// OR we could save a map if we wanted fields, but raw bytes is safer for reconstruction
-			if err := store.SaveProof(batch.Number, proof, witnessBuf.Bytes()); err != nil {
-				log.Printf("⚠️  Failed to save proof data: %v", err)
-			}
 		}
 
 		// Update local state root and persist
@@ -907,6 +909,306 @@ func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transact
 		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
 	}
 	return currentStateRoot
+}
+
+// ErrorType represents the type of error encountered
+type ErrorType int
+
+const (
+	ErrorTypeNetwork ErrorType = iota
+	ErrorTypeVerification
+	ErrorTypeUnknown
+)
+
+// classifyError determines the type of error from submission/transaction
+func classifyError(err error) ErrorType {
+	if err == nil {
+		return ErrorTypeUnknown
+	}
+
+	errMsg := err.Error()
+
+	// Network/RPC errors
+	if strings.Contains(errMsg, "connection") ||
+		strings.Contains(errMsg, "timeout") ||
+		strings.Contains(errMsg, "network") ||
+		strings.Contains(errMsg, "dial") ||
+		strings.Contains(errMsg, "EOF") {
+		return ErrorTypeNetwork
+	}
+
+	// Verification errors (contract reverts)
+	if strings.Contains(errMsg, "execution reverted") ||
+		strings.Contains(errMsg, "Invalid proof") ||
+		strings.Contains(errMsg, "verification failed") ||
+		strings.Contains(errMsg, "verifier") {
+		return ErrorTypeVerification
+	}
+
+	return ErrorTypeUnknown
+}
+
+// saveFailureData saves comprehensive failure data for debugging
+func saveFailureData(batch *Batch, proof groth16.Proof, publicWitness witness.Witness, errMsg string) error {
+	failureDir := os.ExpandEnv("$HOME/.tan-zk/prover/failures")
+	if err := os.MkdirAll(failureDir, 0755); err != nil {
+		return fmt.Errorf("failed to create failure directory: %w", err)
+	}
+
+	// Save batch data
+	batchFile := fmt.Sprintf("%s/batch_%d.json", failureDir, batch.Number)
+	batchData, err := json.MarshalIndent(batch, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal batch data: %w", err)
+	}
+	if err := os.WriteFile(batchFile, batchData, 0644); err != nil {
+		return fmt.Errorf("failed to write batch file: %w", err)
+	}
+
+	// Save proof
+	proofFile := fmt.Sprintf("%s/batch_%d_proof.bin", failureDir, batch.Number)
+	proofF, err := os.Create(proofFile)
+	if err != nil {
+		return fmt.Errorf("failed to create proof file: %w", err)
+	}
+	defer proofF.Close()
+	if _, err := proof.WriteTo(proofF); err != nil {
+		return fmt.Errorf("failed to write proof: %w", err)
+	}
+
+	// Save public witness
+	witnessFile := fmt.Sprintf("%s/batch_%d_witness.bin", failureDir, batch.Number)
+	witnessF, err := os.Create(witnessFile)
+	if err != nil {
+		return fmt.Errorf("failed to create witness file: %w", err)
+	}
+	defer witnessF.Close()
+	if _, err := publicWitness.WriteTo(witnessF); err != nil {
+		return fmt.Errorf("failed to write witness: %w", err)
+	}
+
+	// Save error log
+	errorFile := fmt.Sprintf("%s/batch_%d_error.log", failureDir, batch.Number)
+	errorLog := fmt.Sprintf("Batch Number: %d\nTimestamp: %s\nError: %s\n",
+		batch.Number, time.Now().Format(time.RFC3339), errMsg)
+	if err := os.WriteFile(errorFile, []byte(errorLog), 0644); err != nil {
+		return fmt.Errorf("failed to write error log: %w", err)
+	}
+
+	log.Printf("   💾 Failure data saved to: %s/batch_%d_*", failureDir, batch.Number)
+	return nil
+}
+
+// haltProver halts the prover with detailed error information
+func haltProver(store *storage.ProverStore, batch *Batch, errMsg string) {
+	log.Println()
+	log.Println("========================================")
+	log.Println("⚠️  PARANOID MODE: PROOF VERIFICATION FAILED AFTER REBUILD!")
+	log.Println("❌ HALTING PROVER - MANUAL INTERVENTION REQUIRED")
+	log.Println("========================================")
+	log.Printf("Batch Number: %d\n", batch.Number)
+	log.Printf("Error: %s\n", errMsg)
+	log.Printf("Timestamp: %s\n", time.Now().Format(time.RFC3339))
+	log.Println()
+	log.Println("Troubleshooting Steps:")
+	log.Println("1. Review failure data in: ~/.tan-zk/prover/failures/")
+	log.Printf("   - Batch data: batch_%d.json\n", batch.Number)
+	log.Printf("   - Proof: batch_%d_proof.bin\n", batch.Number)
+	log.Printf("   - Witness: batch_%d_witness.bin\n", batch.Number)
+	log.Printf("   - Error log: batch_%d_error.log\n", batch.Number)
+	log.Println("2. Verify circuit constraints match contract verifier")
+	log.Println("3. Check for non-deterministic proof generation bugs")
+	log.Println("4. Ensure state synchronization is correct")
+	log.Println("5. After fixing, restart with --clear-halt flag:")
+	log.Println("   make run-prover CLEAR_HALT=true")
+	log.Println("   OR: ./build/prover-bin start --keys-dir ~/.tan-zk/keys --clear-halt")
+	log.Println()
+	log.Println("For support, visit: https://github.com/tannetwork/tan-zk/issues")
+	log.Println("========================================")
+
+	// Set halt state in storage
+	haltReason := fmt.Sprintf("Batch #%d verification failed after rebuild: %s", batch.Number, errMsg)
+	if err := store.SetHaltState(haltReason); err != nil {
+		log.Printf("⚠️  Failed to save halt state: %v", err)
+	}
+}
+
+// submitProofWithParanoidMode handles proof submission with two-level retry and rebuild
+func submitProofWithParanoidMode(
+	client *ethclient.Client,
+	auth *bind.TransactOpts,
+	contractAddr string,
+	batch *Batch,
+	ccs constraint.ConstraintSystem,
+	pk groth16.ProvingKey,
+	vk groth16.VerifyingKey,
+	localStateRoot *big.Int,
+	sequencerAddr *big.Int,
+	store *storage.ProverStore,
+	enableParanoid bool,
+	maxRebuilds int,
+	testMode bool,
+) (*types.Transaction, *types.Receipt, *big.Int, error) {
+
+	// Level 1: Try with initial proof (3 quick retries for network issues)
+	proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+	}
+
+	log.Println("   ✅ Proof generated")
+	log.Printf("   🧮 Calculated New State Root: %s\n", calculatedNewStateRoot.String())
+
+	// Verify locally
+	log.Println("   🔍 Verifying proof locally...")
+	if err := verifyLocal(proof, vk, publicWitness); err != nil {
+		return nil, nil, nil, fmt.Errorf("local verification failed: %w", err)
+	}
+	log.Println("   ✅ Proof verified locally")
+
+	// Attempt submission with retries
+	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot, 3, testMode)
+	if err == nil {
+		return tx, receipt, calculatedNewStateRoot, nil
+	}
+
+	// Check error type
+	errType := classifyError(err)
+	log.Printf("   ⚠️  Submission failed: %v (Type: %v)\n", err, errType)
+
+	// If it's a network error, don't rebuild - just fail
+	if errType == ErrorTypeNetwork {
+		return nil, nil, nil, fmt.Errorf("network error after retries: %w", err)
+	}
+
+	// Level 2: Paranoid mode - rebuild proof if enabled
+	if !enableParanoid || errType != ErrorTypeVerification {
+		return nil, nil, nil, err
+	}
+
+	log.Println()
+	log.Println("   🔄 PARANOID MODE: Rebuilding proof due to verification failure...")
+
+	for rebuild := 1; rebuild <= maxRebuilds; rebuild++ {
+		log.Printf("   🔧 Rebuild attempt %d/%d\n", rebuild, maxRebuilds)
+
+		// Regenerate proof
+		proof, publicWitness, calculatedNewStateRoot, err = generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
+		if err != nil {
+			log.Printf("   ❌ Proof regeneration failed: %v\n", err)
+			continue
+		}
+
+		log.Println("   ✅ Proof regenerated")
+
+		// Verify locally again
+		if err := verifyLocal(proof, vk, publicWitness); err != nil {
+			log.Printf("   ❌ Local verification failed: %v\n", err)
+			continue
+		}
+		log.Println("   ✅ Proof verified locally")
+
+		// Try submission again
+		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot, 2, testMode)
+		if err == nil {
+			log.Println("   ✅ Proof accepted after rebuild!")
+			return tx, receipt, calculatedNewStateRoot, nil
+		}
+
+		log.Printf("   ❌ Rebuilt proof also failed: %v\n", err)
+	}
+
+	// Level 3: HALT - All attempts failed
+	errMsg := fmt.Sprintf("Verification failed after %d rebuild attempts: %v", maxRebuilds, err)
+
+	// Save failure data
+	if saveErr := saveFailureData(batch, proof, publicWitness, errMsg); saveErr != nil {
+		log.Printf("⚠️  Failed to save failure data: %v\n", saveErr)
+	}
+
+	// Save to storage
+	var proofBuf bytes.Buffer
+	proof.WriteTo(&proofBuf)
+	if saveErr := store.SaveVerificationFailure(batch.Number, errMsg, proofBuf.Bytes()); saveErr != nil {
+		log.Printf("⚠️  Failed to save failure to storage: %v\n", saveErr)
+	}
+
+	// Halt the prover
+	haltProver(store, batch, errMsg)
+
+	return nil, nil, nil, fmt.Errorf("HALTED: %s", errMsg)
+}
+
+// attemptSubmission tries to submit and verify a proof with retries
+func attemptSubmission(
+	client *ethclient.Client,
+	auth *bind.TransactOpts,
+	contractAddr string,
+	batch *Batch,
+	proof groth16.Proof,
+	prevStateRoot *big.Int,
+	newStateRoot *big.Int,
+	maxAttempts int,
+	testMode bool,
+) (*types.Transaction, *types.Receipt, error) {
+
+	var tx *types.Transaction
+	var err error
+
+	// TEST MODE: Corrupt proof to simulate verification failure
+	proofToSubmit := proof
+	if testMode {
+		log.Println("   🧪 TEST MODE: Corrupting proof to simulate verification failure...")
+		// Corrupt the proof by modifying one of its points
+		bn254Proof, ok := proof.(*bn254.Proof)
+		if ok {
+			// Create a copy and corrupt it
+			corruptedProof := *bn254Proof
+			// Modify the proof by adding 1 to the X coordinate of point A
+			corruptedProof.Ar.X.Add(&corruptedProof.Ar.X, &corruptedProof.Ar.X)
+			proofToSubmit = &corruptedProof
+		}
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		tx, err = submitProof(client, auth, contractAddr, batch, proofToSubmit, prevStateRoot, newStateRoot)
+		if err != nil {
+			if attempt < maxAttempts {
+				log.Printf("   ⚠️  Submission attempt %d/%d failed: %v. Retrying in 5s...\n", attempt, maxAttempts, err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			return nil, nil, fmt.Errorf("submission failed after %d attempts: %w", maxAttempts, err)
+		}
+
+		log.Printf("   ✅ Proof submitted. TxHash: %s\n", tx.Hash().Hex())
+		log.Println("   ⏳ Waiting for transaction to be mined...")
+
+		receipt, err := bind.WaitMined(context.Background(), client, tx)
+		if err != nil {
+			if attempt < maxAttempts {
+				log.Printf("   ⚠️  Mining attempt %d/%d failed: %v. Retrying...\n", attempt, maxAttempts, err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			return nil, nil, fmt.Errorf("transaction mining failed after %d attempts: %w", maxAttempts, err)
+		}
+
+		if receipt.Status != types.ReceiptStatusSuccessful {
+			errMsg := fmt.Sprintf("transaction reverted with status: %v", receipt.Status)
+			if attempt < maxAttempts {
+				log.Printf("   ⚠️  Verification attempt %d/%d failed: %s. Retrying...\n", attempt, maxAttempts, errMsg)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			return tx, receipt, fmt.Errorf("execution reverted: %s", errMsg)
+		}
+
+		log.Printf("   ✅ Transaction mined. Block Number: %v\n", receipt.BlockNumber)
+		return tx, receipt, nil
+	}
+
+	return nil, nil, fmt.Errorf("submission failed after %d attempts", maxAttempts)
 }
 
 // API Server Implementation
