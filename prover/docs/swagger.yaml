@@ -52,6 +52,37 @@ paths:
       summary: List available endpoints
       tags:
       - Meta
+  /batches:
+    get:
+      description: Retrieve multiple batch metadata entries with pagination
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Items per page - 10, 25, 50, or 100 (default: 25)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated batch list
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid parameters
+          schema:
+            type: string
+        "500":
+          description: Server error
+          schema:
+            type: string
+      summary: Get batches with pagination
+      tags:
+      - Batches
   /batches/{id}:
     get:
       description: Get details of a specific batch

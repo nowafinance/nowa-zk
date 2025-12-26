@@ -127,6 +127,69 @@ func (s *ProverStore) GetProof(batchNumber uint64) (*ProofData, error) {
 	return &data, nil
 }
 
+// GetBatches retrieves multiple batches with pagination
+// offset: starting batch number, limit: max batches to return
+func (s *ProverStore) GetBatches(offset, limit uint64) ([]*ProofData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var batches []*ProofData
+	err := s.db.View(func(txn *badger.Txn) error {
+		// Iterate through proof keys
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte("proof_")
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		count := uint64(0)
+		skipped := uint64(0)
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+
+			// Extract batch number from key
+			var batchNum uint64
+			_, err := fmt.Sscanf(string(item.Key()), "proof_%d", &batchNum)
+			if err != nil {
+				continue
+			}
+
+			// Skip until offset
+			if skipped < offset {
+				skipped++
+				continue
+			}
+
+			// Stop if limit reached
+			if count >= limit {
+				break
+			}
+
+			// Parse batch data
+			err = item.Value(func(val []byte) error {
+				var data ProofData
+				if err := json.Unmarshal(val, &data); err != nil {
+					return err
+				}
+				batches = append(batches, &data)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+
+			count++
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return batches, nil
+}
+
 // SaveLastStateRoot saves the last verified state root
 func (s *ProverStore) SaveLastStateRoot(stateRoot string) error {
 	s.mu.Lock()

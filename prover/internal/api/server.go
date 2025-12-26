@@ -84,6 +84,7 @@ func (api *APIServer) Start() error {
 	api.app.Get("/", api.handleRoot)
 
 	// Batches
+	api.app.Get("/batches", api.handleGetBatches)
 	api.app.Get("/batches/latest", api.handleLatestBatch)
 	api.app.Get("/batches/:id", api.handleGetBatch)
 
@@ -242,5 +243,66 @@ func (api *APIServer) handleGetStatus(c *fiber.Ctx) error {
 	return c.JSON(StatusResponse{
 		Status:      "PENDING",
 		BatchNumber: batchNumber,
+	})
+}
+
+// handleGetBatches godoc
+// @Summary Get batches with pagination
+// @Description Retrieve multiple batch metadata entries with pagination
+// @Tags Batches
+// @Param page query int false "Page number (default: 1)"
+// @Param limit query int false "Items per page - 10, 25, 50, or 100 (default: 25)"
+// @Produce json
+// @Success 200 {object} map[string]interface{} "Paginated batch list"
+// @Failure 400 {string} string "Invalid parameters"
+// @Failure 500 {string} string "Server error"
+// @Router /batches [get]
+func (api *APIServer) handleGetBatches(c *fiber.Ctx) error {
+	// Parse pagination parameters
+	page := c.QueryInt("page", 1)
+	limit := c.QueryInt("limit", 25)
+
+	// Validate page
+	if page < 1 {
+		return c.Status(fiber.StatusBadRequest).SendString("Page must be >= 1")
+	}
+
+	// Validate and normalize limit
+	validLimits := []int{10, 25, 50, 100}
+	validLimit := false
+	for _, vl := range validLimits {
+		if limit == vl {
+			validLimit = true
+			break
+		}
+	}
+	if !validLimit {
+		// Default to closest valid limit
+		if limit < 10 {
+			limit = 10
+		} else if limit < 25 {
+			limit = 25
+		} else if limit < 50 {
+			limit = 50
+		} else {
+			limit = 100
+		}
+	}
+
+	// Calculate offset
+	offset := uint64((page - 1) * limit)
+
+	// Fetch batches from storage
+	batches, err := api.store.GetBatches(offset, uint64(limit))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Error fetching batches: %v", err))
+	}
+
+	// Return paginated response
+	return c.JSON(fiber.Map{
+		"page":    page,
+		"limit":   limit,
+		"count":   len(batches),
+		"batches": batches,
 	})
 }
