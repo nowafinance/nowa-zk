@@ -75,18 +75,20 @@ func (s *ProverStore) GetLastProcessedBatch() (uint64, error) {
 // ProofData stores metadata about a proven batch (no proof/witness, just hashes)
 type ProofData struct {
 	BatchNumber uint64   `json:"batch_number"`
-	TxHash      string   `json:"tx_hash,omitempty"`   // L1 proof submission transaction hash
-	TxHashes    []string `json:"tx_hashes,omitempty"` // L2 transaction hashes in batch
+	BatchHash   string   `json:"batch_hash,omitempty"` // Merkle root hash of the batch
+	TxHash      string   `json:"tx_hash,omitempty"`    // L1 proof submission transaction hash
+	TxHashes    []string `json:"tx_hashes,omitempty"`  // L2 transaction hashes in batch
 	Timestamp   int64    `json:"timestamp"`
 }
 
-// SaveMetadata saves metadata for a proven batch (L1 tx hash + L2 tx hashes)
-func (s *ProverStore) SaveMetadata(batchNumber uint64, txHash string, txHashes []string) error {
+// SaveMetadata saves metadata for a proven batch (batch hash, L1 tx hash + L2 tx hashes)
+func (s *ProverStore) SaveMetadata(batchNumber uint64, batchHash, txHash string, txHashes []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	data := ProofData{
 		BatchNumber: batchNumber,
+		BatchHash:   batchHash,
 		TxHash:      txHash,
 		TxHashes:    txHashes,
 		Timestamp:   time.Now().Unix(),

@@ -420,8 +420,8 @@ func start(cmd *cobra.Command, args []string) {
 			txHashes[i] = tr.Hash
 		}
 
-		// Save batch metadata (L1 tx hash + L2 tx hashes)
-		if err := store.SaveMetadata(batch.Number, txHash, txHashes); err != nil {
+		// Save batch metadata (batch hash, L1 tx hash + L2 tx hashes)
+		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes); err != nil {
 			log.Printf("⚠️  Failed to save batch metadata: %v", err)
 		}
 
