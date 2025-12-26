@@ -295,36 +295,24 @@ func start(cmd *cobra.Command, args []string) {
 		log.Printf("⚠️  Failed to fetch on-chain batch count: %v", err)
 	} else {
 		onChainBatchesU64 := onChainBatches.Uint64()
-		// Always sync if local state is less than OR EQUAL to contract state
-		// Equal case handles crash-consistency (saved batch num but stale state root)
-		if onChainBatchesU64 >= lastProcessedBatch {
-			if onChainBatchesU64 > lastProcessedBatch {
-				log.Printf("⚠️  Local state is behind contract. Fast-forwarding %d -> %d", lastProcessedBatch, onChainBatchesU64)
-				lastProcessedBatch = onChainBatchesU64
-				if err := store.SaveLastProcessedBatch(lastProcessedBatch); err != nil {
-					log.Printf("⚠️  Failed to save synced state: %v", err)
-				}
-			} else {
-				log.Printf("ℹ️  Local batch matches contract (%d). Verifying state root consistency...", lastProcessedBatch)
-			}
+		log.Printf("ℹ️  Contract has %d batches, Local last processed: %d", onChainBatchesU64, lastProcessedBatch)
 
-			// Sync localStateRoot to match the contract's current state root
-			contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
-			if err != nil {
-				log.Printf("❌ Failed to sync state root from contract: %v", err)
-			} else {
-				localStateRoot = contractStateRoot
-				if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
-					log.Printf("⚠️  Failed to save synced state root: %v", err)
-				}
-				log.Printf("🔄 Synced Local State Root to: %s", localStateRoot.String())
+		// Only sync state root, do NOT fast-forward batch numbers
+		// The prover should always process sequentially from lastProcessedBatch + 1
+		contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
+		if err != nil {
+			log.Printf("❌ Failed to sync state root from contract: %v", err)
+		} else {
+			localStateRoot = contractStateRoot
+			if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
+				log.Printf("⚠️  Failed to save synced state root: %v", err)
 			}
-		} else if onChainBatchesU64 < lastProcessedBatch {
-			// This indicates a potential reorg or contract redeploy with old state
+			log.Printf("🔄 Synced Local State Root to: %s", localStateRoot.String())
+		}
+
+		// Handle contract reset/redeploy
+		if onChainBatchesU64 < lastProcessedBatch {
 			log.Printf("⚠️  WARNING: Contract has FEWER batches (%d) than local state (%d). Contract might have been reset.", onChainBatchesU64, lastProcessedBatch)
-			// We could reset local state here, but let's just warn for now.
-			// If we really want to recover, we should probably respect the contract?
-			// If contract is 0, we should probably start from 0.
 			if onChainBatchesU64 == 0 {
 				log.Printf("⚠️  Contract is empty. Resetting local progress to 0.")
 				lastProcessedBatch = 0
