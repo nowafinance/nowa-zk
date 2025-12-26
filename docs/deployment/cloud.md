@@ -144,29 +144,13 @@ sudo nano /etc/tan/.env
 ### `/etc/tan/.env`
 
 ```bash
-# RPC URLs
-RPC_SEQUENCER=https://YOUR_L2_RPC_ENDPOINT_HERE
-RPC_PROVER=https://YOUR_L1_RPC_ENDPOINT_HERE  # Sepolia, Mainnet, etc.
-
-# Private Key for deployment and proof submission
+RPC_SEQUENCER=http://0.0.0.0:8545
+RPC_PROVER=https://ethereum-sepolia-rpc.publicnode.com
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
-
-# Prover API endpoint (for sequencer cleanup coordination)
-# Use localhost if prover runs on same machine, or remote IP if separate
-PROVER_API=http://0.0.0.0:9091
-
-# Start block for indexing
+TRAFFIC_GEN_KEY=0xYOUR_TRAFFIC_GEN_PRIVATE_KEY_HERE
 INDEX_FROM_BLOCK=0
-
-# Optional: Cleanup configuration
-# SEQUENCER_CLEANUP_INTERVAL_MINUTES=10
-
-# Optional: Server Persistence Paths (uses ~/.tan-zk by default)
-# STATE_DB_PATH=/var/lib/tan-zk/sequencer/data
+PROVER_API=http://0.0.0.0:8081
 ```
-
-> [!NOTE]
-> **Performance**: The sequencer processes blocks in batches of 100 for faster synchronization. Each ZK batch contains exactly 128 transactions. Incomplete batches are saved and resumed across restarts.
 
 **Secure the file:**
 ```bash
@@ -221,47 +205,11 @@ The prover service needs to know the deployed contract address. After deployment
 # Create the .tan-zk directory
 mkdir -p ~/.tan-zk
 
-# Find your chain ID from the deployment output (e.g., 11155111 for Sepolia)
-# Replace <CHAIN_ID> with your actual chain ID
-CHAIN_ID=11155111
-
 # Copy the deployment file from Foundry's broadcast directory
 cp ~/tan-zk/contracts/deployments/deployments.json ~/.tan-zk/deployments.json
 
 # Verify the file was copied correctly
 cat ~/.tan-zk/deployments.json
-```
-
-**If `deployments.json` doesn't exist**, check the broadcast directory:
-
---- 
-Manually create `~/.tan-zk/deployments.json` with the contract addresses:
-
-```bash
-cat > ~/.tan-zk/deployments.json << 'EOF'
-{
-  "BatchRegistry": "0x...",
-  "StateManager": "0x...",
-  "GnarkVerifier": "0x...",
-  "VerifierAdapter": "0x...",
-  "Sequencer": "0x...",
-  "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001"
-}
-EOF
-```
-
-Replace the `0x...` addresses with your deployed contract addresses from the deployment output.
-
-You should see output similar to:
-```json
-{
-  "StateManager": "0x...",
-  "GnarkVerifier": "0x...",
-  "VerifierAdapter": "0x...",
-  "BatchRegistry": "0x...",
-  "Sequencer": "0x...",
-  "InitialStateRoot": "0x..."
-}
 ```
 
 > [!IMPORTANT]
@@ -351,7 +299,6 @@ sudo systemctl start tan-sequencer
 ```bash
 sudo systemctl status tan-sequencer
 sudo journalctl -u tan-sequencer -f
-# Wait until you see "Sequencer started" or block imports
 ```
 
 ### Start Prover

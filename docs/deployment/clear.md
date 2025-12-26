@@ -1,0 +1,112 @@
+# Cleanup Guide
+
+Remove all deployment data and build artifacts while preserving source code and `.env` configuration.
+
+## Complete Cleanup
+
+```bash
+# Stop and disable services
+sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl disable tan-sequencer tan-prover
+
+# Remove service files
+sudo rm -f /etc/systemd/system/tan-sequencer.service
+sudo rm -f /etc/systemd/system/tan-prover.service
+sudo systemctl daemon-reload
+
+# Remove data directories
+sudo rm -rf /var/lib/tan-zk
+
+# Remove deployment info
+rm -rf ~/.tan-zk
+
+# Find and remove ALL database files (sequencer and prover)
+# The sequencer stores data in ~/.tan-zk/sequencer/data by default
+rm -rf ~/.tan-zk/sequencer/
+rm -rf ~/.tan-zk/prover/
+
+# Also check for databases in other common locations
+find ~/ -type d \( -name "*sequencer-db*" -o -name "*prover-db*" -o -name ".badger*" \) -exec rm -rf {} + 2>/dev/null
+
+# Clean build artifacts in repository
+cd ~/tan-zk
+rm -rf build/
+rm -rf keys/
+rm -rf contracts/out/
+rm -rf contracts/cache/
+rm -rf contracts/broadcast/
+rm -rf contracts/deployments/
+rm -rf sequencer/.sequencer-db/
+rm -rf prover/.prover-db/
+rm -rf .sequencer-db/
+rm -rf .prover-db/
+
+# Clean Go caches
+go clean -modcache
+rm -rf ~/.cache/go-build
+
+# Clean Foundry caches
+rm -rf ~/.foundry/cache
+
+echo "✅ Cleanup complete! Source code and .env preserved"
+```
+
+## What's Removed
+
+- ✅ Services and systemd files
+- ✅ Database and state data
+- ✅ Built binaries
+- ✅ Generated keys
+- ✅ Contract artifacts
+- ✅ Build caches
+
+## What's Preserved
+
+- ❌ Source code (`~/tan-zk` repository)
+- ❌ `.env` file (`/etc/tan/.env`)
+
+## Verification
+
+```bash
+# Check services are stopped
+sudo systemctl status tan-sequencer tan-prover
+
+# Check data removed
+ls -la /var/lib/ | grep tan-zk  # Should be empty
+ls -la ~/.tan-zk                 # Should not exist
+
+# Check source code preserved
+ls -la ~/tan-zk                  # Should still exist
+```
+
+## Redeploy
+
+After cleanup, redeploy by following the [deployment guide](./cloud.md) from **Step 4** (contracts are already built, just need to regenerate keys and redeploy).
+
+---
+
+## Nuclear Cleanup (If Above Doesn't Work)
+
+If the sequencer still resumes from old block numbers, use this aggressive cleanup:
+
+```bash
+# Stop services
+sudo systemctl stop tan-sequencer tan-prover
+
+# Remove EVERYTHING in home directory with these names
+find ~/ -name "*tan-zk*" -type d ! -path "*/tan-zk/.git/*" ! -path "*/tan-zk" -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*badger*" -type d -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*sequencer*" -type d ! -path "*/tan-zk/*" -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*prover*" -type d ! -path "*/tan-zk/*" -exec rm -rf {} + 2>/dev/null
+
+# Explicitly remove known locations
+rm -rf ~/.tan-zk
+rm -rf /var/lib/tan-zk
+sudo rm -rf /var/lib/tan-zk
+
+# Verify
+echo "Checking for remaining database files..."
+find ~/ -name "*badger*" -o -name "*tan-zk*" 2>/dev/null | grep -v "tan-zk/.git" | grep -v "/tan-zk$"
+```
+
+If the above find command shows NO output, databases are gone! ✅

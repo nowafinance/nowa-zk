@@ -4,7 +4,7 @@
 
 `GET /batches`
 
-Retrieve multiple batch metadata entries with pagination support.
+Retrieve multiple batch metadata entries with pagination support. **Batches are returned in descending order (newest first).**
 
 ## Query Parameters
 
@@ -15,6 +15,8 @@ Retrieve multiple batch metadata entries with pagination support.
 
 ## Response Format
 
+**Note:** Batches are returned in **descending order** (newest first).
+
 ```json
 {
   "page": 1,
@@ -22,12 +24,18 @@ Retrieve multiple batch metadata entries with pagination support.
   "count": 25,
   "batches": [
     {
-      "batch_number": 1,
+      "batch_number": 100,  // Newest batch
       "tx_hash": "0x123...",
       "tx_hashes": ["0xabc...", "0xdef..."],
       "timestamp": 1703001234
     },
-    ...
+    {
+      "batch_number": 99,
+      "tx_hash": "0x456...",
+      "tx_hashes": ["0xghi...", "0xjkl..."],
+      "timestamp": 1703001200
+    }
+    // ... 23 more batches
   ]
 }
 ```

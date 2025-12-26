@@ -127,45 +127,69 @@ func (s *ProverStore) GetProof(batchNumber uint64) (*ProofData, error) {
 	return &data, nil
 }
 
-// GetBatches retrieves multiple batches with pagination
-// offset: starting batch number, limit: max batches to return
+// GetBatches retrieves multiple batches with pagination in descending order (newest first)
+// offset: number of batches to skip from newest, limit: max batches to return
 func (s *ProverStore) GetBatches(offset, limit uint64) ([]*ProofData, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var batches []*ProofData
+
+	// First, collect all batch numbers
+	var batchNumbers []uint64
 	err := s.db.View(func(txn *badger.Txn) error {
-		// Iterate through proof keys
 		opts := badger.DefaultIteratorOptions
 		opts.Prefix = []byte("proof_")
+		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
-		count := uint64(0)
-		skipped := uint64(0)
-
 		for it.Rewind(); it.Valid(); it.Next() {
 			item := it.Item()
-
-			// Extract batch number from key
 			var batchNum uint64
 			_, err := fmt.Sscanf(string(item.Key()), "proof_%d", &batchNum)
 			if err != nil {
 				continue
 			}
+			batchNumbers = append(batchNumbers, batchNum)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
-			// Skip until offset
-			if skipped < offset {
-				skipped++
+	// Sort in descending order (newest first)
+	// Simple bubble sort for descending order
+	for i := 0; i < len(batchNumbers)-1; i++ {
+		for j := 0; j < len(batchNumbers)-i-1; j++ {
+			if batchNumbers[j] < batchNumbers[j+1] {
+				batchNumbers[j], batchNumbers[j+1] = batchNumbers[j+1], batchNumbers[j]
+			}
+		}
+	}
+
+	// Apply offset and limit
+	start := int(offset)
+	end := start + int(limit)
+	if start >= len(batchNumbers) {
+		return batches, nil // Return empty if offset too large
+	}
+	if end > len(batchNumbers) {
+		end = len(batchNumbers)
+	}
+
+	selectedBatches := batchNumbers[start:end]
+
+	// Fetch the actual batch data
+	err = s.db.View(func(txn *badger.Txn) error {
+		for _, batchNum := range selectedBatches {
+			key := []byte(fmt.Sprintf("proof_%d", batchNum))
+			item, err := txn.Get(key)
+			if err != nil {
 				continue
 			}
 
-			// Stop if limit reached
-			if count >= limit {
-				break
-			}
-
-			// Parse batch data
 			err = item.Value(func(val []byte) error {
 				var data ProofData
 				if err := json.Unmarshal(val, &data); err != nil {
@@ -177,10 +201,7 @@ func (s *ProverStore) GetBatches(offset, limit uint64) ([]*ProofData, error) {
 			if err != nil {
 				return err
 			}
-
-			count++
 		}
-
 		return nil
 	})
 
