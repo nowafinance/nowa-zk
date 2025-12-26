@@ -37,7 +37,11 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 
 	// Middleware
 	app.Use(logger.New())
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
+	}))
 
 	return &APIServer{
 		store:         store,
