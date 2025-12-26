@@ -72,6 +72,11 @@ func LoadFromEnv() (*types.Config, error) {
 		config.IndexFromBlock = indexFromBlock
 	}
 
+	// Load prover API URL (optional)
+	if proverAPI := os.Getenv("PROVER_API"); proverAPI != "" {
+		config.ProverAPI = proverAPI
+	}
+
 	return config, nil
 }
 
@@ -127,6 +132,9 @@ func LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath string, batchSize,
 	}
 	if envConfig.IndexFromBlock > 0 {
 		config.IndexFromBlock = envConfig.IndexFromBlock
+	}
+	if envConfig.ProverAPI != "" {
+		config.ProverAPI = envConfig.ProverAPI
 	}
 
 	// 3. Apply command-line overrides

@@ -371,6 +371,60 @@ func (bs *BatchStore) ClearAll() error {
 	})
 }
 
+// GetLastDeletedBatch returns the last batch that was deleted during cleanup
+func (bs *BatchStore) GetLastDeletedBatch() (uint64, error) {
+	var lastDeleted uint64
+	err := bs.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("cleanup:lastDeleted"))
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				// No cleanup has run yet, return 0
+				lastDeleted = 0
+				return nil
+			}
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			if len(val) >= 8 {
+				lastDeleted = binary.LittleEndian.Uint64(val)
+			}
+			return nil
+		})
+	})
+
+	return lastDeleted, err
+}
+
+// SetLastDeletedBatch saves the last batch number that was deleted during cleanup
+func (bs *BatchStore) SetLastDeletedBatch(batchNum uint64) error {
+	val := make([]byte, 8)
+	binary.LittleEndian.PutUint64(val, batchNum)
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("cleanup:lastDeleted"), val)
+	})
+}
+
+// DeleteBatch deletes a specific batch (used for cleanup)
+func (bs *BatchStore) DeleteBatch(batchNum uint64) error {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		// Delete batch data
+		key := []byte(fmt.Sprintf("batch:%d", batchNum))
+		if err := txn.Delete(key); err != nil && err != badger.ErrKeyNotFound {
+			return err
+		}
+
+		// Remove from in-memory cache
+		delete(bs.batches, batchNum)
+
+		return nil
+	})
+}
+
 // Close closes the BadgerDB connection
 func (bs *BatchStore) Close() error {
 	return bs.db.Close()

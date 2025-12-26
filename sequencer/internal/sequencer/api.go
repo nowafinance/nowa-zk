@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -128,16 +129,37 @@ func (api *APIServer) handleHealth(c *fiber.Ctx) error {
 
 // handleStatus godoc
 // @Summary Get sequencer status
-// @Description Returns current status and batch count
+// @Description Returns current status, batch count, and batch data range
 // @Tags Meta
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Router /status [get]
 func (api *APIServer) handleStatus(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
+	batchCount := api.store.Count()
+	lastDeleted, _ := api.store.GetLastDeletedBatch()
+
+	// Determine batch range
+	var oldestBatch uint64 = 1
+	if lastDeleted > 0 {
+		oldestBatch = lastDeleted + 1 // First batch after cleanup
+	}
+
+	response := fiber.Map{
 		"status":      "running",
-		"batch_count": api.store.Count(),
-	})
+		"batch_count": batchCount,
+	}
+
+	// Add batch range info if we have batches
+	if batchCount > 0 {
+		response["oldest"] = oldestBatch
+		response["newest"] = batchCount
+		response["total_in_db"] = batchCount - oldestBatch + 1
+		if lastDeleted > 0 {
+			response["last_deleted"] = lastDeleted
+		}
+	}
+
+	return c.JSON(response)
 }
 
 // handleLatestBatch godoc

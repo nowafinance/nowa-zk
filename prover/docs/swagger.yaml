@@ -1,21 +1,5 @@
 basePath: /
 definitions:
-  github_com_tannetwork_zk-sequencer_prover_internal_storage.ProofData:
-    properties:
-      batch_number:
-        type: integer
-      proof: {}
-      timestamp:
-        type: integer
-      tx_hash:
-        type: string
-      tx_hashes:
-        description: L2 transaction hashes in batch
-        items:
-          type: string
-        type: array
-      witness: {}
-    type: object
   internal_api.BatchResponse:
     properties:
       batchHash:
@@ -116,37 +100,6 @@ paths:
       summary: Get latest verified batch
       tags:
       - Batches
-  /proof/{id}:
-    get:
-      description: Get full proof data for a batch
-      parameters:
-      - description: Batch ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_prover_internal_storage.ProofData'
-        "400":
-          description: Invalid batch ID
-          schema:
-            type: string
-        "404":
-          description: Proof not found
-          schema:
-            type: string
-        "500":
-          description: Database error
-          schema:
-            type: string
-      summary: Get proof data
-      tags:
-      - Proofs
   /status/{id}:
     get:
       description: Get proof generation status for a batch

@@ -118,22 +118,3 @@ make run-sequencer
 # Run from project root (reads .env automatically)
 make run-prover
 ```
-
-----------------------
-
-### all in one code 
-```bash
-make clean
-make setup
-make test
-set -a && source .env && set +a
-cd contracts
-mkdir deployments
-forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
-cp deployments/deployments.json ~/.tan-zk/deployments.json
-cd ..
-make run-sequencer
-```
-```bash
-make run-prover
-```

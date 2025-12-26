@@ -11,6 +11,7 @@ type Config struct {
 	APIPort        int           `yaml:"api_port"`
 	StateDBPath    string        `yaml:"state_db_path"`
 	IndexFromBlock uint64        `yaml:"index_from_block"`
+	ProverAPI      string        `yaml:"prover_api"` // Prover API URL for cleanup coordination
 }
 
 // DefaultConfig returns default configuration
@@ -20,5 +21,6 @@ func DefaultConfig() *Config {
 		BatchInterval: 5 * time.Second,          // Check/create batch every 5 seconds (reduced from 10s)
 		APIPort:       8080,                     // REST API port
 		StateDBPath:   ".tan-zk/sequencer/data", // Local storage path
+		ProverAPI:     "http://localhost:9091",  // Default prover API (can run on different server)
 	}
 }

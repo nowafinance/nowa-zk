@@ -432,8 +432,9 @@ func start(cmd *cobra.Command, args []string) {
 			txHashes[i] = tr.Hash
 		}
 
-		if err := store.SaveProof(batch.Number, nil, nil, txHash, txHashes); err != nil {
-			log.Printf("⚠️  Failed to save proof metadata: %v", err)
+		// Save batch metadata (L1 tx hash + L2 tx hashes)
+		if err := store.SaveMetadata(batch.Number, txHash, txHashes); err != nil {
+			log.Printf("⚠️  Failed to save batch metadata: %v", err)
 		}
 
 		// Update local state root and persist

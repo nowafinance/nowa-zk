@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gofiber/fiber/v2"
@@ -88,9 +87,8 @@ func (api *APIServer) Start() error {
 	api.app.Get("/batches/latest", api.handleLatestBatch)
 	api.app.Get("/batches/:id", api.handleGetBatch)
 
-	// Status & Proof
+	// Status
 	api.app.Get("/status/:id", api.handleGetStatus)
-	api.app.Get("/proof/:id", api.handleGetProof)
 
 	addr := fmt.Sprintf(":%d", api.port)
 	fmt.Printf("🌍 Starting Prover API on %s\n", addr)
@@ -245,33 +243,4 @@ func (api *APIServer) handleGetStatus(c *fiber.Ctx) error {
 		Status:      "PENDING",
 		BatchNumber: batchNumber,
 	})
-}
-
-// handleGetProof godoc
-// @Summary Get proof data
-// @Description Get full proof data for a batch
-// @Tags Proofs
-// @Param id path int true "Batch ID"
-// @Produce json
-// @Success 200 {object} storage.ProofData
-// @Failure 400 {string} string "Invalid batch ID"
-// @Failure 404 {string} string "Proof not found"
-// @Failure 500 {string} string "Database error"
-// @Router /proof/{id} [get]
-func (api *APIServer) handleGetProof(c *fiber.Ctx) error {
-	idStr := c.Params("id")
-	batchNumber, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString("Invalid batch ID")
-	}
-
-	proof, err := api.store.GetProof(batchNumber)
-	if err != nil {
-		if err == badger.ErrKeyNotFound {
-			return c.Status(fiber.StatusNotFound).SendString("Proof not found")
-		}
-		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Database error: %v", err))
-	}
-
-	return c.JSON(proof)
 }

@@ -125,6 +125,13 @@ func (s *Service) Start() error {
 	s.wg.Add(1)
 	go s.subscribeToBlocks()
 
+	// Start cleanup job (if ProverAPI is configured)
+	if s.config.ProverAPI != "" {
+		s.wg.Add(1)
+		go s.runCleanupJob()
+		logger.Info("🧹 Cleanup job scheduled (queries prover at %s every 5 minutes)", s.config.ProverAPI)
+	}
+
 	logger.Info("✅ ZK Sequencer is running!")
 	logger.Info("📡 Listening for new blocks and building batches...")
 	logger.Info("🌐 REST API available at http://localhost:%d", s.config.APIPort)
@@ -684,4 +691,31 @@ func (s *Service) initStartingBlock() uint64 {
 	}
 
 	return startFrom
+}
+
+// runCleanupJob periodically queries prover and deletes old batch data
+func (s *Service) runCleanupJob() {
+	defer s.wg.Done()
+
+	// Create prover client
+	proverClient := NewProverClient(s.config.ProverAPI)
+
+	// Run cleanup every 5 minutes
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	logger.Info("🧹 Cleanup job started (interval: 5 minutes)")
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			logger.Info("🧹 Cleanup job stopped")
+			return
+		case <-ticker.C:
+			logger.Info("🧹 Running scheduled cleanup...")
+			if err := s.batches.CleanupOldBatches(proverClient); err != nil {
+				logger.Warn("Cleanup failed: %v", err)
+			}
+		}
+	}
 }

@@ -144,18 +144,29 @@ sudo nano /etc/tan/.env
 ### `/etc/tan/.env`
 
 ```bash
-# RPC URL (Your blockchain network endpoint)
-RPC=https://RPC_HERE_OF_BLOCKCHAIN
+# RPC URLs
+RPC_SEQUENCER=https://YOUR_L2_RPC_ENDPOINT_HERE
+RPC_PROVER=https://YOUR_L1_RPC_ENDPOINT_HERE  # Sepolia, Mainnet, etc.
 
 # Private Key for deployment and proof submission
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 
-# Start indexing from this block
+# Prover API endpoint (for sequencer cleanup coordination)
+# Use localhost if prover runs on same machine, or remote IP if separate
+PROVER_API=http://0.0.0.0:9091
+
+# Start block for indexing
 INDEX_FROM_BLOCK=0
 
-# Server Persistence Paths
-STATE_DB_PATH=/var/lib/tan-zk/sequencer/state
+# Optional: Cleanup configuration
+# SEQUENCER_CLEANUP_INTERVAL_MINUTES=10
+
+# Optional: Server Persistence Paths (uses ~/.tan-zk by default)
+# STATE_DB_PATH=/var/lib/tan-zk/sequencer/data
 ```
+
+> [!NOTE]
+> **Performance**: The sequencer processes blocks in batches of 100 for faster synchronization. Each ZK batch contains exactly 128 transactions. Incomplete batches are saved and resumed across restarts.
 
 **Secure the file:**
 ```bash
@@ -184,15 +195,19 @@ cd ~/tan-zk/contracts
 # Create deployments directory (required for saving deployment addresses)
 mkdir -p deployments
 
-# Deploy
+# Deploy to L1 (Sepolia/Mainnet)
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
 
 # Optional: Verify contracts on block explorer
-# forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --verify --etherscan-api-key $ETHERSCAN_API_KEY
+# forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
 
 cd ..
 ```
 
+> [!NOTE]
+> **Expected Warning**: You may see `Warning: Script contains a transaction to 0x... which does not contain any code.`
+> 
+> This is normal! The deployment script sets your deployer address as the authorized sequencer. Since your address is an EOA (wallet), not a contract, it has no code. Just type `yes` to continue.
 
 **Save the deployed contract address** - you'll need it for the prover service configuration.
 
@@ -200,18 +215,42 @@ cd ..
 
 ## 7. Configure Deployment Info
 
-The prover service needs to know the deployed contract address. After deployment, copy the deployment info to the expected location.
+The prover service needs to know the deployed contract address. After deployment, the addresses are saved in the Foundry broadcast file.
 
 ```bash
-# Create the .tan-zk directory in your home folder
+# Create the .tan-zk directory
 mkdir -p ~/.tan-zk
 
-# Copy the deployment file 
+# Find your chain ID from the deployment output (e.g., 11155111 for Sepolia)
+# Replace <CHAIN_ID> with your actual chain ID
+CHAIN_ID=11155111
+
+# Copy the deployment file from Foundry's broadcast directory
 cp ~/tan-zk/contracts/deployments/deployments.json ~/.tan-zk/deployments.json
 
 # Verify the file was copied correctly
 cat ~/.tan-zk/deployments.json
 ```
+
+**If `deployments.json` doesn't exist**, check the broadcast directory:
+
+--- 
+Manually create `~/.tan-zk/deployments.json` with the contract addresses:
+
+```bash
+cat > ~/.tan-zk/deployments.json << 'EOF'
+{
+  "BatchRegistry": "0x...",
+  "StateManager": "0x...",
+  "GnarkVerifier": "0x...",
+  "VerifierAdapter": "0x...",
+  "Sequencer": "0x...",
+  "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001"
+}
+EOF
+```
+
+Replace the `0x...` addresses with your deployed contract addresses from the deployment output.
 
 You should see output similar to:
 ```json
@@ -254,9 +293,11 @@ User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/$USERNAME/tan-zk/build/sequencer-bin start --rpc-url \${RPC} --state-db-path \${STATE_DB_PATH}
+ExecStart=/home/$USERNAME/tan-zk/build/sequencer-bin start
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -278,9 +319,11 @@ User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/tan-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/$USERNAME/tan-zk/build/prover-bin start --keys-dir /var/lib/tan-zk/prover/keys
+ExecStart=/home/$USERNAME/tan-zk/build/prover-bin start
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

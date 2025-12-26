@@ -188,7 +188,7 @@ const docTemplate = `{
         },
         "/status": {
             "get": {
-                "description": "Returns current status and batch count",
+                "description": "Returns current status, batch count, and batch data range",
                 "produces": [
                     "application/json"
                 ],

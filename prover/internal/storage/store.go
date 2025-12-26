@@ -72,24 +72,21 @@ func (s *ProverStore) GetLastProcessedBatch() (uint64, error) {
 }
 
 // ProofData represents the data to be saved for a proof
+// ProofData stores metadata about a proven batch (no proof/witness, just hashes)
 type ProofData struct {
-	BatchNumber uint64      `json:"batch_number"`
-	Proof       interface{} `json:"proof"`
-	Witness     interface{} `json:"witness"`
-	TxHash      string      `json:"tx_hash,omitempty"`
-	TxHashes    []string    `json:"tx_hashes,omitempty"` // L2 transaction hashes in batch
-	Timestamp   int64       `json:"timestamp"`
+	BatchNumber uint64   `json:"batch_number"`
+	TxHash      string   `json:"tx_hash,omitempty"`   // L1 proof submission transaction hash
+	TxHashes    []string `json:"tx_hashes,omitempty"` // L2 transaction hashes in batch
+	Timestamp   int64    `json:"timestamp"`
 }
 
-// SaveProof saves the proof data for a batch
-func (s *ProverStore) SaveProof(batchNumber uint64, proof interface{}, witness interface{}, txHash string, txHashes []string) error {
+// SaveMetadata saves metadata for a proven batch (L1 tx hash + L2 tx hashes)
+func (s *ProverStore) SaveMetadata(batchNumber uint64, txHash string, txHashes []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	data := ProofData{
 		BatchNumber: batchNumber,
-		Proof:       proof,
-		Witness:     witness,
 		TxHash:      txHash,
 		TxHashes:    txHashes,
 		Timestamp:   time.Now().Unix(),
@@ -102,9 +99,6 @@ func (s *ProverStore) SaveProof(batchNumber uint64, proof interface{}, witness i
 
 	return s.db.Update(func(txn *badger.Txn) error {
 		key := []byte(fmt.Sprintf("proof_%d", batchNumber))
-		// Set with TTL if needed, but requirement says "latest 100", which implies logic elsewhere or just keeping all for now.
-		// For "latest 100", we could implement a cleanup, but Badger is efficient.
-		// Let's just save it.
 		return txn.Set(key, jsonData)
 	})
 }

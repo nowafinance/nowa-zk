@@ -102,53 +102,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/proof/{id}": {
-            "get": {
-                "description": "Get full proof data for a batch",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Proofs"
-                ],
-                "summary": "Get proof data",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Batch ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_prover_internal_storage.ProofData"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid batch ID",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "Proof not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Database error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/status/{id}": {
             "get": {
                 "description": "Get proof generation status for a batch",
@@ -186,29 +139,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_tannetwork_zk-sequencer_prover_internal_storage.ProofData": {
-            "type": "object",
-            "properties": {
-                "batch_number": {
-                    "type": "integer"
-                },
-                "proof": {},
-                "timestamp": {
-                    "type": "integer"
-                },
-                "tx_hash": {
-                    "type": "string"
-                },
-                "tx_hashes": {
-                    "description": "L2 transaction hashes in batch",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "witness": {}
-            }
-        },
         "internal_api.BatchResponse": {
             "type": "object",
             "properties": {
