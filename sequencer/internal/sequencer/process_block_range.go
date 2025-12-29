@@ -1,6 +1,7 @@
 package sequencer
 
 import (
+	"sync"
 	"time"
 
 	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
@@ -29,46 +30,94 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 	}
 	allBlocks := make([]blockTxs, 0, blockCount)
 
-	// Fetch all blocks in range - MUST be sequential, no skipping
-	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
-		select {
-		case <-s.ctx.Done():
-			return false
-		default:
-		}
+	// Container for parallel fetch results
+	type fetchResult struct {
+		block *rpc.Block
+		err   error
+	}
+	results := make([]fetchResult, blockCount)
+	var wg sync.WaitGroup
 
-		// Retry individual block up to 3 times with exponential backoff
-		var block *rpc.Block
-		var err error
-		maxRetries := 3
+	logger.Info("⚡ Fetching %d blocks in parallel...", blockCount)
 
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			block, err = s.rpcClient.GetBlockByNumber(s.ctx, blockNum, true)
-			if err == nil {
-				break // Success!
-			}
+	// Fetch all blocks in range PARALLELLY
+	for i := 0; i < int(blockCount); i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
 
-			// Check if context canceled during retry
+			blockNum := startBlock + uint64(index)
+
+			// Check context
 			if s.ctx.Err() != nil {
-				return false
+				results[index] = fetchResult{err: s.ctx.Err()}
+				return
 			}
 
-			if attempt < maxRetries {
-				backoff := time.Duration(attempt*2) * time.Second // 2s, 4s, 6s
-				logger.Warn("Failed to fetch block %d (attempt %d/%d): %v, retrying in %v...",
-					blockNum, attempt, maxRetries, err, backoff)
-				time.Sleep(backoff)
-			}
-		}
+			// Retry individual block up to 3 times with exponential backoff
+			var block *rpc.Block
+			var err error
+			maxRetries := 3
 
-		if err != nil {
-			// CRITICAL: Failed after retries - must fail entire range to preserve order
-			// Cannot skip block 105 and process block 106, that would break transaction sequence
-			logger.Error("🚨 Block %d failed after %d attempts: %v", blockNum, maxRetries, err)
-			logger.Error("❌ Cannot skip blocks - would break transaction order")
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				block, err = s.rpcClient.GetBlockByNumber(s.ctx, blockNum, true)
+				if err == nil {
+					break // Success!
+				}
+
+				if s.ctx.Err() != nil {
+					results[index] = fetchResult{err: s.ctx.Err()}
+					return
+				}
+
+				if attempt < maxRetries {
+					backoff := time.Duration(attempt*2) * time.Second
+					time.Sleep(backoff)
+				}
+			}
+
+			if err != nil {
+				results[index] = fetchResult{err: err}
+				return
+			}
+
+			// Enrich transactions with contract addresses (also parallelized!)
+			for _, tx := range block.Transactions {
+				if tx.IsContractDeployment {
+					if tx.ContractAddress == "" || tx.ContractAddress == "0x" {
+						receipt, err := s.rpcClient.GetTransactionReceipt(s.ctx, tx.Hash)
+						if err == nil && receipt != nil && receipt.ContractAddress != "" {
+							tx.ContractAddress = receipt.ContractAddress
+						} else if tx.ContractAddress == "" && s.ctx.Err() == nil {
+							tx.ContractAddress = rpc.ComputeContractAddress(tx.From, tx.Nonce)
+						}
+					}
+					if tx.ContractAddress != "" && tx.ContractAddress != "0x" {
+						tx.To = tx.ContractAddress
+					}
+				}
+			}
+
+			results[index] = fetchResult{block: block, err: nil}
+		}(i)
+	}
+
+	// Wait for all fetches to complete
+	wg.Wait()
+
+	// Sequential Verification and Processing
+	// Must process in order to detect reorgs and maintain chain integrity
+	for i, res := range results {
+		blockNum := startBlock + uint64(i)
+
+		// Check for fetch errors
+		if res.err != nil {
+			logger.Error("🚨 Block %d failed to fetch: %v", blockNum, res.err)
 			logger.Error("⏸️  Sequencer will retry entire range on next poll")
 			return false
 		}
+
+		block := res.block
 
 		// Check for reorg
 		if storedHash, err := s.batches.GetBlockHash(blockNum); err == nil {
@@ -93,29 +142,6 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 		// Store block hash for future reorg detection
 		if err := s.batches.SetBlockHash(blockNum, block.Hash); err != nil {
 			logger.Warn("Failed to store block hash: %v", err)
-		}
-
-		// Enrich transactions with contract addresses
-		for _, tx := range block.Transactions {
-			select {
-			case <-s.ctx.Done():
-				return false
-			default:
-			}
-
-			if tx.IsContractDeployment {
-				if tx.ContractAddress == "" || tx.ContractAddress == "0x" {
-					receipt, err := s.rpcClient.GetTransactionReceipt(s.ctx, tx.Hash)
-					if err == nil && receipt != nil && receipt.ContractAddress != "" {
-						tx.ContractAddress = receipt.ContractAddress
-					} else if tx.ContractAddress == "" && s.ctx.Err() == nil {
-						tx.ContractAddress = rpc.ComputeContractAddress(tx.From, tx.Nonce)
-					}
-				}
-				if tx.ContractAddress != "" && tx.ContractAddress != "0x" {
-					tx.To = tx.ContractAddress
-				}
-			}
 		}
 
 		allBlocks = append(allBlocks, blockTxs{

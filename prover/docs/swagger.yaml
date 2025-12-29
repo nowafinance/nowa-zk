@@ -8,8 +8,6 @@ definitions:
         type: integer
       newStateRoot:
         type: string
-      oldStateRoot:
-        type: string
       status:
         type: integer
       submitter:
@@ -23,8 +21,6 @@ definitions:
         items:
           type: string
         type: array
-      verifiedAt:
-        type: integer
     type: object
   internal_api.StatusResponse:
     properties:

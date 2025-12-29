@@ -421,7 +421,9 @@ func start(cmd *cobra.Command, args []string) {
 		}
 
 		// Save batch metadata (batch hash, L1 tx hash + L2 tx hashes)
-		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes); err != nil {
+		// Status 1 = Verified (since we just submitted proof and got txHash)
+		submitter := auth.From.Hex()
+		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes, submitter, localStateRoot.String(), 1); err != nil {
 			log.Printf("⚠️  Failed to save batch metadata: %v", err)
 		}
 

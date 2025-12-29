@@ -198,9 +198,6 @@ const docTemplate = `{
                 "newStateRoot": {
                     "type": "string"
                 },
-                "oldStateRoot": {
-                    "type": "string"
-                },
                 "status": {
                     "type": "integer"
                 },
@@ -219,9 +216,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "verifiedAt": {
-                    "type": "integer"
                 }
             }
         },

@@ -191,9 +191,6 @@
                 "newStateRoot": {
                     "type": "string"
                 },
-                "oldStateRoot": {
-                    "type": "string"
-                },
                 "status": {
                     "type": "integer"
                 },
@@ -212,9 +209,6 @@
                     "items": {
                         "type": "string"
                     }
-                },
-                "verifiedAt": {
-                    "type": "integer"
                 }
             }
         },

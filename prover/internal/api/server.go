@@ -29,11 +29,9 @@ type APIServer struct {
 type BatchResponse struct {
 	BatchNumber  uint64   `json:"batchNumber"`
 	BatchHash    string   `json:"batchHash"`
-	OldStateRoot string   `json:"oldStateRoot"`
 	NewStateRoot string   `json:"newStateRoot"`
 	Submitter    string   `json:"submitter"`
 	Timestamp    uint64   `json:"timestamp"`
-	VerifiedAt   uint64   `json:"verifiedAt"`
 	Status       uint8    `json:"status"`
 	TxHash       string   `json:"txHash,omitempty"`
 	TxHashes     []string `json:"txHashes,omitempty"` // L2 transaction hashes
@@ -147,11 +145,9 @@ func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
 	resp := BatchResponse{
 		BatchNumber:  totalBatches.Uint64(),
 		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-		OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
 		NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
 		Submitter:    batch.Submitter.Hex(),
 		Timestamp:    batch.Timestamp.Uint64(),
-		VerifiedAt:   batch.VerifiedAt.Uint64(),
 		Status:       batch.Status,
 		TxHash:       txHash,
 		TxHashes:     txHashes,
@@ -193,11 +189,9 @@ func (api *APIServer) handleGetBatch(c *fiber.Ctx) error {
 	resp := BatchResponse{
 		BatchNumber:  batchID.Uint64(),
 		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-		OldStateRoot: common.BytesToHash(batch.OldStateRoot[:]).Hex(),
 		NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
 		Submitter:    batch.Submitter.Hex(),
 		Timestamp:    batch.Timestamp.Uint64(),
-		VerifiedAt:   batch.VerifiedAt.Uint64(),
 		Status:       batch.Status,
 		TxHash:       txHash,
 		TxHashes:     txHashes,
@@ -302,11 +296,40 @@ func (api *APIServer) handleGetBatches(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Error fetching batches: %v", err))
 	}
 
+	// Get total count for pagination
+	totalCount, err := api.store.GetTotalBatches()
+	if err != nil {
+		// Log error but continue with 0 count logic or handle gracefully
+		fmt.Printf("Error fetching total batch count: %v\n", err)
+	}
+
+	// Calculate total pages
+	totalPages := 0
+	if limit > 0 {
+		totalPages = int((totalCount + uint64(limit) - 1) / uint64(limit))
+	}
+
+	// Convert to BatchResponse objects
+	response := make([]BatchResponse, len(batches))
+	for i, b := range batches {
+		response[i] = BatchResponse{
+			BatchNumber:  b.BatchNumber,
+			BatchHash:    b.BatchHash,
+			TxHash:       b.TxHash,
+			TxHashes:     b.TxHashes,
+			Timestamp:    uint64(b.Timestamp),
+			Submitter:    b.Submitter,
+			NewStateRoot: b.NewStateRoot,
+			Status:       b.Status,
+		}
+	}
+
 	// Return paginated response
 	return c.JSON(fiber.Map{
-		"page":    page,
-		"limit":   limit,
-		"count":   len(batches),
-		"batches": batches,
+		"page":        page,
+		"limit":       limit,
+		"count":       len(batches),
+		"total_pages": totalPages,
+		"batches":     response,
 	})
 }

@@ -74,24 +74,30 @@ func (s *ProverStore) GetLastProcessedBatch() (uint64, error) {
 // ProofData represents the data to be saved for a proof
 // ProofData stores metadata about a proven batch (no proof/witness, just hashes)
 type ProofData struct {
-	BatchNumber uint64   `json:"batch_number"`
-	BatchHash   string   `json:"batch_hash,omitempty"` // Merkle root hash of the batch
-	TxHash      string   `json:"tx_hash,omitempty"`    // L1 proof submission transaction hash
-	TxHashes    []string `json:"tx_hashes,omitempty"`  // L2 transaction hashes in batch
-	Timestamp   int64    `json:"timestamp"`
+	BatchNumber  uint64   `json:"batch_number"`
+	BatchHash    string   `json:"batch_hash,omitempty"`
+	TxHash       string   `json:"tx_hash,omitempty"`
+	TxHashes     []string `json:"tx_hashes,omitempty"`
+	Timestamp    int64    `json:"timestamp"`
+	Submitter    string   `json:"submitter,omitempty"`
+	NewStateRoot string   `json:"new_state_root,omitempty"`
+	Status       uint8    `json:"status,omitempty"`
 }
 
 // SaveMetadata saves metadata for a proven batch (batch hash, L1 tx hash + L2 tx hashes)
-func (s *ProverStore) SaveMetadata(batchNumber uint64, batchHash, txHash string, txHashes []string) error {
+func (s *ProverStore) SaveMetadata(batchNumber uint64, batchHash, txHash string, txHashes []string, submitter, newStateRoot string, status uint8) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	data := ProofData{
-		BatchNumber: batchNumber,
-		BatchHash:   batchHash,
-		TxHash:      txHash,
-		TxHashes:    txHashes,
-		Timestamp:   time.Now().Unix(),
+		BatchNumber:  batchNumber,
+		BatchHash:    batchHash,
+		TxHash:       txHash,
+		TxHashes:     txHashes,
+		Timestamp:    time.Now().Unix(),
+		Submitter:    submitter,
+		NewStateRoot: newStateRoot,
+		Status:       status,
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -211,6 +217,28 @@ func (s *ProverStore) GetBatches(offset, limit uint64) ([]*ProofData, error) {
 		return nil, err
 	}
 	return batches, nil
+}
+
+// GetTotalBatches returns the total number of proven batches stored
+func (s *ProverStore) GetTotalBatches() (uint64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var count uint64
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte("proof_")
+		opts.PrefetchValues = false // Key-only iteration is enough
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			count++
+		}
+		return nil
+	})
+
+	return count, err
 }
 
 // SaveLastStateRoot saves the last verified state root
