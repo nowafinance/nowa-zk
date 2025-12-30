@@ -37,10 +37,11 @@ func (bs *BatchStore) CleanupOldBatches(proverClient ProverClient) error {
 	}
 
 	// 3. Delete batches in range (lastDeleted+1 to latestProven-1)
-	// Keep the latest proven batch for safety
+	// Note: Prover already has all necessary data (tx hashes, metadata, etc.)
+	// So we can completely delete sequencer data without saving metadata
 	deleteCount := 0
 	for batchNum := lastDeleted + 1; batchNum < latestProven; batchNum++ {
-		// Delete full batch data
+		// Delete batch completely (no metadata save needed)
 		if err := bs.DeleteBatch(batchNum); err != nil {
 			log.Printf("⚠️  Warning: failed to delete batch %d: %v", batchNum, err)
 			continue
@@ -50,11 +51,13 @@ func (bs *BatchStore) CleanupOldBatches(proverClient ProverClient) error {
 	}
 
 	// 4. Update tracker
-	if err := bs.SetLastDeletedBatch(latestProven - 1); err != nil {
-		return fmt.Errorf("failed to update tracker: %w", err)
+	if deleteCount > 0 {
+		if err := bs.SetLastDeletedBatch(latestProven - 1); err != nil {
+			return fmt.Errorf("failed to update tracker: %w", err)
+		}
 	}
 
-	log.Printf("✅ Cleanup complete: deleted %d batches (%d to %d)",
+	log.Printf("✅ Cleanup complete: Deleted %d batches (%d to %d)",
 		deleteCount, lastDeleted+1, latestProven-1)
 
 	return nil

@@ -425,6 +425,64 @@ func (bs *BatchStore) DeleteBatch(batchNum uint64) error {
 	})
 }
 
+// BatchMetadata stores lightweight info about a batch (no transactions)
+type BatchMetadata struct {
+	Number        uint64 `json:"number"`
+	Hash          string `json:"hash"`
+	PrevStateRoot string `json:"oldStateRoot"`
+	NewStateRoot  string `json:"newStateRoot"`
+	Timestamp     int64  `json:"timestamp"`
+	TxCount       int    `json:"tx_count"`
+}
+
+// SaveBatchMetadata extracts metadata from a full batch and saves it
+func (bs *BatchStore) SaveBatchMetadata(batch *types.Batch) error {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+
+	meta := BatchMetadata{
+		Number:        batch.Number,
+		Hash:          batch.Hash,
+		PrevStateRoot: batch.OldStateRoot,
+		NewStateRoot:  batch.NewStateRoot,
+		Timestamp:     batch.Timestamp,
+		TxCount:       len(batch.Transactions),
+	}
+
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to marshal batch metadata: %w", err)
+	}
+
+	// Key: meta:{N}
+	key := []byte(fmt.Sprintf("meta:%d", batch.Number))
+
+	return bs.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, data)
+	})
+}
+
+// GetBatchMetadata retrieves metadata for a batch
+func (bs *BatchStore) GetBatchMetadata(number uint64) (*BatchMetadata, error) {
+	var meta BatchMetadata
+	err := bs.db.View(func(txn *badger.Txn) error {
+		key := []byte(fmt.Sprintf("meta:%d", number))
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &meta)
+		})
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
 // Close closes the BadgerDB connection
 func (bs *BatchStore) Close() error {
 	return bs.db.Close()
