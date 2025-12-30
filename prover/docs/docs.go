@@ -110,7 +110,7 @@ const docTemplate = `{
         },
         "/batches/{id}": {
             "get": {
-                "description": "Get details of a specific batch",
+                "description": "Get details of a specific batch from local storage",
                 "produces": [
                     "application/json"
                 ],
@@ -136,6 +136,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid batch ID",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Batch not found",
                         "schema": {
                             "type": "string"
                         }

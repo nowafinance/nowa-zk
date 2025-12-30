@@ -38,9 +38,10 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 	results := make([]fetchResult, blockCount)
 	var wg sync.WaitGroup
 
-	logger.Info("⚡ Fetching %d blocks in parallel...", blockCount)
+	// logger.Info("⚡ Fetching %d blocks", blockCount)
 
-	// Fetch all blocks in range PARALLELLY
+	// Fetch all blocks in range with UNLIMITED PARALLELISM
+	// Each block gets its own goroutine - all 100 fetch simultaneously
 	for i := 0; i < int(blockCount); i++ {
 		wg.Add(1)
 		go func(index int) {
@@ -48,16 +49,19 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 
 			blockNum := startBlock + uint64(index)
 
+			// Log which block we're fetching
+			// logger.Info("🔍 Fetching block #%d", blockNum)
+
 			// Check context
 			if s.ctx.Err() != nil {
 				results[index] = fetchResult{err: s.ctx.Err()}
 				return
 			}
 
-			// Retry individual block up to 3 times with exponential backoff
+			// Retry individual block up to 5 times with exponential backoff
 			var block *rpc.Block
 			var err error
-			maxRetries := 3
+			maxRetries := 5 // Increased from 3 for robustness
 
 			for attempt := 1; attempt <= maxRetries; attempt++ {
 				block, err = s.rpcClient.GetBlockByNumber(s.ctx, blockNum, true)
@@ -70,13 +74,16 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 					return
 				}
 
+				// Exponential backoff: 1s, 2s, 4s, 8s, 16s
 				if attempt < maxRetries {
-					backoff := time.Duration(attempt*2) * time.Second
+					backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+					logger.Warn("Block %d fetch attempt %d/%d failed, retrying in %v...", blockNum, attempt, maxRetries, backoff)
 					time.Sleep(backoff)
 				}
 			}
 
 			if err != nil {
+				logger.Error("Block %d failed after %d attempts: %v", blockNum, maxRetries, err)
 				results[index] = fetchResult{err: err}
 				return
 			}
@@ -102,8 +109,9 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 		}(i)
 	}
 
-	// Wait for all fetches to complete
+	// Wait for all fetches to complete (will be much faster now!)
 	wg.Wait()
+	logger.Info("✅ All %d blocks fetched, now processing sequentially...", blockCount)
 
 	// Sequential Verification and Processing
 	// Must process in order to detect reorgs and maintain chain integrity

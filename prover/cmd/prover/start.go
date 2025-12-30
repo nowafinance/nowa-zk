@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -221,8 +222,12 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to instantiate BatchRegistry contract: %v", err)
 	}
 
-	// Initialize storage
-	storePath := ".tan-zk/prover/data"
+	// Initialize storage (use home directory for consistency with keys and deployments)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalf("❌ Failed to get home directory: %v", err)
+	}
+	storePath := filepath.Join(homeDir, ".tan-zk", "prover", "data")
 	if err := os.MkdirAll(storePath, 0755); err != nil {
 		log.Fatalf("❌ Failed to create storage directory: %v", err)
 	}
@@ -924,6 +929,7 @@ type ErrorType int
 const (
 	ErrorTypeNetwork ErrorType = iota
 	ErrorTypeVerification
+	ErrorTypeDuplicate // Batch already exists on L1
 	ErrorTypeUnknown
 )
 
@@ -934,6 +940,12 @@ func classifyError(err error) ErrorType {
 	}
 
 	errMsg := err.Error()
+
+	// Duplicate batch error (already submitted to L1)
+	if strings.Contains(errMsg, "batch hash already exists") ||
+		strings.Contains(errMsg, "batch already exists") {
+		return ErrorTypeDuplicate
+	}
 
 	// Network/RPC errors
 	if strings.Contains(errMsg, "connection") ||
@@ -1082,6 +1094,13 @@ func submitProofWithParanoidMode(
 	// Check error type
 	errType := classifyError(err)
 	log.Printf("   ⚠️  Submission failed: %v (Type: %v)\n", err, errType)
+
+	// If batch already exists on L1, skip it (treat as success)
+	if errType == ErrorTypeDuplicate {
+		log.Println("   ℹ️  Batch already exists on L1 - skipping to next batch")
+		// Return without error to signal success (batch is on L1)
+		return tx, receipt, calculatedNewStateRoot, nil
+	}
 
 	// If it's a network error, don't rebuild - just fail
 	if errType == ErrorTypeNetwork {

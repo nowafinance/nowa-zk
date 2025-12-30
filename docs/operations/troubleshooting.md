@@ -262,6 +262,66 @@ sudo journalctl -u tan-prover -n 50
    cast balance <PROVER_ADDRESS> --rpc-url $RPC
    ```
 
+### Prover Halts: "batch hash already exists"
+
+**Symptom:**
+```
+❌ HALTING PROVER - MANUAL INTERVENTION REQUIRED
+Batch Number: 38
+Error: submission failed: execution reverted: BatchRegistry: batch hash already exists
+```
+
+**Cause:**
+The prover successfully submitted a batch to L1, but was interrupted (stopped/crashed) before saving its local state. On restart, it tries to submit the same batch again, but the L1 contract rejects it because it already exists.
+
+> [!NOTE]
+> **Newer versions (after Dec 2025)** automatically skip batches that already exist on L1, so you may not encounter this issue. If you see this error with a newer version, the automatic skip failed and manual intervention is needed.
+
+**Solution:**
+
+Delete the prover database to force a resync from L1:
+
+```bash
+# 1. Stop the prover
+sudo systemctl stop tan-prover  # or Ctrl+C if running manually
+
+# 2. Check which batch is already on L1
+cast call <CONTRACT_ADDRESS> "totalBatches()" --rpc-url $RPC
+
+# 3. Delete prover database
+# IMPORTANT: Prover DB is in PROJECT directory, not home directory!
+cd ~/tan-zk  # or wherever your project is
+rm -rf .tan-zk/prover/data/*
+
+# 4. Restart prover (will resync from L1)
+sudo systemctl start tan-prover
+# OR for local development:
+make run-prover
+```
+
+**Alternative paths to check:**
+```bash
+# Project directory (most common)
+rm -rf ~/tan-zk/.tan-zk/prover/data/*
+
+# Home directory (if using systemd service)
+rm -rf ~/.tan-zk/prover/data/*
+
+# System-wide (cloud deployments)
+sudo rm -rf /var/lib/tan-zk/prover/data/*
+```
+
+**Prevention:**
+- Always use Ctrl+C gracefully to stop the prover
+- The prover saves state after each successful submission, but a hard kill can interrupt this
+- Newer versions (Dec 2025+) automatically detect and skip duplicate batches
+
+**How it works after cleanup:**
+1. Prover starts with empty database
+2. Queries L1 contract to see which batches exist
+3. Automatically resumes from the next unprocessed batch
+4. Safe because L1 is the source of truth
+
 ---
 
 ## Build Failures

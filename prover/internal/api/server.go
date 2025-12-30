@@ -158,43 +158,44 @@ func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
 
 // handleGetBatch godoc
 // @Summary Get batch by ID
-// @Description Get details of a specific batch
+// @Description Get details of a specific batch from local storage
 // @Tags Batches
 // @Param id path int true "Batch ID"
 // @Produce json
 // @Success 200 {object} BatchResponse
 // @Failure 400 {string} string "Invalid batch ID"
+// @Failure 404 {string} string "Batch not found"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /batches/{id} [get]
 func (api *APIServer) handleGetBatch(c *fiber.Ctx) error {
 	idStr := c.Params("id")
-	batchID, ok := new(big.Int).SetString(idStr, 10)
-	if !ok {
+	batchNumber, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid batch ID")
 	}
 
-	batch, err := api.registry.GetBatch(&bind.CallOpts{}, batchID)
+	// Query local storage (not blockchain contract)
+	proofData, err := api.store.GetProof(batchNumber)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get batch: %v", err))
+		return c.Status(fiber.StatusNotFound).SendString(fmt.Sprintf("Batch %d not found in local storage", batchNumber))
 	}
 
-	// Try to get tx hash and tx hashes from local storage
-	txHash := ""
-	var txHashes []string
-	if proofData, err := api.store.GetProof(batchID.Uint64()); err == nil && proofData != nil {
-		txHash = proofData.TxHash
-		txHashes = proofData.TxHashes
+	// Convert state root from decimal string to hex
+	stateRootHex := proofData.NewStateRoot
+	if val, ok := new(big.Int).SetString(proofData.NewStateRoot, 10); ok {
+		// It's a decimal number, convert to hex
+		stateRootHex = common.BigToHash(val).Hex()
 	}
 
 	resp := BatchResponse{
-		BatchNumber:  batchID.Uint64(),
-		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-		NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
-		Submitter:    batch.Submitter.Hex(),
-		Timestamp:    batch.Timestamp.Uint64(),
-		Status:       batch.Status,
-		TxHash:       txHash,
-		TxHashes:     txHashes,
+		BatchNumber:  proofData.BatchNumber,
+		BatchHash:    proofData.BatchHash,
+		NewStateRoot: stateRootHex,
+		Submitter:    proofData.Submitter,
+		Timestamp:    uint64(proofData.Timestamp),
+		Status:       proofData.Status,
+		TxHash:       proofData.TxHash,
+		TxHashes:     proofData.TxHashes,
 	}
 
 	return c.JSON(resp)
@@ -312,6 +313,13 @@ func (api *APIServer) handleGetBatches(c *fiber.Ctx) error {
 	// Convert to BatchResponse objects
 	response := make([]BatchResponse, len(batches))
 	for i, b := range batches {
+		// Convert state root from decimal string to hex if needed
+		stateRootHex := b.NewStateRoot
+		if val, ok := new(big.Int).SetString(b.NewStateRoot, 10); ok {
+			// It's a decimal number, convert to hex
+			stateRootHex = common.BigToHash(val).Hex()
+		}
+
 		response[i] = BatchResponse{
 			BatchNumber:  b.BatchNumber,
 			BatchHash:    b.BatchHash,
@@ -319,7 +327,7 @@ func (api *APIServer) handleGetBatches(c *fiber.Ctx) error {
 			TxHashes:     b.TxHashes,
 			Timestamp:    uint64(b.Timestamp),
 			Submitter:    b.Submitter,
-			NewStateRoot: b.NewStateRoot,
+			NewStateRoot: stateRootHex,
 			Status:       b.Status,
 		}
 	}
