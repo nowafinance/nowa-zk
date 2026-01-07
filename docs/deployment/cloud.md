@@ -10,27 +10,13 @@ This guide describes how to deploy the **Tan-ZK Sequencer and Prover** on a Linu
 
 ---
 
-## 1. Directory Setup
-
-```bash
-# Create directory for persistent data
-sudo mkdir -p /var/lib/tan-zk/sequencer/state
-sudo mkdir -p /var/lib/tan-zk/prover/keys
-sudo mkdir -p /var/lib/tan-zk/prover/data
-
-# Set ownership to current user
-sudo chown -R $USER:$USER /var/lib/tan-zk
-```
-
----
-
-## 2. SSH Key Setup
+## 1. SSH Key Setup
 
 Generate an SSH key to clone the private repository.
 
 ```bash
 # Generate SSH key
-ssh-keygen -t ed25519 -C "your-server-name"
+ssh-keygen -t ed25519 -C "zkprover"
 
 # Display public key
 cat ~/.ssh/id_ed25519.pub
@@ -45,7 +31,7 @@ ssh -T git@github.com
 
 ---
 
-## 3. Install Dependencies
+## 2. Install Dependencies
 
 ```bash
 # Update system
@@ -75,7 +61,7 @@ cast --version
 
 ---
 
-## 4. Clone & Build
+## 3. Clone & Build
 
 ```bash
 # Clone the repository
@@ -122,13 +108,28 @@ go build -o ../build/sequencer-bin ./cmd/sequencer
 cd ..
 ```
 
-### Persist Keys
+## 4. Directory Setup
+
+```bash
+# Create directory for persistent data
+sudo mkdir -p /var/lib/tan-zk/sequencer/state
+sudo mkdir -p /var/lib/tan-zk/prover/keys
+sudo mkdir -p /var/lib/tan-zk/prover/data
+
+# Set ownership to current user
+sudo chown -R $USER:$USER /var/lib/tan-zk
+```
+
+### Persist Keys Copy
 
 ```bash
 # Copy keys to persistent storage
 sudo cp -r ~/tan-zk/keys/* /var/lib/tan-zk/prover/keys/
 sudo chown -R $USER:$USER /var/lib/tan-zk
 ```
+
+---
+
 
 ---
 
@@ -185,6 +186,7 @@ forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRI
 # Optional: Verify contracts on block explorer
 # forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
 
+
 cd ..
 ```
 
@@ -222,8 +224,8 @@ cat ~/.tan-zk/deployments.json
 First, set your username (this only needs to be done once):
 
 ```bash
-# Set your username here (e.g., tan, ubuntu, etc.)
-USERNAME=tan
+# Set your username here (e.g., prover, tan, ubuntu, etc.)
+USERNAME=prover
 ```
 
 ### Sequencer Service
