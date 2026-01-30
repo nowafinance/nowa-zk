@@ -1,6 +1,6 @@
 # Local Development Setup
 
-This guide describes how to set up the **Tan-ZK Sequencer and Prover** locally for development and testing purposes.
+This guide describes how to set up the **Nowa-ZK Sequencer and Prover** locally for development and testing purposes.
 
 ## Prerequisites
 

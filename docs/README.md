@@ -1,6 +1,6 @@
-# Tan-ZK Documentation
+# Nowa-ZK Documentation
 
-Complete documentation for setting up, deploying, and operating the Tan-ZK rollup system.
+Complete documentation for setting up, deploying, and operating the Nowa-ZK rollup system.
 
 ---
 

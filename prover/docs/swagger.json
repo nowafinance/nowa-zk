@@ -1,8 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "API for the Tan-ZK Rollup Prover",
-        "title": "Tan-ZK Prover API",
+        "description": "API for the Nowa-ZK Rollup Prover",
+        "title": "Nowa-ZK Prover API",
         "contact": {},
         "version": "1.0"
     },

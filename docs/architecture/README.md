@@ -1,6 +1,6 @@
-# Tan-ZK Architecture Documentation
+# Nowa-ZK Architecture Documentation
 
-This directory contains comprehensive architecture documentation for the Tan-ZK rollup system.
+This directory contains comprehensive architecture documentation for the Nowa-ZK rollup system.
 
 ## Documents
 

@@ -1,6 +1,6 @@
-# Testing Guide: Tan-ZK Rollup System
+# Testing Guide: Nowa-ZK Rollup System
 
-Quick reference for testing all components of the Tan-ZK system with terminal commands.
+Quick reference for testing all components of the Nowa-ZK system with terminal commands.
 
 ---
 

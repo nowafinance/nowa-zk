@@ -1,6 +1,6 @@
 # Cloud Setup Guide
 
-This guide describes how to deploy the **Tan-ZK Sequencer and Prover** on a Linux cloud server.
+This guide describes how to deploy the **Nowa-ZK Sequencer and Prover** on a Linux cloud server.
 
 ## Prerequisites
 
@@ -204,7 +204,7 @@ cd ..
 The prover service needs to know the deployed contract address. After deployment, the addresses are saved in the Foundry broadcast file.
 
 ```bash
-# Create the .tan-zk directory
+# Create the .Nowa-ZK directory
 mkdir -p ~/.tan-zk
 
 # Copy the deployment file from Foundry's broadcast directory
@@ -235,7 +235,7 @@ Create the sequencer service file:
 ```bash
 sudo tee /etc/systemd/system/tan-sequencer.service > /dev/null <<EOF
 [Unit]
-Description=Tan-ZK Sequencer Service
+Description=Nowa-ZK Sequencer Service
 After=network-online.target
 
 [Service]
@@ -261,7 +261,7 @@ Create the prover service file:
 ```bash
 sudo tee /etc/systemd/system/tan-prover.service > /dev/null <<EOF
 [Unit]
-Description=Tan-ZK Prover Service
+Description=Nowa-ZK Prover Service
 After=network-online.target
 
 [Service]
@@ -421,7 +421,7 @@ systemctl show systemd-journald | grep -E 'SystemMaxUse|SystemKeepFree'
 ✅ journald logs are capped at **500 MB**  
 ✅ Disk will not silently fill again  
 ✅ System remains fully debuggable  
-✅ tan-zk services unaffected  
+✅ Nowa-ZK services unaffected  
 
 ---
 
@@ -436,7 +436,7 @@ go clean -modcache
 rm -rf ~/.cache/go-build
 ```
 
-### tan-zk Disk Strategy
+### Nowa-ZK Disk Strategy
 
 Your sequencer state (`/var/lib/tan-zk`) will grow over time. Options:
 

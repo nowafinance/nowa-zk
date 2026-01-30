@@ -1,4 +1,4 @@
-# ZK-Sequencer - Tan-ZK Network
+# ZK-Sequencer - Nowa-ZK Network
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
@@ -11,7 +11,7 @@ This repository contains the official implementation of the **ZK-Sequencer** for
 
 ## About Tan-ZK
 
-**Tan-ZK** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Tan-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
+**Tan-ZK** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Nowa-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
 
 ### Architecture Overview
 
@@ -23,10 +23,10 @@ The ZK-Sequencer operates in a two-phase model:
 
 ## 🔧 How It Works
 
-The Tan-ZK Sequencer is a critical infrastructure component with four primary responsibilities:
+The Nowa-ZK Sequencer is a critical infrastructure component with four primary responsibilities:
 
 ### 1. **Transaction Bundling**
-- Accepts transactions from Tan-ZK users
+- Accepts transactions from Nowa-ZK users
 - Orders transactions deterministically
 - Groups them into optimized batches
 

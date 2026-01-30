@@ -1,6 +1,6 @@
 # Cloud Upgrade Guide
 
-This guide describes how to upgrade the **Tan-ZK Sequencer and Prover** running on a cloud server with systemd services.
+This guide describes how to upgrade the **Nowa-ZK Sequencer and Prover** running on a cloud server with systemd services.
 
 > [!IMPORTANT]
 > This upgrade process **preserves all chain data**. The sequencer state and prover data will remain intact.

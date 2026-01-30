@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tan-ZK uses a tiered storage strategy to optimize for availability, efficiency, and cost.
+Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency, and cost.
 
 ## Storage Layers
 

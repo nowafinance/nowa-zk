@@ -1,17 +1,17 @@
-# Tan-ZK Litepaper
+# Nowa-ZK Litepaper
 
 ## Abstract
-Tan-ZK is a cutting-edge Layer 2 scaling solution leveraging Zero-Knowledge (ZK) proofs to ensure security, scalability, and fast finality. Built on a modular architecture involving Ethereum as Layer 1 and a Cosmos SDK-based EVM as Layer 2, Tan-ZK offers a high-performance execution environment for decentralized applications. This litepaper outlines the core components, architectural flow, and technical specifications of the network.
+Nowa-ZK is a cutting-edge Layer 2 scaling solution leveraging Zero-Knowledge (ZK) proofs to ensure security, scalability, and fast finality. Built on a modular architecture involving Ethereum as Layer 1 and a Cosmos SDK-based EVM as Layer 2, Nowa-ZK offers a high-performance execution environment for decentralized applications. This litepaper outlines the core components, architectural flow, and technical specifications of the network.
 
 ---
 
 ## 1. Introduction
-The demand for scalable blockchain solutions has never been higher. High gas fees and network congestion on Ethereum have driven the adoption of Layer 2 rollups. Tan-ZK introduces a hybrid approach, combining the robust security of Ethereum with the interoperability and speed of the Cosmos ecosystem. By utilizing Groth16 ZK proofs, Tan-ZK ensures that state transitions are mathematically verifiable on-chain without exposing transaction data, maintaining both privacy and efficiency.
+The demand for scalable blockchain solutions has never been higher. High gas fees and network congestion on Ethereum have driven the adoption of Layer 2 rollups. Nowa-ZK introduces a hybrid approach, combining the robust security of Ethereum with the interoperability and speed of the Cosmos ecosystem. By utilizing Groth16 ZK proofs, Nowa-ZK ensures that state transitions are mathematically verifiable on-chain without exposing transaction data, maintaining both privacy and efficiency.
 
 ## 2. Architecture Overview
-![Tan-ZK Architecture Diagram](docs/assets/tanzk_architecture_diagram.png)
+![Nowa-ZK Architecture Diagram](docs/assets/tanzk_architecture_diagram.png)
 
-The Tan-ZK architecture consists of four primary layers that interact seamlessly to provide a secure and fast transaction experience.
+The Nowa-ZK architecture consists of four primary layers that interact seamlessly to provide a secure and fast transaction experience.
 
 ### 2.1 L1 (Ethereum)
 The foundation of Tan-ZK's security model lies on the Ethereum mainnet.
@@ -60,4 +60,4 @@ The user-facing execution layer is built using the Cosmos SDK with EVM compatibi
 *   **Block Time**: ~1 Second.
 
 ## 5. Conclusion
-Tan-ZK represents a significant step forward in modular blockchain architectures. By decoupling data availability, execution, and proving, it achieves a balanced optimization of cost, speed, and security. As the network matures, further optimizations in prover performance and batch sizes are anticipated to drive even greater scalability.
+Nowa-ZK represents a significant step forward in modular blockchain architectures. By decoupling data availability, execution, and proving, it achieves a balanced optimization of cost, speed, and security. As the network matures, further optimizations in prover performance and batch sizes are anticipated to drive even greater scalability.

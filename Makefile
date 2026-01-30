@@ -1,4 +1,4 @@
-# Tan-ZK Project Makefile
+# Nowa-ZK Project Makefile
 
 .PHONY: all clean setup build test anvil deploy-local run-sequencer run-prover help check-batch
 
@@ -130,7 +130,7 @@ run-prover: build-prover
 # --- Help ---
 
 help:
-	@echo "Tan-ZK Makefile Commands (in execution order):"
+	@echo "Nowa-ZK Makefile Commands (in execution order):"
 	@echo "  make clean           - 1. Clear artifacts"
 	@echo "  make clean-global    - 1b. Clear global artifacts (~/.tan-zk)"
 	@echo "  make setup           - 2. Generate keys & verifier"

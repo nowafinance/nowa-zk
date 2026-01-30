@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ZK-Sequencer is a critical component of the Tan-ZK network infrastructure. Security is our top priority, and we take all security vulnerabilities seriously. This document outlines our security policy and procedures.
+The ZK-Sequencer is a critical component of the Nowa-ZK network infrastructure. Security is our top priority, and we take all security vulnerabilities seriously. This document outlines our security policy and procedures.
 
 ## Supported Versions
 
@@ -226,7 +226,7 @@ For security-related inquiries:
 
 ## Acknowledgments
 
-We thank the security research community for helping keep ZK-Sequencer and the Tan-ZK network secure.
+We thank the security research community for helping keep ZK-Sequencer and the Nowa-ZK network secure.
 
 ---
 

@@ -67,7 +67,7 @@ func (s *Service) Start() error {
 			return errors.ErrRPC("failed to create RPC client", err)
 		}
 	}
-	logger.Info("✅ Connected to Tan-ZK RPC endpoint")
+	logger.Info("✅ Connected to Nowa-ZK RPC endpoint")
 
 	// Initialize WebSocket client (optional)
 	if s.config.WSURL != "" {
@@ -75,7 +75,7 @@ func (s *Service) Start() error {
 		if err != nil {
 			logger.Warn("WebSocket connection failed: %v (continuing with HTTP polling)", err)
 		} else {
-			logger.Info("✅ Connected to Tan-ZK WebSocket endpoint")
+			logger.Info("✅ Connected to Nowa-ZK WebSocket endpoint")
 		}
 	}
 

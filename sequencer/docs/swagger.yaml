@@ -92,8 +92,8 @@ definitions:
     type: object
 info:
   contact: {}
-  description: REST API for the Tan-ZK Rollup Sequencer
-  title: Tan-ZK Sequencer API
+  description: REST API for the Nowa-ZK Rollup Sequencer
+  title: Nowa-ZK Sequencer API
   version: "1.0"
 paths:
   /:

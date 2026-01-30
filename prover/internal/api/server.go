@@ -49,7 +49,7 @@ type StatusResponse struct {
 func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, port int) *APIServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		AppName:               "Tan-ZK Prover",
+		AppName:               "Nowa-ZK Prover",
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
 	})
@@ -71,14 +71,14 @@ func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, 
 }
 
 // Start starts the API server
-// @title Tan-ZK Prover API
+// @title Nowa-ZK Prover API
 // @version 1.0
-// @description API for the Tan-ZK Rollup Prover
+// @description API for the Nowa-ZK Rollup Prover
 // @BasePath /
 func (api *APIServer) Start() error {
 	// Swagger
 	api.app.Get("/swagger/*", swagger.New(swagger.Config{
-		Title:       "Tan-ZK Prover API",
+		Title:       "Nowa-ZK Prover API",
 		CustomStyle: `.swagger-ui .topbar { display: none }`,
 	}))
 

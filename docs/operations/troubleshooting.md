@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide covers common issues you may encounter when running Tan-ZK on a cloud server.
+This guide covers common issues you may encounter when running Nowa-ZK on a cloud server.
 
 ---
 
@@ -290,7 +290,7 @@ cast call <CONTRACT_ADDRESS> "totalBatches()" --rpc-url $RPC
 
 # 3. Delete prover database
 # IMPORTANT: Prover DB is in PROJECT directory, not home directory!
-cd ~/tan-zk  # or wherever your project is
+cd ~/Nowa-ZK  # or wherever your project is
 rm -rf .tan-zk/prover/data/*
 
 # 4. Restart prover (will resync from L1)

@@ -2,7 +2,7 @@
 
 ## Quick Start Guide
 
-Follow these steps in order to set up and run the TAN-ZK system:
+Follow these steps in order to set up and run the Nowa-ZK system:
 
 ### 1. Build Required Files
 

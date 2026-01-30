@@ -7,7 +7,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}===============================================${NC}"
-echo -e "${BLUE}       Tan-ZK Storage Usage Measurement        ${NC}"
+echo -e "${BLUE}       Nowa-ZK Storage Usage Measurement        ${NC}"
 echo -e "${BLUE}===============================================${NC}"
 echo ""
 

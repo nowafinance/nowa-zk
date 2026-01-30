@@ -30,7 +30,7 @@ type APIServer struct {
 func NewAPIServer(store *BatchStore, port int) *APIServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		AppName:               "Tan-ZK Sequencer",
+		AppName:               "Nowa-ZK Sequencer",
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
 	})
@@ -53,14 +53,14 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 }
 
 // Start starts the API server
-// @title Tan-ZK Sequencer API
+// @title Nowa-ZK Sequencer API
 // @version 1.0
-// @description REST API for the Tan-ZK Rollup Sequencer
+// @description REST API for the Nowa-ZK Rollup Sequencer
 // @BasePath /
 func (api *APIServer) Start() error {
 	// Swagger
 	api.app.Get("/swagger/*", swagger.New(swagger.Config{
-		Title:       "Tan-ZK Sequencer API",
+		Title:       "Nowa-ZK Sequencer API",
 		CustomStyle: `.swagger-ui .topbar { display: none }`,
 	}))
 

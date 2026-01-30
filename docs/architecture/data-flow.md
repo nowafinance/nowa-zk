@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Tan-ZK sequencer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size transaction batches.
+The Nowa-ZK sequencer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size transaction batches.
 
 ---
 

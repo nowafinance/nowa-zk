@@ -9,8 +9,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "sequencer",
-	Short: "ZK Sequencer for Tan-ZK network",
-	Long:  `A ZK Sequencer service that monitors the Tan-ZK blockchain, collects transactions, builds batches, and provides APIs.`,
+	Short: "ZK Sequencer for Nowa-ZK network",
+	Long:  `A ZK Sequencer service that monitors the Nowa-ZK blockchain, collects transactions, builds batches, and provides APIs.`,
 }
 
 func init() {

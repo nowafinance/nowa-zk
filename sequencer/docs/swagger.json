@@ -1,8 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "REST API for the Tan-ZK Rollup Sequencer",
-        "title": "Tan-ZK Sequencer API",
+        "description": "REST API for the Nowa-ZK Rollup Sequencer",
+        "title": "Nowa-ZK Sequencer API",
         "contact": {},
         "version": "1.0"
     },

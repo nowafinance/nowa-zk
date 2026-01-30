@@ -1,6 +1,6 @@
 # Prover
 
-ZK Prover for Tan-ZK Sequencer - Generates proofs and submits to smart contract.
+ZK Prover for Nowa-ZK Sequencer - Generates proofs and submits to smart contract.
 
 ## Quick Start
 

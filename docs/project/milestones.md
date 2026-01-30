@@ -29,19 +29,19 @@
   - Core functions tested with forge test
   - 100% coverage on critical functions
 
-### Milestone 1.3 — Tan-ZK RPC Client ✅
+### Milestone 1.3 — Nowa-ZK RPC Client ✅
 - **Status**: COMPLETED
 - **Due date**: TBD
-- **Description**: Implement Go RPC client for Tan-ZK blockchain.
+- **Description**: Implement Go RPC client for Nowa-ZK blockchain.
 - **Scope**:
-  - JSON-RPC/WebSocket connection to Tan-ZK node
+  - JSON-RPC/WebSocket connection to Nowa-ZK node
   - Subscribe to new blocks, fetch transactions
   - Query account state
   - Stub SubmitBatchProof method
   - Basic integration tests with local node
 - **Acceptance**:
   - Reliable block streaming and transaction fetch with retries
-  - Integration tests pass with local Tan-ZK node
+  - Integration tests pass with local Nowa-ZK node
   - Error handling and reconnection logic implemented
 
 ### Milestone 1.4 — State Synchronization ✅
@@ -205,13 +205,13 @@
 ### Milestone 5.2 — End-to-End Integration with Tan-ZK
 - **Status**: PLANNED
 - **Due date**: TBD
-- **Description**: Full flow on local Tan-ZK devnet.
+- **Description**: Full flow on local Nowa-ZK devnet.
 - **Scope**:
-  - Clone and start local Tan-ZK node (separate repo)
-  - Deploy contracts to Tan-ZK EVM using Foundry
-  - Configure sequencer to connect to Tan-ZK RPC
+  - Clone and start local Nowa-ZK node (separate repo)
+  - Deploy contracts to Nowa-ZK EVM using Foundry
+  - Configure sequencer to connect to Nowa-ZK RPC
   - Run sequencer+prover; submit 1000 real txs to Tan-ZK
-  - Generate proof and verify on Tan-ZK chain
+  - Generate proof and verify on Nowa-ZK chain
   - scripts/test-e2e.sh to automate entire flow
 - **Acceptance**:
   - Script completes end-to-end without manual intervention
@@ -253,7 +253,7 @@
 **Completed**: 9/19 milestones (47%)
 - ✅ 1.1 Repository Structure
 - ✅ 1.2 Smart Contract Foundation
-- ✅ 1.3 Tan-ZK RPC Client
+- ✅ 1.3 Nowa-ZK RPC Client
 - ✅ 1.4 State Synchronization
 - ✅ 2.1 Transaction Pool
 - ✅ 2.2 Batch Builder

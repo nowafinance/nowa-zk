@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Install dependencies for Tan-ZK on a fresh Linux (Ubuntu) VM
+# Install dependencies for Nowa-ZK on a fresh Linux (Ubuntu) VM
 # Usage: ./install_dependencies.sh
 
 set -e
@@ -11,7 +11,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${BLUE}>>> Starting Tan-ZK Dependency Installation...${NC}"
+echo -e "${BLUE}>>> Starting Nowa-ZK Dependency Installation...${NC}"
 
 # 1. System Update & Essential Tools
 echo -e "${GREEN}[1/4] Updating system and installing base tools...${NC}"

@@ -1,4 +1,4 @@
-# Tan-ZK System Overview
+# Nowa-ZK System Overview
 
 ## Architecture Diagram
 

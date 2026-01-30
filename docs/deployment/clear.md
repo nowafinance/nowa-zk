@@ -72,11 +72,11 @@ echo "✅ Cleanup complete! Source code and .env preserved"
 sudo systemctl status tan-sequencer tan-prover
 
 # Check data removed
-ls -la /var/lib/ | grep tan-zk  # Should be empty
-ls -la ~/.tan-zk                 # Should not exist
+ls -la /var/lib/ | grep Nowa-ZK  # Should be empty
+ls -la ~/.Nowa-ZK                 # Should not exist
 
 # Check source code preserved
-ls -la ~/tan-zk                  # Should still exist
+ls -la ~/Nowa-ZK                  # Should still exist
 ```
 
 ## Redeploy

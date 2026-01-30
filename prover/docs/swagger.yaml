@@ -35,8 +35,8 @@ definitions:
     type: object
 info:
   contact: {}
-  description: API for the Tan-ZK Rollup Prover
-  title: Tan-ZK Prover API
+  description: API for the Nowa-ZK Rollup Prover
+  title: Nowa-ZK Prover API
   version: "1.0"
 paths:
   /:

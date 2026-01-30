@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Client is a JSON-RPC client for Tan-ZK blockchain
+// Client is a JSON-RPC client for Nowa-ZK blockchain
 type Client struct {
 	config           *Config
 	httpClient       *http.Client
