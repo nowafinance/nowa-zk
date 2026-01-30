@@ -12,10 +12,10 @@ echo -e "${BLUE}===============================================${NC}"
 echo ""
 
 # Defined Paths based on Cloud Deployment Guide
-SEQ_STATE_DIR="/var/lib/tan-zk/sequencer"
-PROVER_DIR="/var/lib/tan-zk/prover"
-USER_CONFIG_DIR="$HOME/.tan-zk"
-REPO_BUILD_DIR="$HOME/tan-zk/build"
+SEQ_STATE_DIR="/var/lib/nowa-zk/sequencer"
+PROVER_DIR="/var/lib/nowa-zk/prover"
+USER_CONFIG_DIR="$HOME/.nowa-zk"
+REPO_BUILD_DIR="$HOME/nowa-zk/build"
 
 # Function to measure and print size
 measure_dir() {

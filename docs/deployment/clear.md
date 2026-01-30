@@ -15,21 +15,21 @@ sudo rm -f /etc/systemd/system/tan-prover.service
 sudo systemctl daemon-reload
 
 # Remove data directories
-sudo rm -rf /var/lib/tan-zk
+sudo rm -rf /var/lib/nowa-zk
 
 # Remove deployment info
-rm -rf ~/.tan-zk
+rm -rf ~/.nowa-zk
 
 # Find and remove ALL database files (sequencer and prover)
-# The sequencer stores data in ~/.tan-zk/sequencer/data by default
-rm -rf ~/.tan-zk/sequencer/
-rm -rf ~/.tan-zk/prover/
+# The sequencer stores data in ~/.nowa-zk/sequencer/data by default
+rm -rf ~/.nowa-zk/sequencer/
+rm -rf ~/.nowa-zk/prover/
 
 # Also check for databases in other common locations
 find ~/ -type d \( -name "*sequencer-db*" -o -name "*prover-db*" -o -name ".badger*" \) -exec rm -rf {} + 2>/dev/null
 
 # Clean build artifacts in repository
-cd ~/tan-zk
+cd ~/nowa-zk
 rm -rf build/
 rm -rf keys/
 rm -rf contracts/out/
@@ -62,7 +62,7 @@ echo "✅ Cleanup complete! Source code and .env preserved"
 
 ## What's Preserved
 
-- ❌ Source code (`~/tan-zk` repository)
+- ❌ Source code (`~/nowa-zk` repository)
 - ❌ `.env` file (`/etc/tan/.env`)
 
 ## Verification
@@ -94,19 +94,19 @@ If the sequencer still resumes from old block numbers, use this aggressive clean
 sudo systemctl stop tan-sequencer tan-prover
 
 # Remove EVERYTHING in home directory with these names
-find ~/ -name "*tan-zk*" -type d ! -path "*/tan-zk/.git/*" ! -path "*/tan-zk" -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*nowa-zk*" -type d ! -path "*/nowa-zk/.git/*" ! -path "*/nowa-zk" -exec rm -rf {} + 2>/dev/null
 find ~/ -name "*badger*" -type d -exec rm -rf {} + 2>/dev/null
-find ~/ -name "*sequencer*" -type d ! -path "*/tan-zk/*" -exec rm -rf {} + 2>/dev/null
-find ~/ -name "*prover*" -type d ! -path "*/tan-zk/*" -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*sequencer*" -type d ! -path "*/nowa-zk/*" -exec rm -rf {} + 2>/dev/null
+find ~/ -name "*prover*" -type d ! -path "*/nowa-zk/*" -exec rm -rf {} + 2>/dev/null
 
 # Explicitly remove known locations
-rm -rf ~/.tan-zk
-rm -rf /var/lib/tan-zk
-sudo rm -rf /var/lib/tan-zk
+rm -rf ~/.nowa-zk
+rm -rf /var/lib/nowa-zk
+sudo rm -rf /var/lib/nowa-zk
 
 # Verify
 echo "Checking for remaining database files..."
-find ~/ -name "*badger*" -o -name "*tan-zk*" 2>/dev/null | grep -v "tan-zk/.git" | grep -v "/tan-zk$"
+find ~/ -name "*badger*" -o -name "*nowa-zk*" 2>/dev/null | grep -v "nowa-zk/.git" | grep -v "/nowa-zk$"
 ```
 
 If the above find command shows NO output, databases are gone! ✅

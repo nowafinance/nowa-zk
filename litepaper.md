@@ -14,7 +14,7 @@ The demand for scalable blockchain solutions has never been higher. High gas fee
 The Nowa-ZK architecture consists of four primary layers that interact seamlessly to provide a secure and fast transaction experience.
 
 ### 2.1 L1 (Ethereum)
-The foundation of Tan-ZK's security model lies on the Ethereum mainnet.
+The foundation of nowa-zk's security model lies on the Ethereum mainnet.
 *   **BatchRegistry Smart Contract**: This constitutes the source of truth for the L2 state on L1. It serves three critical functions:
     *   **Storage**: Maintains batch commitments and state roots.
     *   **Verification**: Verifies ZK proofs submitted by the Prover.

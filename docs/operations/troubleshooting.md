@@ -50,7 +50,7 @@ RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 INDEX_FROM_BLOCK=0
 ETHERSCAN_API_KEY=YOUR_KEY
-STATE_DB_PATH=/var/lib/tan-zk/sequencer/state
+STATE_DB_PATH=/var/lib/nowa-zk/sequencer/state
 ```
 
 **Common mistakes:**
@@ -82,7 +82,7 @@ You must regenerate keys AND redeploy contracts:
 sudo systemctl stop tan-sequencer tan-prover
 
 # 2. Navigate to project
-cd ~/tan-zk
+cd ~/nowa-zk
 git pull origin main
 
 # 3. Rebuild prover
@@ -109,8 +109,8 @@ cd ..
 # 7. Save the NEW contract address from output
 
 # 8. Copy new keys
-sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # 9. Update prover service with new contract address
 sudo nano /etc/systemd/system/tan-prover.service
@@ -134,7 +134,7 @@ sudo systemctl start tan-sequencer tan-prover
 ```
 
 **Cause:**
-The prover auto-loads the contract address from `.tan-zk/deployments.json`, but this file has the OLD contract address after you redeployed.
+The prover auto-loads the contract address from `.nowa-zk/deployments.json`, but this file has the OLD contract address after you redeployed.
 
 **Solution:**
 
@@ -143,18 +143,18 @@ The prover auto-loads the contract address from `.tan-zk/deployments.json`, but 
 sudo systemctl stop tan-prover
 
 # 2. Find your new deployment file (replace CHAIN_ID with actual value from deployment)
-ls -lt ~/tan-zk/contracts/deployments/
+ls -lt ~/nowa-zk/contracts/deployments/
 
 # 3. Update deployments.json with new contract
-cp ~/tan-zk/contracts/deployments/CHAIN_ID.json ~/tan-zk/.tan-zk/deployments.json
+cp ~/nowa-zk/contracts/deployments/CHAIN_ID.json ~/nowa-zk/.nowa-zk/deployments.json
 
 # 4. Verify it updated
-cat ~/tan-zk/.tan-zk/deployments.json
+cat ~/nowa-zk/.nowa-zk/deployments.json
 # Should show your NEW BatchRegistry address
 
 # 5. Delete prover database to start from batch 0
-find ~/tan-zk/.tan-zk/ -name "*.db" -delete
-find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # 6. Restart prover
 sudo systemctl start tan-prover
@@ -172,7 +172,7 @@ sudo journalctl -u tan-prover -f
 ```
 
 **Cause:**
-The prover stores its database in `~/tan-zk/.tan-zk/` directory (usually `prover.db` or `.bolt` files). After redeploying contracts, you need to delete this to start fresh.
+The prover stores its database in `~/nowa-zk/.nowa-zk/` directory (usually `prover.db` or `.bolt` files). After redeploying contracts, you need to delete this to start fresh.
 
 **Solution:**
 
@@ -181,15 +181,15 @@ The prover stores its database in `~/tan-zk/.tan-zk/` directory (usually `prover
 sudo systemctl stop tan-prover
 
 # Find and delete prover database files
-find ~/tan-zk/.tan-zk/ -name "*.db" -ls
-find ~/tan-zk/.tan-zk/ -name "*.bolt" -ls
+find ~/nowa-zk/.nowa-zk/ -name "*.db" -ls
+find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -ls
 
 # Delete them
-find ~/tan-zk/.tan-zk/ -name "*.db" -delete
-find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # Also clear any prover data in /var/lib
-sudo rm -rf /var/lib/tan-zk/prover/data/*
+sudo rm -rf /var/lib/nowa-zk/prover/data/*
 
 # Restart
 sudo systemctl start tan-prover
@@ -221,7 +221,7 @@ sudo journalctl -u tan-sequencer -n 50
 2. **State DB permission issues**
    ```bash
    # Fix permissions
-   sudo chown -R $USER:$USER /var/lib/tan-zk
+   sudo chown -R $USER:$USER /var/lib/nowa-zk
    ```
 
 3. **Port already in use**
@@ -242,7 +242,7 @@ sudo journalctl -u tan-prover -n 50
 1. **Keys not found**
    ```bash
    # Verify keys exist
-   ls -lh /var/lib/tan-zk/prover/keys/
+   ls -lh /var/lib/nowa-zk/prover/keys/
    
    # Should see: rollup.pk and rollup.vk
    ```
@@ -291,7 +291,7 @@ cast call <CONTRACT_ADDRESS> "totalBatches()" --rpc-url $RPC
 # 3. Delete prover database
 # IMPORTANT: Prover DB is in PROJECT directory, not home directory!
 cd ~/Nowa-ZK  # or wherever your project is
-rm -rf .tan-zk/prover/data/*
+rm -rf .nowa-zk/prover/data/*
 
 # 4. Restart prover (will resync from L1)
 sudo systemctl start tan-prover
@@ -302,13 +302,13 @@ make run-prover
 **Alternative paths to check:**
 ```bash
 # Project directory (most common)
-rm -rf ~/tan-zk/.tan-zk/prover/data/*
+rm -rf ~/nowa-zk/.nowa-zk/prover/data/*
 
 # Home directory (if using systemd service)
-rm -rf ~/.tan-zk/prover/data/*
+rm -rf ~/.nowa-zk/prover/data/*
 
 # System-wide (cloud deployments)
-sudo rm -rf /var/lib/tan-zk/prover/data/*
+sudo rm -rf /var/lib/nowa-zk/prover/data/*
 ```
 
 **Prevention:**
@@ -330,7 +330,7 @@ sudo rm -rf /var/lib/tan-zk/prover/data/*
 
 ```bash
 # Clear Go cache
-cd ~/tan-zk
+cd ~/nowa-zk
 cd sequencer && go clean -cache && go mod tidy && cd ..
 cd prover && go clean -cache && go mod tidy && cd ..
 
@@ -343,7 +343,7 @@ cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 
 ```bash
 # Clear Forge cache
-cd ~/tan-zk/contracts
+cd ~/nowa-zk/contracts
 forge clean
 
 # Rebuild

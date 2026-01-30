@@ -202,7 +202,7 @@
   - E2E flow completes without errors
   - Performance meets targets
 
-### Milestone 5.2 — End-to-End Integration with Tan-ZK
+### Milestone 5.2 — End-to-End Integration with nowa-zk
 - **Status**: PLANNED
 - **Due date**: TBD
 - **Description**: Full flow on local Nowa-ZK devnet.
@@ -210,13 +210,13 @@
   - Clone and start local Nowa-ZK node (separate repo)
   - Deploy contracts to Nowa-ZK EVM using Foundry
   - Configure sequencer to connect to Nowa-ZK RPC
-  - Run sequencer+prover; submit 1000 real txs to Tan-ZK
+  - Run sequencer+prover; submit 1000 real txs to nowa-zk
   - Generate proof and verify on Nowa-ZK chain
   - scripts/test-e2e.sh to automate entire flow
 - **Acceptance**:
   - Script completes end-to-end without manual intervention
-  - Batch verified on-chain on Tan-ZK
-  - State roots match between sequencer and Tan-ZK
+  - Batch verified on-chain on nowa-zk
+  - State roots match between sequencer and nowa-zk
 
 ### Milestone 5.3 — Monitoring & Observability
 - **Status**: PLANNED

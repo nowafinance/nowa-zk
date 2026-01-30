@@ -65,8 +65,8 @@ cast --version
 
 ```bash
 # Clone the repository
-git clone git@github.com:tannetwork/tan-zk.git ~/tan-zk
-cd ~/tan-zk
+git clone git@github.com:tannetwork/nowa-zk.git ~/nowa-zk
+cd ~/nowa-zk
 
 # Initialize submodules (if any)
 git submodule update --init --recursive
@@ -75,7 +75,7 @@ git submodule update --init --recursive
 ### Build Prover Keys
 
 ```bash
-cd ~/tan-zk/prover
+cd ~/nowa-zk/prover
 
 # Build prover binary first
 go build -o ../build/prover-bin ./cmd/prover
@@ -89,7 +89,7 @@ cd ..
 ### Build Contracts
 
 ```bash
-cd ~/tan-zk/contracts
+cd ~/nowa-zk/contracts
 
 # Build all contracts
 forge build
@@ -100,7 +100,7 @@ cd ..
 ### Build Sequencer
 
 ```bash
-cd ~/tan-zk/sequencer
+cd ~/nowa-zk/sequencer
 
 # Build sequencer binary
 go build -o ../build/sequencer-bin ./cmd/sequencer
@@ -112,20 +112,20 @@ cd ..
 
 ```bash
 # Create directory for persistent data
-sudo mkdir -p /var/lib/tan-zk/sequencer/state
-sudo mkdir -p /var/lib/tan-zk/prover/keys
-sudo mkdir -p /var/lib/tan-zk/prover/data
+sudo mkdir -p /var/lib/nowa-zk/sequencer/state
+sudo mkdir -p /var/lib/nowa-zk/prover/keys
+sudo mkdir -p /var/lib/nowa-zk/prover/data
 
 # Set ownership to current user
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 ```
 
 ### Persist Keys Copy
 
 ```bash
 # Copy keys to persistent storage
-sudo cp -r ~/tan-zk/keys/* /var/lib/tan-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo cp -r ~/nowa-zk/keys/* /var/lib/nowa-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 ```
 
 ---
@@ -175,7 +175,7 @@ source /etc/tan/.env
 set +a
 
 # Navigate to contracts directory
-cd ~/tan-zk/contracts
+cd ~/nowa-zk/contracts
 
 # Create deployments directory (required for saving deployment addresses)
 mkdir -p deployments
@@ -205,13 +205,13 @@ The prover service needs to know the deployed contract address. After deployment
 
 ```bash
 # Create the .Nowa-ZK directory
-mkdir -p ~/.tan-zk
+mkdir -p ~/.nowa-zk
 
 # Copy the deployment file from Foundry's broadcast directory
-cp ~/tan-zk/contracts/deployments/deployments.json ~/.tan-zk/deployments.json
+cp ~/nowa-zk/contracts/deployments/deployments.json ~/.nowa-zk/deployments.json
 
 # Verify the file was copied correctly
-cat ~/.tan-zk/deployments.json
+cat ~/.nowa-zk/deployments.json
 ```
 
 > [!IMPORTANT]
@@ -241,9 +241,9 @@ After=network-online.target
 [Service]
 User=$USERNAME
 Group=$USERNAME
-WorkingDirectory=/home/$USERNAME/tan-zk
+WorkingDirectory=/home/$USERNAME/nowa-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/$USERNAME/tan-zk/build/sequencer-bin start
+ExecStart=/home/$USERNAME/nowa-zk/build/sequencer-bin start
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -267,9 +267,9 @@ After=network-online.target
 [Service]
 User=$USERNAME
 Group=$USERNAME
-WorkingDirectory=/home/$USERNAME/tan-zk
+WorkingDirectory=/home/$USERNAME/nowa-zk
 EnvironmentFile=/etc/tan/.env
-ExecStart=/home/$USERNAME/tan-zk/build/prover-bin start
+ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -354,10 +354,10 @@ sudo journalctl -u tan-sequencer -n 50
 sudo journalctl -u tan-prover -n 50
 
 # Verify binaries exist
-ls -lh ~/tan-zk/build/
+ls -lh ~/nowa-zk/build/
 
 # Verify permissions
-ls -lh /var/lib/tan-zk/
+ls -lh /var/lib/nowa-zk/
 ```
 
 ### Connection Issues
@@ -370,12 +370,12 @@ ls -lh /var/lib/tan-zk/
 
 ```bash
 # Verify keys exist
-ls -lh /var/lib/tan-zk/prover/keys/
+ls -lh /var/lib/nowa-zk/prover/keys/
 
 # Regenerate if needed
-cd ~/tan-zk/prover
+cd ~/nowa-zk/prover
 ../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-sudo cp -r ../keys/* /var/lib/tan-zk/prover/keys/
+sudo cp -r ../keys/* /var/lib/nowa-zk/prover/keys/
 ```
 
 ---
@@ -438,12 +438,12 @@ rm -rf ~/.cache/go-build
 
 ### Nowa-ZK Disk Strategy
 
-Your sequencer state (`/var/lib/tan-zk`) will grow over time. Options:
+Your sequencer state (`/var/lib/nowa-zk`) will grow over time. Options:
 
 | Strategy | Description |
 |----------|-------------|
 | Periodic cleanup | Clear old data for dev environments |
-| Move to another disk | Relocate `/var/lib/tan-zk` to a larger partition |
+| Move to another disk | Relocate `/var/lib/nowa-zk` to a larger partition |
 | Bind-mount to SSD | Mount external storage for performance |
 
 ### LVM Expansion (Future-Proofing)

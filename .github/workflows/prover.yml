@@ -53,6 +53,6 @@ jobs:
         with:
           name: zk-keys-and-verifier
           path: |
-            .tan-zk/keys/
+            .nowa-zk/keys/
             contracts/src/generated/RollupVerifier.sol
           if-no-files-found: error

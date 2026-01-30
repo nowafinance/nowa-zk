@@ -39,7 +39,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-.tan-zk
+.nowa-zk
 
 # --- Logs ---
 *.log

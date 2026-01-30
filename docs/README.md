@@ -8,7 +8,7 @@ Complete documentation for setting up, deploying, and operating the Nowa-ZK roll
 
 ### 🚀 Getting Started
 
-Start here if you're new to Tan-ZK:
+Start here if you're new to nowa-zk:
 
 - **[CODEME.md](../CODEME.md)** - Quick start guide with essential commands
 

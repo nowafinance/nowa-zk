@@ -1,6 +1,6 @@
 # 🐳 Docker Setup Guide
 
-This guide describes how to run the **Tan-ZK** system (Sequencer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Sepolia, or any EVM-compatible chain).
+This guide describes how to run the **nowa-zk** system (Sequencer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Sepolia, or any EVM-compatible chain).
 
 ---
 

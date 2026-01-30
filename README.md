@@ -5,13 +5,13 @@
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
 [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue.svg)](https://soliditylang.org/)
 
-This repository contains the official implementation of the **ZK-Sequencer** for the **Tan-ZK** network.
+This repository contains the official implementation of the **ZK-Sequencer** for the **nowa-zk** network.
 
 ---
 
-## About Tan-ZK
+## About nowa-zk
 
-**Tan-ZK** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Nowa-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
+**nowa-zk** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Nowa-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
 
 ### Architecture Overview
 
@@ -69,7 +69,7 @@ We provide detailed setup guides for different environments:
 ## 🏗️ Project Structure
 
 ```
-tan-zk/
+nowa-zk/
 ├── contracts/          # Solidity smart contracts (Foundry)
 ├── sequencer/          # Go sequencer service
 ├── prover/             # Go ZK prover (Gnark)

@@ -127,23 +127,23 @@ func start(cmd *cobra.Command, args []string) {
 
 	// 1. Auto-load configuration if missing
 	if contractAddr == "" {
-		// Priority 1: Check .tan-zk/deployments.json in CURRENT directory (where make deploy saves it)
-		localDeployPath := ".tan-zk/deployments.json"
+		// Priority 1: Check .nowa-zk/deployments.json in CURRENT directory (where make deploy saves it)
+		localDeployPath := ".nowa-zk/deployments.json"
 		if data, err := os.ReadFile(localDeployPath); err == nil {
 			var deployments map[string]string
 			if err := json.Unmarshal(data, &deployments); err == nil {
 				if addr, ok := deployments["BatchRegistry"]; ok {
 					contractAddr = addr
-					log.Printf("ℹ️  Auto-loaded Contract: %s (from local .tan-zk)", contractAddr)
+					log.Printf("ℹ️  Auto-loaded Contract: %s (from local .nowa-zk)", contractAddr)
 				}
 			}
 		}
 
-		// Priority 2: Check ~/.tan-zk/deployments.json (Global/Home directory)
+		// Priority 2: Check ~/.nowa-zk/deployments.json (Global/Home directory)
 		if contractAddr == "" {
 			homeDir, err := os.UserHomeDir()
 			if err == nil {
-				deploymentsPath := homeDir + "/.tan-zk/deployments.json"
+				deploymentsPath := homeDir + "/.nowa-zk/deployments.json"
 				if data, err := os.ReadFile(deploymentsPath); err == nil {
 					// Parse JSON to map
 					var deployments map[string]string
@@ -159,14 +159,14 @@ func start(cmd *cobra.Command, args []string) {
 	}
 
 	if privateKeyHex == "" {
-		// Try to load from .tan-zk/secrets.env
-		if data, err := os.ReadFile(".tan-zk/secrets.env"); err == nil {
+		// Try to load from .nowa-zk/secrets.env
+		if data, err := os.ReadFile(".nowa-zk/secrets.env"); err == nil {
 			content := string(data)
 			lines := strings.Split(content, "\n")
 			for _, line := range lines {
 				if strings.HasPrefix(line, "PRIVATE_KEY=") {
 					privateKeyHex = strings.TrimSpace(strings.TrimPrefix(line, "PRIVATE_KEY="))
-					log.Println("ℹ️  Auto-loaded Private Key from .tan-zk/secrets.env")
+					log.Println("ℹ️  Auto-loaded Private Key from .nowa-zk/secrets.env")
 					break
 				}
 			}
@@ -175,10 +175,10 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Validate required arguments
 	if contractAddr == "" {
-		log.Fatal("❌ Contract address required. Use --contract flag or ensure .tan-zk/deployments.json exists.")
+		log.Fatal("❌ Contract address required. Use --contract flag or ensure .nowa-zk/deployments.json exists.")
 	}
 	if privateKeyHex == "" {
-		log.Fatal("❌ Private key required. Use --private-key flag or ensure .tan-zk/secrets.env exists.")
+		log.Fatal("❌ Private key required. Use --private-key flag or ensure .nowa-zk/secrets.env exists.")
 	}
 	log.Println("========================================")
 	log.Println("  ZK Rollup Prover Service")
@@ -227,7 +227,7 @@ func start(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("❌ Failed to get home directory: %v", err)
 	}
-	storePath := filepath.Join(homeDir, ".tan-zk", "prover", "data")
+	storePath := filepath.Join(homeDir, ".nowa-zk", "prover", "data")
 	if err := os.MkdirAll(storePath, 0755); err != nil {
 		log.Fatalf("❌ Failed to create storage directory: %v", err)
 	}
@@ -258,13 +258,13 @@ func start(cmd *cobra.Command, args []string) {
 		log.Printf("Reason: %s\n", reason)
 		log.Println()
 		log.Println("Troubleshooting Steps:")
-		log.Println("1. Review failure logs in ~/.tan-zk/prover/data/")
+		log.Println("1. Review failure logs in ~/.nowa-zk/prover/data/")
 		log.Println("2. Check verification failure details in storage")
 		log.Println("3. Verify circuit constraints match contract verifier")
 		log.Println("4. After fixing, restart with --clear-halt flag:")
 		log.Printf("   ./build/prover-bin start --keys-dir %s --clear-halt\n", keysDir)
 		log.Println()
-		log.Println("For support, visit: https://github.com/tannetwork/tan-zk/issues")
+		log.Println("For support, visit: https://github.com/tannetwork/nowa-zk/issues")
 		log.Println("========================================")
 		return
 	}
@@ -969,7 +969,7 @@ func classifyError(err error) ErrorType {
 
 // saveFailureData saves comprehensive failure data for debugging
 func saveFailureData(batch *Batch, proof groth16.Proof, publicWitness witness.Witness, errMsg string) error {
-	failureDir := os.ExpandEnv("$HOME/.tan-zk/prover/failures")
+	failureDir := os.ExpandEnv("$HOME/.nowa-zk/prover/failures")
 	if err := os.MkdirAll(failureDir, 0755); err != nil {
 		return fmt.Errorf("failed to create failure directory: %w", err)
 	}
@@ -1030,7 +1030,7 @@ func haltProver(store *storage.ProverStore, batch *Batch, errMsg string) {
 	log.Printf("Timestamp: %s\n", time.Now().Format(time.RFC3339))
 	log.Println()
 	log.Println("Troubleshooting Steps:")
-	log.Println("1. Review failure data in: ~/.tan-zk/prover/failures/")
+	log.Println("1. Review failure data in: ~/.nowa-zk/prover/failures/")
 	log.Printf("   - Batch data: batch_%d.json\n", batch.Number)
 	log.Printf("   - Proof: batch_%d_proof.bin\n", batch.Number)
 	log.Printf("   - Witness: batch_%d_witness.bin\n", batch.Number)
@@ -1040,9 +1040,9 @@ func haltProver(store *storage.ProverStore, batch *Batch, errMsg string) {
 	log.Println("4. Ensure state synchronization is correct")
 	log.Println("5. After fixing, restart with --clear-halt flag:")
 	log.Println("   make run-prover CLEAR_HALT=true")
-	log.Println("   OR: ./build/prover-bin start --keys-dir ~/.tan-zk/keys --clear-halt")
+	log.Println("   OR: ./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt")
 	log.Println()
-	log.Println("For support, visit: https://github.com/tannetwork/tan-zk/issues")
+	log.Println("For support, visit: https://github.com/tannetwork/nowa-zk/issues")
 	log.Println("========================================")
 
 	// Set halt state in storage

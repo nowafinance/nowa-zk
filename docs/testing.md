@@ -41,7 +41,7 @@ make anvil                    # Terminal 1
 make deploy                   # Terminal 2
 
 # Check deployment
-cat ~/.tan-zk/deployments.json
+cat ~/.nowa-zk/deployments.json
 ```
 
 **Common Errors:**
@@ -101,7 +101,7 @@ lsof -i :8080
 kill -9 <PID>
 
 # Error: "failed to connect to state db"
-rm -rf ~/.tan-zk/sequencer/data
+rm -rf ~/.nowa-zk/sequencer/data
 make run-sequencer
 
 # Error: "RPC connection failed"
@@ -127,7 +127,7 @@ go test -bench=. -benchtime=3s
 ### Setup Validation
 ```bash
 # Check keys exist
-ls -lh ~/.tan-zk/keys/
+ls -lh ~/.nowa-zk/keys/
 # Should show: rollup.r1cs, rollup.pk, rollup.vk
 
 # Verify verifier contract generated
@@ -140,7 +140,7 @@ ls -lh contracts/src/generated/RollupVerifier.sol
 make run-prover
 
 # Watch logs
-tail -f ~/.tan-zk/prover/data/*.log  # if logging to file
+tail -f ~/.nowa-zk/prover/data/*.log  # if logging to file
 ```
 
 ### Error Handling Tests
@@ -148,26 +148,26 @@ tail -f ~/.tan-zk/prover/data/*.log  # if logging to file
 **Test 1: Paranoid Mode (Proof Rebuild)**
 ```bash
 # Simulate verification failure
-./build/prover-bin start --keys-dir ~/.tan-zk/keys --test-failure
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --test-failure
 
 # Expected: 3 retries → rebuild → halt
 # Check failure data
-ls -lh ~/.tan-zk/prover/failures/
-cat ~/.tan-zk/prover/failures/batch_*_error.log
+ls -lh ~/.nowa-zk/prover/failures/
+cat ~/.nowa-zk/prover/failures/batch_*_error.log
 ```
 
 **Test 2: Recovery from Halt**
 ```bash
 # Try restart (should refuse)
-./build/prover-bin start --keys-dir ~/.tan-zk/keys
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys
 
 # Clear halt and resume
-./build/prover-bin start --keys-dir ~/.tan-zk/keys --clear-halt
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt
 ```
 
 **Test 3: Disable Paranoid Mode**
 ```bash
-./build/prover-bin start --keys-dir ~/.tan-zk/keys \
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys \
   --test-failure --paranoid-mode=false
 # Expected: retries only, no rebuild, continues to next batch
 ```
@@ -176,11 +176,11 @@ cat ~/.tan-zk/prover/failures/batch_*_error.log
 ```bash
 # Error: "failed to load circuit/keys"
 make setup  # Regenerate keys
-ls -lh ~/.tan-zk/keys/
+ls -lh ~/.nowa-zk/keys/
 
 # Error: "failed to fetch contract state root"
 # Check contract deployed
-cat ~/.tan-zk/deployments.json
+cat ~/.nowa-zk/deployments.json
 
 # Error: "local verification failed"
 # Circuit/key mismatch - regenerate both
@@ -189,10 +189,10 @@ make setup
 
 # Error: "transaction reverted"
 # Check contract address correct
-./build/prover-bin start --keys-dir ~/.tan-zk/keys --contract <ADDR>
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --contract <ADDR>
 
 # Error: "prover is halted"
-./build/prover-bin start --keys-dir ~/.tan-zk/keys --clear-halt
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt
 ```
 
 ---
@@ -206,7 +206,7 @@ make anvil
 
 # Terminal 2: Deploy contracts
 make deploy
-cat ~/.tan-zk/deployments.json
+cat ~/.nowa-zk/deployments.json
 
 # Terminal 3: Sequencer
 make run-sequencer
@@ -228,7 +228,7 @@ curl http://localhost:8080/api/batches/latest | jq '.number'
 pkill prover-bin
 
 # Check last processed batch
-# (stored in ~/.tan-zk/prover/data/)
+# (stored in ~/.nowa-zk/prover/data/)
 
 # Restart prover
 make run-prover
@@ -269,11 +269,11 @@ make setup
 **Error: Keys not generated**
 ```bash
 # Manual key generation
-./build/prover-bin setup --output-dir ~/.tan-zk/keys \
+./build/prover-bin setup --output-dir ~/.nowa-zk/keys \
   --contract-output contracts/src/generated
 
 # Verify
-ls -lh ~/.tan-zk/keys/
+ls -lh ~/.nowa-zk/keys/
 ls -lh contracts/src/generated/RollupVerifier.sol
 ```
 
@@ -289,7 +289,7 @@ curl -X POST $RPC_SEQUENCER -H "Content-Type: application/json" \
 curl http://localhost:8080/api/mempool | jq
 
 # Reset state
-rm -rf ~/.tan-zk/sequencer/data
+rm -rf ~/.nowa-zk/sequencer/data
 make run-sequencer
 ```
 
@@ -302,7 +302,7 @@ curl http://localhost:8080/health
 curl http://localhost:8080/prover/batch/latest
 
 # Check prover contract address
-cat ~/.tan-zk/deployments.json
+cat ~/.nowa-zk/deployments.json
 # Should match what prover is using
 
 # Manual contract check
@@ -315,7 +315,7 @@ cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $RPC_PROVER
 cast call <CONTRACT_ADDR> "getCurrentStateRoot()" --rpc-url $RPC_PROVER
 
 # Reset prover state (WARNING: deletes progress)
-rm -rf ~/.tan-zk/prover/data
+rm -rf ~/.nowa-zk/prover/data
 make run-prover
 ```
 
@@ -356,21 +356,21 @@ time curl -X POST $RPC_PROVER -H "Content-Type: application/json" \
 **Corrupted database**
 ```bash
 # Sequencer
-rm -rf ~/.tan-zk/sequencer/data
+rm -rf ~/.nowa-zk/sequencer/data
 make run-sequencer
 
 # Prover (WARNING: loses progress)
-rm -rf ~/.tan-zk/prover/data
+rm -rf ~/.nowa-zk/prover/data
 make run-prover
 ```
 
 **Disk space full**
 ```bash
 # Check space
-df -h ~/.tan-zk
+df -h ~/.nowa-zk
 
 # Clean old data
-rm -rf ~/.tan-zk/prover/failures/*  # Old test data
+rm -rf ~/.nowa-zk/prover/failures/*  # Old test data
 # Badger DB auto-compacts but can be manually cleaned
 ```
 
@@ -384,7 +384,7 @@ rm -rf ~/.tan-zk/prover/failures/*  # Old test data
 # (already enabled by default - look for DEBUG: lines)
 
 # Grep for errors
-journalctl -u tan-zk-prover | grep ERROR
+journalctl -u nowa-zk-prover | grep ERROR
 # or if running in terminal:
 make run-prover 2>&1 | tee prover.log
 grep ERROR prover.log

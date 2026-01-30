@@ -23,15 +23,15 @@ clean:
 	@cd sequencer && go clean
 	@cd prover && go clean
 	@rm -rf build/
-	@rm -rf ~/.tan-zk/
+	@rm -rf ~/.nowa-zk/
 
 # --- 2. Setup (Keys & Verifier) ---
 
 # Full Project Setup: Builds binaries, Generates keys, Compiles contracts
 setup: install-swag swagger swagger-prover build-prover
 	@echo "🔑 Running Prover Setup..."
-	@mkdir -p ~/.tan-zk/keys
-	@./build/prover-bin setup --output-dir ~/.tan-zk/keys --contract-output contracts/src/generated
+	@mkdir -p ~/.nowa-zk/keys
+	@./build/prover-bin setup --output-dir ~/.nowa-zk/keys --contract-output contracts/src/generated
 	@echo "📝 Formatting generated contract..."
 	@cd contracts && forge fmt src/generated/RollupVerifier.sol
 	@echo "🏗️  Building Sequencer & Contracts..."
@@ -97,16 +97,16 @@ deploy:
 	@# Load .env variables from ROOT .env
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
 	cd contracts && forge script script/Deploy.s.sol --rpc-url $${RPC_PROVER} --broadcast
-	@mkdir -p .tan-zk
+	@mkdir -p .nowa-zk
 	@echo "📦 Copying deployment file..."
-	@mkdir -p ~/.tan-zk
-	@echo "📦 Copying deployment file to ~/.tan-zk/..."
-	@cp contracts/deployments/deployments.json ~/.tan-zk/deployments.json
-	@if [ ! -f .tan-zk/secrets.env ]; then \
-		cp .env .tan-zk/secrets.env; \
-		echo "📝 Created .tan-zk/secrets.env from .env"; \
+	@mkdir -p ~/.nowa-zk
+	@echo "📦 Copying deployment file to ~/.nowa-zk/..."
+	@cp contracts/deployments/deployments.json ~/.nowa-zk/deployments.json
+	@if [ ! -f .nowa-zk/secrets.env ]; then \
+		cp .env .nowa-zk/secrets.env; \
+		echo "📝 Created .nowa-zk/secrets.env from .env"; \
 	fi
-	@echo "✅ Deployment info saved to .tan-zk/deployments.json"
+	@echo "✅ Deployment info saved to .nowa-zk/deployments.json"
 
 # Optional: ( New Terminal ) Run Traffic Generator
 # Usage: make run-traffic-gen [COUNT=10000]
@@ -116,23 +116,23 @@ run-traffic-gen: build-sequencer
 
 # Terminal 3: Run Sequencer
 run-sequencer: build-sequencer
-	@mkdir -p ~/.tan-zk/sequencer/data
+	@mkdir -p ~/.nowa-zk/sequencer/data
 	@if [ -f .env ]; then export $$(grep -v '^[[:space:]]*#' .env | xargs); fi; \
-	./build/sequencer-bin start --rpc-url $${RPC_SEQUENCER:-http://localhost:8545} --state-db-path ~/.tan-zk/sequencer/data
+	./build/sequencer-bin start --rpc-url $${RPC_SEQUENCER:-http://localhost:8545} --state-db-path ~/.nowa-zk/sequencer/data
 
 # Terminal 4: Run Prover
 # Usage: make run-prover [CONTRACT=...] [KEY=...]
-#   If CONTRACT/KEY are omitted, they are auto-loaded from .tan-zk/deployments.json and .tan-zk/secrets.env
+#   If CONTRACT/KEY are omitted, they are auto-loaded from .nowa-zk/deployments.json and .nowa-zk/secrets.env
 run-prover: build-prover
 	@echo "🔐 Starting Prover..."
-	@./build/prover-bin start --keys-dir ~/.tan-zk/keys $(if $(CONTRACT),--contract $(CONTRACT),) $(if $(KEY),--private-key $(KEY),)
+	@./build/prover-bin start --keys-dir ~/.nowa-zk/keys $(if $(CONTRACT),--contract $(CONTRACT),) $(if $(KEY),--private-key $(KEY),)
 
 # --- Help ---
 
 help:
 	@echo "Nowa-ZK Makefile Commands (in execution order):"
 	@echo "  make clean           - 1. Clear artifacts"
-	@echo "  make clean-global    - 1b. Clear global artifacts (~/.tan-zk)"
+	@echo "  make clean-global    - 1b. Clear global artifacts (~/.nowa-zk)"
 	@echo "  make setup           - 2. Generate keys & verifier"
 	@echo "  make build           - 3. Build all binaries"
 	@echo "  make test            - 4. Run all tests"

@@ -37,8 +37,8 @@ foundryup
 ## 2. Clone & Setup
 
 ```bash
-git clone https://github.com/tannetwork/tan-zk.git
-cd tan-zk
+git clone https://github.com/tannetwork/nowa-zk.git
+cd nowa-zk
 git submodule update --init --recursive
 ```
 
@@ -61,7 +61,7 @@ make setup
 This command will:
 1.  Build the **Prover** and **Sequencer** binaries.
 2.  Compile the ZK circuit and run Trusted Setup.
-3.  Generate artifacts in `~/.tan-zk/keys/`.
+3.  Generate artifacts in `~/.nowa-zk/keys/`.
 4.  Generate and compile the `RollupVerifier.sol` contract.
 
 ---
@@ -100,7 +100,7 @@ mkdir deployments
 forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
 
 # Copy deployment file to home directory so prover can auto-load it
-cp deployments/deployments.json ~/.tan-zk/deployments.json
+cp deployments/deployments.json ~/.nowa-zk/deployments.json
 
 cd ..
 ```

@@ -23,7 +23,7 @@ Use this guide when:
 sudo systemctl stop tan-sequencer tan-prover
 
 # 2. Navigate to project
-cd ~/tan-zk
+cd ~/nowa-zk
 git pull origin main
 
 # 3. Rebuild prover binary
@@ -46,7 +46,7 @@ sudo chmod 640 /etc/tan/.env
 sudo chown $USER:$USER /etc/tan/.env
 
 # Navigate to contracts directory
-cd ~/tan-zk/contracts
+cd ~/nowa-zk/contracts
 
 # Load environment variables
 set -a  # Auto-export all variables
@@ -65,18 +65,18 @@ cd ..
 
 # 7. Update deployments.json (prover auto-loads from this)
 # Replace CHAIN_ID with your actual chain ID from deployment output
-cp ~/tan-zk/contracts/deployments/CHAIN_ID.json ~/tan-zk/.tan-zk/deployments.json
+cp ~/nowa-zk/contracts/deployments/CHAIN_ID.json ~/nowa-zk/.nowa-zk/deployments.json
 
 # Verify it updated
-cat ~/tan-zk/.tan-zk/deployments.json
+cat ~/nowa-zk/.nowa-zk/deployments.json
 
 # 8. Copy new keys to persistent storage
-sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # 9. Delete prover database to start from batch 0
-find ~/tan-zk/.tan-zk/ -name "*.db" -delete
-find ~/tan-zk/.tan-zk/ -name "*.bolt" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
+find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # 10. Reload systemd and restart both services
 sudo systemctl daemon-reload
@@ -99,7 +99,7 @@ Use this automated script to completely **reset everything** - database, keys, a
 
 ### Automated Reset Script
 
-Save as `~/reset-tan-zk.sh`:
+Save as `~/reset-nowa-zk.sh`:
 
 ```bash
 #!/bin/bash
@@ -120,20 +120,20 @@ sudo systemctl stop tan-sequencer tan-prover
 # --- 2. Cleanup Data (Reset Database) ---
 echo "🧹 Cleaning up old data..."
 # Clear Sequencer State
-if [ -d "/var/lib/tan-zk/sequencer/state" ]; then
-    sudo rm -rf /var/lib/tan-zk/sequencer/state/*
+if [ -d "/var/lib/nowa-zk/sequencer/state" ]; then
+    sudo rm -rf /var/lib/nowa-zk/sequencer/state/*
     echo "   - Sequencer state cleared"
 fi
 # Clear Prover Data/Keys
-if [ -d "/var/lib/tan-zk/prover" ]; then
-    sudo rm -rf /var/lib/tan-zk/prover/keys/*
-    sudo rm -rf /var/lib/tan-zk/prover/data/*
+if [ -d "/var/lib/nowa-zk/prover" ]; then
+    sudo rm -rf /var/lib/nowa-zk/prover/keys/*
+    sudo rm -rf /var/lib/nowa-zk/prover/data/*
     echo "   - Prover data & keys cleared"
 fi
 
 # --- 3. Pull & Rebuild ---
 echo "🏗️  Rebuilding..."
-cd ~/tan-zk
+cd ~/nowa-zk
 git pull origin main
 
 # Clean old artifacts
@@ -170,10 +170,10 @@ cd ..
 
 # --- 4. Persist New Keys ---
 echo "🔑 Updating persistent keys..."
-sudo mkdir -p /var/lib/tan-zk/prover/keys
-sudo cp -r keys/* /var/lib/tan-zk/prover/keys/
+sudo mkdir -p /var/lib/nowa-zk/prover/keys
+sudo cp -r keys/* /var/lib/nowa-zk/prover/keys/
 # Fix permissions so the service user can read them
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # --- 5. Redeploy Contracts ---
 echo "🚀 Redeploying contracts..."
@@ -193,11 +193,11 @@ cd ..
 
 # Save deployment info and update deployments.json
 CHAIN_ID=$(cast chain-id --rpc-url $RPC)
-cp contracts/deployments/$CHAIN_ID.json .tan-zk/deployments.json
-echo "✅ Updated .tan-zk/deployments.json with new contract"
+cp contracts/deployments/$CHAIN_ID.json .nowa-zk/deployments.json
+echo "✅ Updated .nowa-zk/deployments.json with new contract"
 
 # Delete prover database to start from batch 0
-rm -f .tan-zk/*.db .tan-zk/*.bolt
+rm -f .nowa-zk/*.db .nowa-zk/*.bolt
 echo "✅ Deleted prover database"
 
 # --- 6. Restart Services ---
@@ -218,13 +218,13 @@ echo "  sudo journalctl -u tan-prover -f"
 
 ```bash
 # 1. Save the script
-nano ~/reset-tan-zk.sh
+nano ~/reset-nowa-zk.sh
 
 # 2. Make executable
-chmod +x ~/reset-tan-zk.sh
+chmod +x ~/reset-nowa-zk.sh
 
 # 3. Run
-./reset-tan-zk.sh
+./reset-nowa-zk.sh
 ```
 
 ---
@@ -274,14 +274,14 @@ sudo systemctl restart tan-prover
 
 ```bash
 # Verify keys exist
-ls -lh /var/lib/tan-zk/prover/keys/
+ls -lh /var/lib/nowa-zk/prover/keys/
 
 # Should see: rollup.pk and rollup.vk
 
 # If missing, regenerate
-cd ~/tan-zk
+cd ~/nowa-zk
 ./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
-sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
+sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
 ```
 
 ---

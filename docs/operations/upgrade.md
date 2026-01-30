@@ -38,7 +38,7 @@ sudo systemctl status tan-sequencer tan-prover
 Navigate to the project directory and pull the latest changes.
 
 ```bash
-cd ~/tan-zk
+cd ~/nowa-zk
 git pull origin main
 ```
 
@@ -60,7 +60,7 @@ git pull origin main
 **If circuit changed, follow these steps:**
 
 ```bash
-cd ~/tan-zk
+cd ~/nowa-zk
 
 # 1. Rebuild prover binary
 cd prover
@@ -85,8 +85,8 @@ cd ..
 # ⚠️ SAVE THE NEW CONTRACT ADDRESS from deploy output
 
 # 5. Copy new keys to persistent storage
-sudo cp -r ./keys/* /var/lib/tan-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/tan-zk
+sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
+sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # 6. Update prover systemd service with NEW contract address
 sudo nano /etc/systemd/system/tan-prover.service
@@ -105,7 +105,7 @@ sudo systemctl daemon-reload
 > Only rebuild if contracts changed. Check release notes.
 
 ```bash
-cd ~/tan-zk/contracts
+cd ~/nowa-zk/contracts
 
 # If contracts changed:
 # forge build
@@ -116,7 +116,7 @@ cd ..
 #### Rebuild Sequencer
 
 ```bash
-cd ~/tan-zk/sequencer
+cd ~/nowa-zk/sequencer
 
 # Rebuild sequencer binary
 go build -o ../build/sequencer-bin ./cmd/sequencer
@@ -127,7 +127,7 @@ cd ..
 #### Rebuild Prover
 
 ```bash
-cd ~/tan-zk/prover
+cd ~/nowa-zk/prover
 
 # Rebuild prover binary
 go build -o ../build/prover-bin ./cmd/prover
@@ -172,7 +172,7 @@ sudo journalctl -u tan-prover -f
 ```bash
 # Full upgrade workflow
 sudo systemctl stop tan-sequencer tan-prover
-cd ~/tan-zk
+cd ~/nowa-zk
 git pull origin main
 
 # Rebuild binaries
@@ -197,7 +197,7 @@ If the upgrade fails, you can rollback:
 sudo systemctl stop tan-sequencer tan-prover
 
 # Revert to previous version
-cd ~/tan-zk
+cd ~/nowa-zk
 git log --oneline -5  # Find previous commit hash
 git checkout <previous-commit-hash>
 
@@ -224,14 +224,14 @@ sudo journalctl -u tan-sequencer -n 100
 sudo journalctl -u tan-prover -n 100
 
 # Verify binaries were built
-ls -lh ~/tan-zk/build/
+ls -lh ~/nowa-zk/build/
 ```
 
 ### Build failures
 
 ```bash
 # Clean and rebuild
-cd ~/tan-zk
+cd ~/nowa-zk
 
 # Clean Go cache
 cd sequencer && go clean -cache && cd ..
@@ -251,14 +251,14 @@ If you suspect state corruption:
 sudo systemctl stop tan-sequencer tan-prover
 
 # Backup state
-sudo cp -r /var/lib/tan-zk/sequencer/state /var/lib/tan-zk/sequencer/state.backup
+sudo cp -r /var/lib/nowa-zk/sequencer/state /var/lib/nowa-zk/sequencer/state.backup
 ```
 
 ---
 
 ## Notes
 
-- **State data** is stored in `/var/lib/tan-zk/` and is not affected by code updates
-- **Binaries** are in `~/tan-zk/build/` and will be replaced during rebuild
-- **Keys** in `/var/lib/tan-zk/prover/keys/` should not change unless circuit changes
+- **State data** is stored in `/var/lib/nowa-zk/` and is not affected by code updates
+- **Binaries** are in `~/nowa-zk/build/` and will be replaced during rebuild
+- **Keys** in `/var/lib/nowa-zk/prover/keys/` should not change unless circuit changes
 - Always check release notes for breaking changes or special upgrade instructions
