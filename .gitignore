@@ -64,3 +64,4 @@ prover/prover-bin
 contracts/lib/*
 contracts/broadcast/*
 contracts/deployments/*
+contracts/src/generated/*
