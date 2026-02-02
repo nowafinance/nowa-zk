@@ -1,6 +1,7 @@
 name: Prover CI
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "prover/**"

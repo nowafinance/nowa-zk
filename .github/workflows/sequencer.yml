@@ -1,6 +1,7 @@
 name: Sequencer CI
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "sequencer/**"
