@@ -49,6 +49,7 @@ jobs:
           cd prover && go test -v -race -timeout 30m ./...
 
       - name: Upload Keys and Verifier
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: zk-keys-and-verifier
@@ -56,3 +57,4 @@ jobs:
             .nowa-zk/keys/
             contracts/src/generated/RollupVerifier.sol
           if-no-files-found: error
+          retention-days: 7
