@@ -9,110 +9,57 @@ This repository contains the official implementation of the **ZK-Sequencer** for
 
 ---
 
-## About nowa-zk
-
-**nowa-zk** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Nowa-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
-
-### Architecture Overview
-
-The ZK-Sequencer operates in a two-phase model:
-- **Phase 1 (Current):** Centralized operation with a single sequencer and verifier operator
-- **Phase 2 (Future):** Decentralized architecture with multiple operators
-
----
-
-## 🔧 How It Works
-
-The Nowa-ZK Sequencer is a critical infrastructure component with four primary responsibilities:
-
-### 1. **Transaction Bundling**
-- Accepts transactions from Nowa-ZK users
-- Orders transactions deterministically
-- Groups them into optimized batches
-
-### 2. **State Execution**
-- Executes batched transactions using EVM
-- Computes state transitions using Sparse Merkle Trees (SMT)
-- Validates account balances and nonces
-
-### 3. **Proof Generation**
-- Coordinates with the ZK Prover service
-- Generates validity proofs using Groth16 (gnark)
-- Proves correct state transitions
-
-### 4. **On-Chain Verification**
-- Submits ZK proofs to verifier contract
-- Updates state root on-chain after finalization
-- Implements challenge period for security
-
-This architecture enables **high throughput** and **low-cost execution** while maintaining security through ZK proof verification.
-
----
-
 ## 🚀 Getting Started
 
-We provide detailed setup guides for different environments:
+We provide detailed setup guides for different environments, but here is a quick start guide to run the system:
 
-| Environment | Description | Guide Link |
-|-------------|-------------|------------|
-| **Local Development** | Run everything on your local machine for testing and development. | **[📄 Local Setup Guide](docs/deployment/local.md)** |
-| **Docker** | Run services in containerized environments. | **[🐳 Docker Setup Guide](docs/deployment/docker.md)** |
-| **Cloud / Production** | Deploy to a production Linux server (Ubuntu). | **[☁️ Cloud Setup Guide](docs/deployment/cloud.md)** |
+### 1. Build Required Files
 
-### Quick Pointers
-- **Dependencies**: Go 1.21+, Foundry, Docker, Make
-- **Key Artifacts**: Prover keys are generated in `make setup`
-- **Configuration**: Uses `.env` for secrets and configuration
+#### Generate Prover Keys and Verifier Contract
 
----
-
-## 🏗️ Project Structure
-
-```
-nowa-zk/
-├── contracts/          # Solidity smart contracts (Foundry)
-├── sequencer/          # Go sequencer service
-├── prover/             # Go ZK prover (Gnark)
-├── docs/               # Documentation
-├── scripts/            # Utility scripts
-├── Dockerfile          # Multi-stage Docker build
-├── docker-compose.yml  # Docker Compose orchestration
-└── Makefile            # Project management commands
+```bash
+cd prover
+go run ./cmd/prover setup
 ```
 
----
+#### Build Contracts
 
-## 🛠️ Technology Stack
+```bash
+cd ../contracts
+forge build
+```
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Smart Contracts** | Solidity | 0.8.20 |
-| **Sequencer Backend** | Go | 1.21+ |
-| **ZK Backend** | Gnark | Latest |
-| **Proof System** | Groth16 | BN254 |
-| **State Storage** | BadgerDB | v4 |
+### 2. Configure Environment & Deploy
 
----
+Create a `.env` file in the `contracts` directory with your `RPC` and `PRIVATE_KEY`, then deploy:
 
-## � Features
+```bash
+cd contracts
+set -a
+source .env
+set +a
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+```
 
-### ✅ Implemented
-- [x] Transaction batching & sequencing
-- [x] State management (SMT, Accounts)
-- [x] ZK Circuits (Groth16, MiMC)
-- [x] Smart Contracts (BatchRegistry, StateManager)
-- [x] Reorg protection & Graceful shutdown
+### 3. Start the System
 
-### 🔜 Upcoming Features
-- [ ] Gas fee calculation
-- [ ] Decentralized sequencer network
-- [ ] Performance optimization
+**Start Sequencer:**
+```bash
+cd sequencer
+export RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+go run ./cmd/sequencer start
+```
+
+**Start Prover:**
+```bash
+cd prover
+go run ./cmd/prover start --contract 0xYOUR_CONTRACT_ADDRESS --private-key 0xYOUR_PRIVATE_KEY
+```
 
 ---
 
 ## 📚 Documentation
 
-- **[CODEME.md](CODEME.md)** - All CLI commands & scripts
 - **[ROADMAP.md](ROADMAP.md)** - Development roadmap & milestones
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[SECURITY.md](SECURITY.md)** - Security policy & reporting
