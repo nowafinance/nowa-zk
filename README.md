@@ -4,7 +4,7 @@
 
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
-  [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
+  [![Go Version](https://img.shields.io/badge/go-1.24.10+-blue.svg)](https://golang.org/dl/)
   [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue.svg)](https://soliditylang.org/)
 </div>
 
@@ -42,7 +42,7 @@ For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md
 This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
 
 ### Prerequisites
-- **Go**: 1.21 or higher
+- **Go**: 1.24.10 or higher
 - **Foundry**: Latest version (for compiling/deploying contracts)
 - **Git**: To clone the repository
 

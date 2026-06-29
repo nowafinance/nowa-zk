@@ -44,7 +44,7 @@ Retrieve multiple batch metadata entries with pagination support. **Batches are 
 
 ### Get first page (default 25 items)
 ```bash
-curl http://localhost:9091/batches
+curl http://localhost:8081/batches
 ```
 
 Response:
@@ -59,7 +59,7 @@ Response:
 
 ### Get page 2 with 50 items
 ```bash
-curl "http://localhost:9091/batches?page=2&limit=50"
+curl "http://localhost:8081/batches?page=2&limit=50"
 ```
 
 Response:
@@ -74,7 +74,7 @@ Response:
 
 ### Get first 10 batches
 ```bash
-curl "http://localhost:9091/batches?limit=10"
+curl "http://localhost:8081/batches?limit=10"
 ```
 
 Response:
@@ -89,7 +89,7 @@ Response:
 
 ### Get 100 batches at once
 ```bash
-curl "http://localhost:9091/batches?limit=100"
+curl "http://localhost:8081/batches?limit=100"
 ```
 
 Response:
@@ -104,7 +104,7 @@ Response:
 
 ### Navigate to page 5 with 25 items per page
 ```bash
-curl "http://localhost:9091/batches?page=5&limit=25"
+curl "http://localhost:8081/batches?page=5&limit=25"
 ```
 
 This returns batches 101-125.
@@ -130,7 +130,7 @@ Each batch in the response contains:
 
 ### Invalid page number
 ```bash
-curl "http://localhost:9091/batches?page=0"
+curl "http://localhost:8081/batches?page=0"
 ```
 
 Response: `400 Bad Request`
@@ -140,7 +140,7 @@ Page must be >= 1
 
 ### Invalid limit (auto-corrected)
 ```bash
-curl "http://localhost:9091/batches?limit=30"
+curl "http://localhost:8081/batches?limit=30"
 ```
 
 Response: Automatically corrected to closest valid limit (25).
@@ -168,7 +168,7 @@ Error fetching batches: <error message>
 ```bash
 page=1
 while true; do
-  response=$(curl -s "http://localhost:9091/batches?page=$page&limit=100")
+  response=$(curl -s "http://localhost:8081/batches?page=$page&limit=100")
   count=$(echo "$response" | jq '.count')
   
   # Process batches
@@ -189,7 +189,7 @@ import requests
 
 page = 1
 limit = 100
-base_url = "http://localhost:9091/batches"
+base_url = "http://localhost:8081/batches"
 
 while True:
     response = requests.get(base_url, params={"page": page, "limit": limit})
@@ -215,7 +215,7 @@ async function fetchAllBatches() {
   
   while (true) {
     const response = await fetch(
-      `http://localhost:9091/batches?page=${page}&limit=${limit}`
+      `http://localhost:8081/batches?page=${page}&limit=${limit}`
     );
     const data = await response.json();
     
@@ -233,13 +233,13 @@ async function fetchAllBatches() {
 
 ### Get latest 50 batches
 ```bash
-curl "http://localhost:9091/batches?limit=50"
+curl "http://localhost:8081/batches?limit=50"
 ```
 
 ### Get specific range (e.g., batches 201-250)
 ```bash
 # Page 5 with limit 50 gives batches 201-250
-curl "http://localhost:9091/batches?page=5&limit=50"
+curl "http://localhost:8081/batches?page=5&limit=50"
 ```
 
 ## Recommended Patterns
@@ -272,7 +272,7 @@ curl "http://localhost:9091/batches?page=5&limit=50"
 
 Access interactive API documentation:
 ```
-http://localhost:9091/swagger/index.html
+http://localhost:8081/swagger/index.html
 ```
 
 Navigate to **Batches → GET /batches** to try the API with different parameters.

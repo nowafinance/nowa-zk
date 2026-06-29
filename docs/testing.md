@@ -256,7 +256,7 @@ watch -n 1 'curl -s http://localhost:8081/health | jq'
 **Error: `make setup` fails**
 ```bash
 # Check Go installed
-go version  # Need 1.21+
+go version  # Need 1.24.10+
 
 # Check Foundry installed
 forge --version

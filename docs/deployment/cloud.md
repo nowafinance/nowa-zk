@@ -40,9 +40,9 @@ sudo apt update && sudo apt upgrade -y
 # Install build tools
 sudo apt install -y make git build-essential curl
 
-# Install Go 1.23.2
-curl -OL https://go.dev/dl/go1.23.2.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.2.linux-amd64.tar.gz
+# Install Go 1.24.10
+curl -OL https://go.dev/dl/go1.24.10.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.10.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 
@@ -151,7 +151,9 @@ PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 TRAFFIC_GEN_KEY=0xYOUR_TRAFFIC_GEN_PRIVATE_KEY_HERE
 INDEX_FROM_BLOCK=0
 PROVER_API=http://0.0.0.0:8081
+STATE_DB_PATH=/var/lib/nowa-zk/sequencer/state
 ```
+
 
 **Secure the file:**
 ```bash
@@ -183,12 +185,13 @@ mkdir -p deployments
 # Deploy to L1 (Sepolia/Mainnet)
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
 
-# Optional: Verify contracts on block explorer
+# Optional: Deploy+Verify contracts on block explorer
 # forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
-
 
 cd ..
 ```
+
+
 
 > [!NOTE]
 > **Expected Warning**: You may see `Warning: Script contains a transaction to 0x... which does not contain any code.`
@@ -196,6 +199,79 @@ cd ..
 > This is normal! The deployment script sets your deployer address as the authorized sequencer. Since your address is an EOA (wallet), not a contract, it has no code. Just type `yes` to continue.
 
 **Save the deployed contract address** - you'll need it for the prover service configuration.
+
+
+## Manual Verification on Block Explorer (Optional)
+
+If you deployed the contracts and want to manually verify them on a block explorer, you will need the contract addresses, source code, and compiler settings.
+
+### 1. Find Your Contract Addresses
+All deployed contract addresses are automatically saved in your deployments file:
+```bash
+cat ~/nowa-zk/contracts/deployments/deployments.json
+```
+sample output 
+```
+{
+  "BatchRegistry": "0x6D2B9e370832A54ea26402963d1D7fA9998d6aFA",
+  "GnarkVerifier": "0xff1F31b0c8Af5D8db25734044639316Dfe1513e4",
+  "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "Sequencer": "0x8AA96ceA21f85b3b83E9FC5dE7e9Cc53223634D9",
+  "StateManager": "0xc0f40402F7ea6140B32871aA2091fe1FcDDc8dF3",
+  "VerifierAdapter": "0xa70b0f3D9976D3B8Cf0ECFf28D282e72d5dB6ac8"
+}
+```
+
+### 2. Compiler Settings
+When manually verifying via a web interface, use the following settings:
+- **Compiler Type**: Solidity (Single file)
+- **Compiler Version**: Run the following command to check the exact version used in your configuration:
+  ```bash
+  cd ~/nowa-zk/contracts && forge config | grep solc
+  ```
+- **Optimization**: Check your `foundry.toml` (Default is typically Yes, 200 runs)
+
+### 3. Verification Methods
+
+**Method A: Using Forge (Recommended)**
+
+You can verify all your deployed contracts directly from the terminal. This avoids UI bugs and handles multi-file contracts perfectly.
+
+First, set your endpoints (replace with your actual RPC and Explorer API if different):
+```bash
+cd ~/nowa-zk/contracts
+export VERIFY_RPC="https://node1.nowa.finance"
+export VERIFY_API="https://apiexplorer.nowa.finance/api\?"
+```
+
+Then, run these commands, replacing the `0x...` placeholders with the exact addresses from your `deployments.json`:
+
+```bash
+# 1. Verify StateManager
+forge verify-contract <STATE_MANAGER_ADDRESS> src/StateManager.sol:StateManager \
+  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
+
+# 2. Verify GnarkVerifier
+forge verify-contract <GNARK_VERIFIER_ADDRESS> src/generated/RollupVerifier.sol:Verifier \
+  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
+
+# 3. Verify VerifierAdapter
+forge verify-contract <VERIFIER_ADAPTER_ADDRESS> src/VerifierAdapter.sol:VerifierAdapter \
+  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
+
+# 4. Verify BatchRegistry
+forge verify-contract <BATCH_REGISTRY_ADDRESS> src/BatchRegistry.sol:BatchRegistry \
+  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
+```
+
+**Method B: Flattening Source Code for Web UI**
+
+If the explorer requires a single flattened file, generate it using:
+```bash
+cd ~/nowa-zk/contracts
+forge flatten src/BatchRegistry.sol > BatchRegistry_flattened.sol
+```
+*(You can repeat this for `src/StateManager.sol` and the others if needed).*
 
 ---
 
@@ -269,7 +345,7 @@ User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
 EnvironmentFile=/etc/nowa/.env
-ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start
+ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start --keys-dir /var/lib/nowa-zk/prover/keys
 Restart=always
 RestartSec=5
 StandardOutput=journal
