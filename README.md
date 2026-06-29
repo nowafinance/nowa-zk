@@ -2,7 +2,7 @@
   <h1>Nowa-ZK Sequencer 🚀</h1>
   <p><b>⚡ Fast • 🔒 Secure • 🌐 Decentralized</b></p>
 
-  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
   [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
   [![Go Version](https://img.shields.io/badge/go-1.24.10+-blue.svg)](https://golang.org/dl/)
   [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue.svg)](https://soliditylang.org/)
@@ -146,4 +146,4 @@ Please adhere to our **[Code of Conduct](CODE_OF_CONDUCT.md)** when interacting 
 
 ## 📜 License
 
-This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for full details.
+This project is licensed under the **Business Source License 1.1**. See the [LICENSE](LICENSE) file for full details.
