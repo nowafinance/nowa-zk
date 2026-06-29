@@ -21,6 +21,6 @@ func DefaultConfig() *Config {
 		BatchInterval: 5 * time.Second,           // Check/create batch every 5 seconds (reduced from 10s)
 		APIPort:       8080,                      // REST API port
 		StateDBPath:   ".nowa-zk/sequencer/data", // Local storage path
-		ProverAPI:     "http://localhost:9091",   // Default prover API (can run on different server)
+		ProverAPI:     "http://localhost:8081",   // Default prover API (can run on different server)
 	}
 }

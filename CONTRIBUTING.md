@@ -37,7 +37,7 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 ### Prerequisites
 
 Ensure you have the following installed:
-- **Go 1.21+** for sequencer and prover
+- **Go 1.24.10+** for sequencer and prover
 - **Foundry** (forge, cast, anvil) for smart contracts
 - **Git** for version control
 - **Docker** (optional) for testing

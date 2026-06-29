@@ -168,16 +168,16 @@ func (s *Service) runCleanupJob() {
 **Example `.env`:**
 ```bash
 # Prover API endpoint for cleanup coordination
-PROVER_API=http://0.0.0.0:9091
+PROVER_API=http://0.0.0.0:8081
 
 # Use localhost if same machine
-PROVER_API=http://localhost:9091
+PROVER_API=http://localhost:8081
 
 # Use remote IP if different server
-PROVER_API=http://192.168.1.100:9091
+PROVER_API=http://192.168.1.100:8081
 ```
 
-**Default Value:** `http://localhost:9091`
+**Default Value:** `http://localhost:8081`
 
 ## Cleanup Flow Example
 
@@ -360,7 +360,7 @@ for batchNum := lastDeleted + 1; batchNum < latestProven - 10; batchNum++ {
 
 **Check logs for:**
 ```
-🧹 Cleanup job scheduled (queries prover at http://0.0.0.0:9091 every 5 minutes)
+🧹 Cleanup job scheduled (queries prover at http://0.0.0.0:8081 every 5 minutes)
 🧹 Cleanup job started (interval: 5 minutes)
 ```
 
@@ -378,14 +378,14 @@ for batchNum := lastDeleted + 1; batchNum < latestProven - 10; batchNum++ {
 **Solutions:**
 1. Check prover is running
 2. Verify `PROVER_API` URL is correct
-3. Test manually: `curl http://localhost:9091/batches/latest`
+3. Test manually: `curl http://localhost:8081/batches/latest`
 4. Check firewall/network (if remote prover)
 
 ### Batches Not Being Deleted
 
 **Check:**
 1. Is prover actually proving batches? (check prover logs)
-2. Query prover: `curl http://localhost:9091/batches/latest`
+2. Query prover: `curl http://localhost:8081/batches/latest`
 3. Check sequencer `/status` endpoint for `last_deleted`
 4. Verify cleanup logs show deletion counts
 
