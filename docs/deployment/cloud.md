@@ -138,11 +138,11 @@ sudo chown -R $USER:$USER /var/lib/nowa-zk
 Create environment configuration file.
 
 ```bash
-sudo mkdir -p /etc/tan
-sudo nano /etc/tan/.env
+sudo mkdir -p /etc/nowa
+sudo nano /etc/nowa/.env
 ```
 
-### `/etc/tan/.env`
+### `/etc/nowa/.env`
 
 ```bash
 RPC_SEQUENCER=http://0.0.0.0:8545
@@ -155,7 +155,7 @@ PROVER_API=http://0.0.0.0:8081
 
 **Secure the file:**
 ```bash
-sudo chmod 600 /etc/tan/.env
+sudo chmod 600 /etc/nowa/.env
 ```
 
 ---
@@ -164,14 +164,14 @@ sudo chmod 600 /etc/tan/.env
 
 ```bash
 # Make it readable by owner and group
-sudo chmod 640 /etc/tan/.env
+sudo chmod 640 /etc/nowa/.env
 
 # Change ownership to your user
-sudo chown $USER:$USER /etc/tan/.env
+sudo chown $USER:$USER /etc/nowa/.env
 
 # Now you can read it
 set -a
-source /etc/tan/.env
+source /etc/nowa/.env
 set +a
 
 # Navigate to contracts directory
@@ -233,7 +233,7 @@ USERNAME=prover
 Create the sequencer service file:
 
 ```bash
-sudo tee /etc/systemd/system/tan-sequencer.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/nowa-sequencer.service > /dev/null <<EOF
 [Unit]
 Description=Nowa-ZK Sequencer Service
 After=network-online.target
@@ -242,7 +242,7 @@ After=network-online.target
 User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
-EnvironmentFile=/etc/tan/.env
+EnvironmentFile=/etc/nowa/.env
 ExecStart=/home/$USERNAME/nowa-zk/build/sequencer-bin start
 Restart=always
 RestartSec=5
@@ -259,7 +259,7 @@ EOF
 Create the prover service file:
 
 ```bash
-sudo tee /etc/systemd/system/tan-prover.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/nowa-prover.service > /dev/null <<EOF
 [Unit]
 Description=Nowa-ZK Prover Service
 After=network-online.target
@@ -268,7 +268,7 @@ After=network-online.target
 User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
-EnvironmentFile=/etc/tan/.env
+EnvironmentFile=/etc/nowa/.env
 ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start
 Restart=always
 RestartSec=5
@@ -288,19 +288,19 @@ EOF
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable tan-sequencer tan-prover
+sudo systemctl enable nowa-sequencer nowa-prover
 ```
 
 ### Start Sequencer
 
 ```bash
-sudo systemctl start tan-sequencer
+sudo systemctl start nowa-sequencer
 ```
 
 **Check Status & Logs:**
 ```bash
-sudo systemctl status tan-sequencer
-sudo journalctl -u tan-sequencer -f
+sudo systemctl status nowa-sequencer
+sudo journalctl -u nowa-sequencer -f
 ```
 
 ### Start Prover
@@ -308,13 +308,13 @@ sudo journalctl -u tan-sequencer -f
 Once the sequencer is running smoothly:
 
 ```bash
-sudo systemctl start tan-prover
+sudo systemctl start nowa-prover
 ```
 
 **Check Status & Logs:**
 ```bash
-sudo systemctl status tan-prover
-sudo journalctl -u tan-prover -f
+sudo systemctl status nowa-prover
+sudo journalctl -u nowa-prover -f
 ```
 
 ---
@@ -325,11 +325,11 @@ sudo journalctl -u tan-prover -f
 
 ```bash
 # Check both services
-sudo systemctl status tan-sequencer tan-prover
+sudo systemctl status nowa-sequencer nowa-prover
 
 # Follow logs
-sudo journalctl -u tan-sequencer -f
-sudo journalctl -u tan-prover -f
+sudo journalctl -u nowa-sequencer -f
+sudo journalctl -u nowa-prover -f
 ```
 
 ### Test API Endpoints
@@ -350,8 +350,8 @@ curl http://localhost:8080/batch/latest
 
 ```bash
 # Check logs
-sudo journalctl -u tan-sequencer -n 50
-sudo journalctl -u tan-prover -n 50
+sudo journalctl -u nowa-sequencer -n 50
+sudo journalctl -u nowa-prover -n 50
 
 # Verify binaries exist
 ls -lh ~/nowa-zk/build/

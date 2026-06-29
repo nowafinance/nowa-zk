@@ -39,7 +39,7 @@ For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md
 
 ## 🚀 Quick Start Guide
 
-This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally.
+This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
 
 ### Prerequisites
 - **Go**: 1.21 or higher
