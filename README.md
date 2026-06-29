@@ -1,140 +1,149 @@
-# ZK-Sequencer - Nowa-ZK Network
+<div align="center">
+  <h1>Nowa-ZK Sequencer 🚀</h1>
+  <p><b>⚡ Fast • 🔒 Secure • 🌐 Decentralized</b></p>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
-[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
-[![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue.svg)](https://soliditylang.org/)
-
-This repository contains the official implementation of the **ZK-Sequencer** for the **nowa-zk** network.
-
----
-
-## About nowa-zk
-
-**nowa-zk** is an EVM-compatible, Cosmos-based blockchain. This sequencer is **not** an L2 for another network; it is a **core component of the Nowa-ZK L1 network itself**, designed to scale its own execution through zero-knowledge proofs.
-
-### Architecture Overview
-
-The ZK-Sequencer operates in a two-phase model:
-- **Phase 1 (Current):** Centralized operation with a single sequencer and verifier operator
-- **Phase 2 (Future):** Decentralized architecture with multiple operators
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+  [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
+  [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue.svg)](https://soliditylang.org/)
+</div>
 
 ---
 
-## 🔧 How It Works
+**Nowa-ZK** is a cutting-edge Layer 2 scaling solution leveraging Zero-Knowledge (ZK) proofs to ensure security, scalability, and fast finality. Built on a modular architecture involving Ethereum as Layer 1 and a Cosmos SDK-based EVM as Layer 2, Nowa-ZK offers a high-performance execution environment for decentralized applications.
 
-The Nowa-ZK Sequencer is a critical infrastructure component with four primary responsibilities:
-
-### 1. **Transaction Bundling**
-- Accepts transactions from Nowa-ZK users
-- Orders transactions deterministically
-- Groups them into optimized batches
-
-### 2. **State Execution**
-- Executes batched transactions using EVM
-- Computes state transitions using Sparse Merkle Trees (SMT)
-- Validates account balances and nonces
-
-### 3. **Proof Generation**
-- Coordinates with the ZK Prover service
-- Generates validity proofs using Groth16 (gnark)
-- Proves correct state transitions
-
-### 4. **On-Chain Verification**
-- Submits ZK proofs to verifier contract
-- Updates state root on-chain after finalization
-- Implements challenge period for security
-
-This architecture enables **high throughput** and **low-cost execution** while maintaining security through ZK proof verification.
+This repository contains the official implementation of the **ZK-Sequencer**, **Prover**, and **Smart Contracts** for the Nowa-ZK network.
 
 ---
 
-## 🚀 Getting Started
+## 🌟 Key Features
 
-We provide detailed setup guides for different environments:
-
-| Environment | Description | Guide Link |
-|-------------|-------------|------------|
-| **Local Development** | Run everything on your local machine for testing and development. | **[📄 Local Setup Guide](docs/deployment/local.md)** |
-| **Docker** | Run services in containerized environments. | **[🐳 Docker Setup Guide](docs/deployment/docker.md)** |
-| **Cloud / Production** | Deploy to a production Linux server (Ubuntu). | **[☁️ Cloud Setup Guide](docs/deployment/cloud.md)** |
-
-### Quick Pointers
-- **Dependencies**: Go 1.21+, Foundry, Docker, Make
-- **Key Artifacts**: Prover keys are generated in `make setup`
-- **Configuration**: Uses `.env` for secrets and configuration
+- **High-Performance Sequencer:** Continuously indexes blocks and batches transactions (128 txs/batch) for efficient proof generation.
+- **Succinct ZK Proofs:** Utilizes Groth16 to compress transactions and prove state transitions with minimal L1 footprint (~4KB per batch).
+- **EVM Compatibility:** Built alongside a Cosmos EVM L2, allowing seamless deployment of Ethereum smart contracts.
+- **Fast Finality:** Achieves ~1 second block times on L2 while maintaining Ethereum-grade security.
 
 ---
 
-## 🏗️ Project Structure
+## 🏗 Architecture Overview
 
-```
-nowa-zk/
-├── contracts/          # Solidity smart contracts (Foundry)
-├── sequencer/          # Go sequencer service
-├── prover/             # Go ZK prover (Gnark)
-├── docs/               # Documentation
-├── scripts/            # Utility scripts
-├── Dockerfile          # Multi-stage Docker build
-├── docker-compose.yml  # Docker Compose orchestration
-└── Makefile            # Project management commands
+The system consists of three main operational components contained within this repository:
+
+1. **[Sequencer](./sequencer)**: Acts as the coordinator. It indexes L2 data, builds transaction batches, and provides data availability via a REST/WebSocket API.
+2. **[Prover](./prover)**: The computational engine. It fetches batches from the Sequencer, generates Groth16 Zero-Knowledge proofs, and submits them to L1.
+3. **[Contracts](./contracts)**: The L1 foundation. Includes the `BatchRegistry` which verifies ZK proofs and manages the canonical L2 state on Ethereum.
+
+For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md)**.
+
+---
+
+## 🚀 Quick Start Guide
+
+This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
+
+### Prerequisites
+- **Go**: 1.21 or higher
+- **Foundry**: Latest version (for compiling/deploying contracts)
+- **Git**: To clone the repository
+
+### 1. Clone & Initialize
+
+```bash
+git clone https://github.com/tannetwork/nowa-zk.git
+cd nowa-zk
 ```
 
+### 2. Clean Up (Optional)
+*Run this if you have previously started the system and need a fresh state.*
+
+```bash
+# Clear Sequencer Data
+rm -rf sequencer/data/
+
+# Clean Prover Keys & Contracts
+rm -rf prover/keys/
+
+# Clean compiled contracts
+(cd contracts && forge clean)
+```
+
+### 3. Build & Setup Components
+
+**Generate Prover Keys & Verifier Contract:**
+```bash
+cd prover
+go run ./cmd/prover setup
+cd ..
+```
+
+**Build Smart Contracts:**
+```bash
+cd contracts
+forge build
+cd ..
+```
+
+### 4. Deploy Smart Contracts
+
+Create a `.env` file in the `contracts` directory with your `RPC_URL` and `PRIVATE_KEY`.
+
+```bash
+cd contracts
+
+export RPC_PROVER=http://<RPC_URL>
+# RPC_PROVER=https://ethereum-sepolia-rpc.publicnode.com
+export PRIVATE_KEY=0x.........
+
+forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
+
+cd ..
+```
+
+### 5. Start the System
+
+**Start the Sequencer:**
+```bash
+cd sequencer
+export RPC_URL=https://archival-node.nowa.finance  # Point to your L2 node/RPC
+go run ./cmd/sequencer start
+```
+
+**Start the Prover** *(in a new terminal)*:
+```bash
+cd prover
+export DEPLOYED_CONTRACT_ADDRESS=<DEPLOYED_CONTRACT_ADDRESS> # deployments.json -> BatchRegistry  
+export PRIVATE_KEY=<YOUR_PRIVATE_KEY>
+export RPC_PROVER=https://node1.nowa.finance
+
+go run ./cmd/prover start --contract $DEPLOYED_CONTRACT_ADDRESS --private-key $PRIVATE_KEY
+```
+
 ---
 
-## 🛠️ Technology Stack
+## 📚 Documentation & Resources
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Smart Contracts** | Solidity | 0.8.20 |
-| **Sequencer Backend** | Go | 1.21+ |
-| **ZK Backend** | Gnark | Latest |
-| **Proof System** | Groth16 | BN254 |
-| **State Storage** | BadgerDB | v4 |
+Dive deeper into the Nowa-ZK ecosystem:
 
----
+- 📄 **[Litepaper](litepaper.md)** - Full architectural and technical overview.
+- 🗺️ **[Roadmap](ROADMAP.md)** - Development milestones and future phases.
+- 🔌 **[API Documentation](docs/api.md)** - Detailed endpoints for Sequencer and Prover interaction.
+- 🛡️ **[Security Policy](SECURITY.md)** - Vulnerability reporting and security guidelines.
 
-## � Features
-
-### ✅ Implemented
-- [x] Transaction batching & sequencing
-- [x] State management (SMT, Accounts)
-- [x] ZK Circuits (Groth16, MiMC)
-- [x] Smart Contracts (BatchRegistry, StateManager)
-- [x] Reorg protection & Graceful shutdown
-
-### 🔜 Upcoming Features
-- [ ] Gas fee calculation
-- [ ] Decentralized sequencer network
-- [ ] Performance optimization
-
----
-
-## 📚 Documentation
-
-- **[CODEME.md](CODEME.md)** - All CLI commands & scripts
-- **[ROADMAP.md](ROADMAP.md)** - Development roadmap & milestones
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[SECURITY.md](SECURITY.md)** - Security policy & reporting
-
-For API documentation, see **[docs/api.md](docs/api.md)**.
+**Component READMEs:**
+- [Sequencer Documentation](sequencer/README.md)
+- [Prover Documentation](prover/README.md)
+- [Smart Contracts Documentation](contracts/README.md)
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+We welcome and appreciate contributions from the community! Whether it's bug reports, feature requests, or code contributions, please check out our **[Contribution Guidelines](CONTRIBUTING.md)** before getting started.
+
+Please adhere to our **[Code of Conduct](CODE_OF_CONDUCT.md)** when interacting within our community.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-**⚡ Fast • 🔒 Secure • 🌐 Decentralized**
-
-</div>
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for full details.

@@ -13,7 +13,7 @@ export RPC_URL=http://localhost:8545
 ./sequencer-bin start
 
 # Clear all data
-./sequencer-bin clear
+rm -rf ./data/
 ```
 
 ## Configuration

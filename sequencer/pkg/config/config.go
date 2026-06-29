@@ -19,11 +19,15 @@ func LoadFromEnv() (*types.Config, error) {
 	config := types.DefaultConfig()
 
 	// Load RPC URL (required)
-	// Priority: RPC_SEQUENCER > RPC
-	if rpcSequencer := os.Getenv("RPC_SEQUENCER"); rpcSequencer != "" {
+	// Priority: TAN_ZK_RPC_URL > RPC_SEQUENCER > RPC_URL > RPC
+	if tanZkRpcUrl := os.Getenv("TAN_ZK_RPC_URL"); tanZkRpcUrl != "" {
+		config.RPCURL = tanZkRpcUrl
+	} else if rpcSequencer := os.Getenv("RPC_SEQUENCER"); rpcSequencer != "" {
 		config.RPCURL = rpcSequencer
-	} else if rpcURL := os.Getenv("RPC"); rpcURL != "" {
-		config.RPCURL = rpcURL
+	} else if rpcUrl := os.Getenv("RPC_URL"); rpcUrl != "" {
+		config.RPCURL = rpcUrl
+	} else if rpc := os.Getenv("RPC"); rpc != "" {
+		config.RPCURL = rpc
 	}
 
 	// Load WebSocket URL (optional)

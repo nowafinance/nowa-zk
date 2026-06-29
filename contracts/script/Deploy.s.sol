@@ -172,6 +172,10 @@ contract Deploy is Script {
         string memory outputDir = string.concat(vm.projectRoot(), "/deployments/");
         string memory outputFile = string.concat(outputDir, "deployments.json");
 
+        if (!vm.isDir(outputDir)) {
+            vm.createDir(outputDir, true);
+        }
+
         vm.writeJson(finalJson, outputFile);
         console.log("");
         console.log("Deployment addresses saved to:", outputFile);
