@@ -6,9 +6,9 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/config"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/config"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
 )
 
 var (

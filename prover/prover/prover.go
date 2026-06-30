@@ -3,7 +3,7 @@ package prover
 import (
 	"fmt"
 
-	"github.com/tannetwork/zk-sequencer/prover/internal/witness"
+	"github.com/nowafinance/nowa-zk/prover/internal/witness"
 )
 
 // RunProve orchestrates a proof run (placeholder).

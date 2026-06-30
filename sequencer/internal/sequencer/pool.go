@@ -3,7 +3,7 @@ package sequencer
 import (
 	"sync"
 
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
 )
 
 // TransactionPool manages pending transactions

@@ -1,4 +1,4 @@
-module github.com/tannetwork/zk-sequencer/prover
+module github.com/nowafinance/nowa-zk/prover
 
 go 1.24.10
 

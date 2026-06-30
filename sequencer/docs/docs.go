@@ -43,7 +43,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch"
                         }
                     },
                     "404": {
@@ -78,7 +78,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch"
                         }
                     },
                     "400": {
@@ -133,7 +133,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch"
                         }
                     },
                     "404": {
@@ -168,7 +168,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch"
                         }
                     },
                     "400": {
@@ -212,7 +212,7 @@ const docTemplate = `{
         "big.Int": {
             "type": "object"
         },
-        "github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch": {
+        "github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch": {
             "type": "object",
             "properties": {
                 "hash": {
@@ -237,18 +237,18 @@ const docTemplate = `{
                 "traces": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace"
+                        "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.ExecutionTrace"
                     }
                 },
                 "transactions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction"
+                        "$ref": "#/definitions/github_com_nowafinance_nowa-zk_sequencer_pkg_rpc.Transaction"
                     }
                 }
             }
         },
-        "github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace": {
+        "github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.ExecutionTrace": {
             "type": "object",
             "properties": {
                 "contractAddress": {
@@ -283,7 +283,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction": {
+        "github_com_nowafinance_nowa-zk_sequencer_pkg_rpc.Transaction": {
             "type": "object",
             "properties": {
                 "blockHash": {

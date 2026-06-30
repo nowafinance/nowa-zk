@@ -37,7 +37,7 @@ foundryup
 ## 2. Clone & Setup
 
 ```bash
-git clone https://github.com/tannetwork/nowa-zk.git
+git clone https://github.com/nowafinance/nowa-zk.git
 cd nowa-zk
 git submodule update --init --recursive
 ```

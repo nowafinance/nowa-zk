@@ -6,12 +6,12 @@ Remove all deployment data and build artifacts while preserving source code and 
 
 ```bash
 # Stop and disable services
-sudo systemctl stop tan-sequencer tan-prover
-sudo systemctl disable tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl disable nowa-zk-sequencer nowa-zk-prover
 
 # Remove service files
-sudo rm -f /etc/systemd/system/tan-sequencer.service
-sudo rm -f /etc/systemd/system/tan-prover.service
+sudo rm -f /etc/systemd/system/nowa-zk-sequencer.service
+sudo rm -f /etc/systemd/system/nowa-zk-prover.service
 sudo systemctl daemon-reload
 
 # Remove data directories
@@ -63,13 +63,13 @@ echo "✅ Cleanup complete! Source code and .env preserved"
 ## What's Preserved
 
 - ❌ Source code (`~/nowa-zk` repository)
-- ❌ `.env` file (`/etc/tan/.env`)
+- ❌ `.env` file (`/etc/nowa-zk/.env`)
 
 ## Verification
 
 ```bash
 # Check services are stopped
-sudo systemctl status tan-sequencer tan-prover
+sudo systemctl status nowa-zk-sequencer nowa-zk-prover
 
 # Check data removed
 ls -la /var/lib/ | grep Nowa-ZK  # Should be empty
@@ -91,7 +91,7 @@ If the sequencer still resumes from old block numbers, use this aggressive clean
 
 ```bash
 # Stop services
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # Remove EVERYTHING in home directory with these names
 find ~/ -name "*nowa-zk*" -type d ! -path "*/nowa-zk/.git/*" ! -path "*/nowa-zk" -exec rm -rf {} + 2>/dev/null

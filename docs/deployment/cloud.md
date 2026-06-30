@@ -65,7 +65,7 @@ cast --version
 
 ```bash
 # Clone the repository
-git clone git@github.com:tannetwork/nowa-zk.git ~/nowa-zk
+git clone git@github.com:nowafinance/nowa-zk.git ~/nowa-zk
 cd ~/nowa-zk
 
 # Initialize submodules (if any)
@@ -300,7 +300,7 @@ cat ~/.nowa-zk/deployments.json
 First, set your username (this only needs to be done once):
 
 ```bash
-# Set your username here (e.g., prover, tan, ubuntu, etc.)
+# Set your username here (e.g., prover, nowa, ubuntu, etc.)
 USERNAME=prover
 ```
 

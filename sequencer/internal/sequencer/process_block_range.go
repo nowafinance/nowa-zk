@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
 )
 
 // processBlockRange fetches and processes a range of blocks (up to 100)

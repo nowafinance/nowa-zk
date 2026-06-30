@@ -12,9 +12,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
-	"github.com/tannetwork/zk-sequencer/prover/bindings"
-	_ "github.com/tannetwork/zk-sequencer/prover/docs" // Swagger docs
-	"github.com/tannetwork/zk-sequencer/prover/internal/storage"
+	"github.com/nowafinance/nowa-zk/prover/bindings"
+	_ "github.com/nowafinance/nowa-zk/prover/docs" // Swagger docs
+	"github.com/nowafinance/nowa-zk/prover/internal/storage"
 )
 
 // APIServer serves the Prover API

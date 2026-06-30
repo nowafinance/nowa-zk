@@ -1,6 +1,6 @@
 # Project Update & Full Reset Guide
 
-This guide covers procedures when the ZK-Tan codes changes, most of the time it require key regeneration and contract redeployment again.
+This guide covers procedures when the Nowa-ZK codes changes, most of the time it require key regeneration and contract redeployment again.
 
 ---
 
@@ -20,7 +20,7 @@ Use this guide when:
 
 ```bash
 # 1. Stop both services
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # 2. Navigate to project
 cd ~/nowa-zk
@@ -42,15 +42,15 @@ cd ..
 # 6. Redeploy contracts to chain
 
 # Fix .env permissions (if needed)
-sudo chmod 640 /etc/tan/.env
-sudo chown $USER:$USER /etc/tan/.env
+sudo chmod 640 /etc/nowa-zk/.env
+sudo chown $USER:$USER /etc/nowa-zk/.env
 
 # Navigate to contracts directory
 cd ~/nowa-zk/contracts
 
 # Load environment variables
 set -a  # Auto-export all variables
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 
 # Verify variables are loaded
@@ -80,10 +80,10 @@ find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # 10. Reload systemd and restart both services
 sudo systemctl daemon-reload
-sudo systemctl start tan-sequencer tan-prover
+sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 
 # 11. Monitor (check that prover uses new contract and starts from batch 0)
-sudo journalctl -u tan-prover -f
+sudo journalctl -u nowa-zk-prover -f
 # You should see: "Auto-loaded Contract: 0x..." (your NEW address)
 # And: "Starting from batch #0" or "No previous state found"
 ```
@@ -115,7 +115,7 @@ fi
 
 # --- 1. Stop Services ---
 echo "🛑 Stopping services..."
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # --- 2. Cleanup Data (Reset Database) ---
 echo "🧹 Cleaning up old data..."
@@ -178,13 +178,13 @@ sudo chown -R $USER:$USER /var/lib/nowa-zk
 # --- 5. Redeploy Contracts ---
 echo "🚀 Redeploying contracts..."
 # Load environment variables
-if [ ! -f /etc/tan/.env ]; then
-    echo "❌ Error: /etc/tan/.env not found!"
+if [ ! -f /etc/nowa-zk/.env ]; then
+    echo "❌ Error: /etc/nowa-zk/.env not found!"
     exit 1
 fi
 
 set -a
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 
 cd contracts
@@ -203,15 +203,15 @@ echo "✅ Deleted prover database"
 # --- 6. Restart Services ---
 echo "✅ Restarting services..."
 sudo systemctl daemon-reload
-sudo systemctl start tan-sequencer
-sudo systemctl start tan-prover
+sudo systemctl start nowa-zk-sequencer
+sudo systemctl start nowa-zk-prover
 
 echo "🎉 Reset Complete!"
 echo "Check status:"
-echo "  sudo systemctl status tan-sequencer"
-echo "  sudo systemctl status tan-prover"
-echo "  sudo journalctl -u tan-sequencer -f"
-echo "  sudo journalctl -u tan-prover -f"
+echo "  sudo systemctl status nowa-zk-sequencer"
+echo "  sudo systemctl status nowa-zk-prover"
+echo "  sudo journalctl -u nowa-zk-sequencer -f"
+echo "  sudo journalctl -u nowa-zk-prover -f"
 ```
 
 ### Usage
@@ -260,14 +260,14 @@ chmod +x ~/reset-nowa-zk.sh
 
 ```bash
 # Check current config
-sudo cat /etc/systemd/system/tan-prover.service | grep contract
+sudo cat /etc/systemd/system/nowa-zk-prover.service | grep contract
 
 # Edit with new address
-sudo nano /etc/systemd/system/tan-prover.service
+sudo nano /etc/systemd/system/nowa-zk-prover.service
 
 # Reload
 sudo systemctl daemon-reload
-sudo systemctl restart tan-prover
+sudo systemctl restart nowa-zk-prover
 ```
 
 ### Keys not found

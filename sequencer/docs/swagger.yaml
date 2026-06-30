@@ -2,7 +2,7 @@ basePath: /
 definitions:
   big.Int:
     type: object
-  github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch:
+  github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch:
     properties:
       hash:
         type: string
@@ -19,14 +19,14 @@ definitions:
         type: integer
       traces:
         items:
-          $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace'
+          $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.ExecutionTrace'
         type: array
       transactions:
         items:
-          $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction'
+          $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_pkg_rpc.Transaction'
         type: array
     type: object
-  github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.ExecutionTrace:
+  github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.ExecutionTrace:
     properties:
       contractAddress:
         description: Set for contract deployments
@@ -50,7 +50,7 @@ definitions:
       value:
         type: string
     type: object
-  github_com_tannetwork_zk-sequencer_sequencer_pkg_rpc.Transaction:
+  github_com_nowafinance_nowa-zk_sequencer_pkg_rpc.Transaction:
     properties:
       blockHash:
         type: string
@@ -120,7 +120,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+            $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch'
         "400":
           description: Invalid ID
           schema:
@@ -141,7 +141,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+            $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch'
         "404":
           description: Not found
           schema:
@@ -179,7 +179,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+            $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch'
         "400":
           description: Invalid ID
           schema:
@@ -200,7 +200,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_tannetwork_zk-sequencer_sequencer_internal_sequencer_types.Batch'
+            $ref: '#/definitions/github_com_nowafinance_nowa-zk_sequencer_internal_sequencer_types.Batch'
         "404":
           description: Not found
           schema:

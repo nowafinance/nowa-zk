@@ -1,4 +1,4 @@
-module github.com/tannetwork/zk-sequencer/sequencer
+module github.com/nowafinance/nowa-zk/sequencer
 
 go 1.24.0
 

@@ -11,9 +11,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/websocket/v2"
-	_ "github.com/tannetwork/zk-sequencer/sequencer/docs" // Swagger docs
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
-	pkgLogger "github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
+	_ "github.com/nowafinance/nowa-zk/sequencer/docs" // Swagger docs
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	pkgLogger "github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
 )
 
 // APIServer provides REST API and WebSocket for the prover

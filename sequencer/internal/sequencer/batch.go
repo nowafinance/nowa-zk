@@ -9,9 +9,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/smt"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/smt"
 )
 
 // BatchBuilder builds batches from transactions

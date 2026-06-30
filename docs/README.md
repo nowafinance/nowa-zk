@@ -57,7 +57,7 @@ Development tracking:
 ### When Things Go Wrong
 
 1. Check [Troubleshooting Guide](operations/troubleshooting.md) first
-2. Review service logs: `sudo journalctl -u tan-sequencer -f`
+2. Review service logs: `sudo journalctl -u nowa-zk-sequencer -f`
 3. Verify environment variables are loaded correctly
 
 ---
@@ -104,7 +104,7 @@ Always load with auto-export:
 
 ```bash
 set -a
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 ```
 

@@ -30,10 +30,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
-	"github.com/tannetwork/zk-sequencer/prover/bindings"
-	"github.com/tannetwork/zk-sequencer/prover/circuits"
-	"github.com/tannetwork/zk-sequencer/prover/internal/api"
-	"github.com/tannetwork/zk-sequencer/prover/internal/storage"
+	"github.com/nowafinance/nowa-zk/prover/bindings"
+	"github.com/nowafinance/nowa-zk/prover/circuits"
+	"github.com/nowafinance/nowa-zk/prover/internal/api"
+	"github.com/nowafinance/nowa-zk/prover/internal/storage"
 )
 
 var startCmd = &cobra.Command{
@@ -264,7 +264,7 @@ func start(cmd *cobra.Command, args []string) {
 		log.Println("4. After fixing, restart with --clear-halt flag:")
 		log.Printf("   ./build/prover-bin start --keys-dir %s --clear-halt\n", keysDir)
 		log.Println()
-		log.Println("For support, visit: https://github.com/tannetwork/nowa-zk/issues")
+		log.Println("For support, visit: https://github.com/nowafinance/nowa-zk/issues")
 		log.Println("========================================")
 		return
 	}
@@ -1042,7 +1042,7 @@ func haltProver(store *storage.ProverStore, batch *Batch, errMsg string) {
 	log.Println("   make run-prover CLEAR_HALT=true")
 	log.Println("   OR: ./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt")
 	log.Println()
-	log.Println("For support, visit: https://github.com/tannetwork/nowa-zk/issues")
+	log.Println("For support, visit: https://github.com/nowafinance/nowa-zk/issues")
 	log.Println("========================================")
 
 	// Set halt state in storage

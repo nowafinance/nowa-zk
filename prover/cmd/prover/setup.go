@@ -10,7 +10,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/spf13/cobra"
-	"github.com/tannetwork/zk-sequencer/prover/circuits"
+	"github.com/nowafinance/nowa-zk/prover/circuits"
 )
 
 var setupCmd = &cobra.Command{

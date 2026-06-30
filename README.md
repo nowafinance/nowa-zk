@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="assets/logo.png" alt="Nowa Logo" width="150" />
   <h1>Nowa-ZK Sequencer 🚀</h1>
   <p><b>⚡ Fast • 🔒 Secure • 🌐 Decentralized</b></p>
 
@@ -49,7 +50,7 @@ This guide provides immediate, functional commands to get the complete Nowa-ZK s
 ### 1. Clone & Initialize
 
 ```bash
-git clone https://github.com/tannetwork/nowa-zk.git
+git clone https://github.com/nowafinance/nowa-zk.git
 cd nowa-zk
 ```
 
@@ -90,7 +91,7 @@ Create a `.env` file in the `contracts` directory with your `RPC_URL` and `PRIVA
 ```bash
 cd contracts
 
-export RPC_PROVER=http://<RPC_URL>
+export RPC_PROVER=https://archival-node.nowa.finance
 # RPC_PROVER=https://ethereum-sepolia-rpc.publicnode.com
 export PRIVATE_KEY=0x.........
 

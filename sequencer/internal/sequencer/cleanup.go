@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/prover"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/prover"
 )
 
 // ProverClient interface for easier testing

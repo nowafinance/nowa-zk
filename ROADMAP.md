@@ -3,7 +3,7 @@
 ## Snapshot
 
 - Goal: end-to-end sequencer + prover for the Nowa-ZK L1 network.
-- Repo: https://github.com/tannetwork/nowa-zk
+- Repo: https://github.com/nowafinance/nowa-zk
 - Status: Phase 1 and Phase 2 complete; Phase 3 (ZK prover stack) is next.
 - Architecture: read-only sequencer (follows L1), batches transactions, prepares data for prover, submits proof + calldata back to nowa-zk.
 

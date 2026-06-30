@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
 )
 
 // BatchStore stores batches locally

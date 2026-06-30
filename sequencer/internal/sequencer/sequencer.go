@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/errors"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/logger"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/errors"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
 )
 
 // Service is the main sequencer service

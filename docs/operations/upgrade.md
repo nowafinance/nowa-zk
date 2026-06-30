@@ -22,13 +22,13 @@ This guide describes how to upgrade the **Nowa-ZK Sequencer and Prover** running
 Stop the running systemd services to ensure no data corruption during the update.
 
 ```bash
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 ```
 
 Verify they are stopped:
 
 ```bash
-sudo systemctl status tan-sequencer tan-prover
+sudo systemctl status nowa-zk-sequencer nowa-zk-prover
 ```
 
 ---
@@ -78,7 +78,7 @@ cd ..
 # 4. Redeploy contracts
 cd contracts
 set -a
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 cd ..
@@ -89,7 +89,7 @@ sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
 sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # 6. Update prover systemd service with NEW contract address
-sudo nano /etc/systemd/system/tan-prover.service
+sudo nano /etc/systemd/system/nowa-zk-prover.service
 # Update: ExecStart=.../prover-bin start --keys-dir ... --contract <NEW_ADDRESS> --private-key ...
 
 # 7. Reload systemd config
@@ -142,7 +142,7 @@ cd ..
 Start the services again. They will pick up the newly built binaries automatically.
 
 ```bash
-sudo systemctl start tan-sequencer tan-prover
+sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 ```
 
 ---
@@ -153,10 +153,10 @@ Check the logs to ensure everything started correctly and is processing blocks.
 
 ```bash
 # Check Sequencer Logs
-sudo journalctl -u tan-sequencer -f
+sudo journalctl -u nowa-zk-sequencer -f
 
 # Check Prover Logs (in another terminal)
-sudo journalctl -u tan-prover -f
+sudo journalctl -u nowa-zk-prover -f
 ```
 
 **Look for:**
@@ -171,7 +171,7 @@ sudo journalctl -u tan-prover -f
 
 ```bash
 # Full upgrade workflow
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 cd ~/nowa-zk
 git pull origin main
 
@@ -180,10 +180,10 @@ cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 
 # Restart services
-sudo systemctl start tan-sequencer tan-prover
+sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 
 # Monitor
-sudo journalctl -u tan-sequencer -f
+sudo journalctl -u nowa-zk-sequencer -f
 ```
 
 ---
@@ -194,7 +194,7 @@ If the upgrade fails, you can rollback:
 
 ```bash
 # Stop services
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # Revert to previous version
 cd ~/nowa-zk
@@ -206,7 +206,7 @@ cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 
 # Restart
-sudo systemctl start tan-sequencer tan-prover
+sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 ```
 
 ---
@@ -217,11 +217,11 @@ sudo systemctl start tan-sequencer tan-prover
 
 ```bash
 # Check service status
-sudo systemctl status tan-sequencer tan-prover
+sudo systemctl status nowa-zk-sequencer nowa-zk-prover
 
 # View detailed logs
-sudo journalctl -u tan-sequencer -n 100
-sudo journalctl -u tan-prover -n 100
+sudo journalctl -u nowa-zk-sequencer -n 100
+sudo journalctl -u nowa-zk-prover -n 100
 
 # Verify binaries were built
 ls -lh ~/nowa-zk/build/
@@ -248,7 +248,7 @@ If you suspect state corruption:
 
 ```bash
 # Stop services
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # Backup state
 sudo cp -r /var/lib/nowa-zk/sequencer/state /var/lib/nowa-zk/sequencer/state.backup

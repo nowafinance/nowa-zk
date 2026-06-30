@@ -1,5 +1,5 @@
 # Simple Makefile for building, testing, and running a prover CLI.
-MOD := github.com/tannetwork/zk-sequencer/prover
+MOD := github.com/nowafinance/nowa-zk/prover
 GO := go
 
 .PHONY: all deps test build prove clean

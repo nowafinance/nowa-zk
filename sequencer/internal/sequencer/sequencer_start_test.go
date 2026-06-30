@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
 )
 
 func TestGetStartingBlock(t *testing.T) {

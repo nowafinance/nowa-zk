@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/tannetwork/zk-sequencer/sequencer/internal/sequencer/types"
-	"github.com/tannetwork/zk-sequencer/sequencer/pkg/errors"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/sequencer/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -19,9 +19,9 @@ func LoadFromEnv() (*types.Config, error) {
 	config := types.DefaultConfig()
 
 	// Load RPC URL (required)
-	// Priority: TAN_ZK_RPC_URL > RPC_SEQUENCER > RPC_URL > RPC
-	if tanZkRpcUrl := os.Getenv("TAN_ZK_RPC_URL"); tanZkRpcUrl != "" {
-		config.RPCURL = tanZkRpcUrl
+	// Priority: NOWA_ZK_RPC_URL > RPC_SEQUENCER > RPC_URL > RPC
+	if nowaZkRpcUrl := os.Getenv("NOWA_ZK_RPC_URL"); nowaZkRpcUrl != "" {
+		config.RPCURL = nowaZkRpcUrl
 	} else if rpcSequencer := os.Getenv("RPC_SEQUENCER"); rpcSequencer != "" {
 		config.RPCURL = rpcSequencer
 	} else if rpcUrl := os.Getenv("RPC_URL"); rpcUrl != "" {
@@ -160,7 +160,7 @@ func LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath string, batchSize,
 
 	// Validate required fields
 	if config.RPCURL == "" {
-		return nil, errors.ErrInvalidInput("TAN_ZK_RPC_URL is required")
+		return nil, errors.ErrInvalidInput("NOWA_ZK_RPC_URL is required")
 	}
 
 	return config, nil

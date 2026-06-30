@@ -45,7 +45,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainers responsible for enforcement at:
 
 <!-- - **Email**: [Your contact email - add later] -->
-- **GitHub**: Report via private issue or discussion at https://github.com/tannetwork/nowa-zk
+- **GitHub**: Report via private issue or discussion at https://github.com/nowafinance/nowa-zk
 
 All complaints will be reviewed and investigated promptly and fairly.
 

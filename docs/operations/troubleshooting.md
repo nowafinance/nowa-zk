@@ -32,7 +32,7 @@ forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KE
 ```bash
 # Load with auto-export
 set -a
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 
 # Verify they're loaded
@@ -42,7 +42,7 @@ echo "Private Key: ${PRIVATE_KEY:0:10}..."  # Show first 10 chars only
 
 #### 3. Check .env File Format
 
-Your `/etc/tan/.env` should look like:
+Your `/etc/nowa-zk/.env` should look like:
 
 ```bash
 # NO SPACES around = sign
@@ -79,7 +79,7 @@ You must regenerate keys AND redeploy contracts:
 
 ```bash
 # 1. Stop services
-sudo systemctl stop tan-sequencer tan-prover
+sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
 
 # 2. Navigate to project
 cd ~/nowa-zk
@@ -101,7 +101,7 @@ cd ..
 # 6. Redeploy contracts
 cd contracts
 set -a
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a
 forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 cd ..
@@ -113,12 +113,12 @@ sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
 sudo chown -R $USER:$USER /var/lib/nowa-zk
 
 # 9. Update prover service with new contract address
-sudo nano /etc/systemd/system/tan-prover.service
+sudo nano /etc/systemd/system/nowa-zk-prover.service
 # Update: ExecStart=.../prover-bin start --keys-dir ... --contract <NEW_ADDRESS> ...
 
 # 10. Restart
 sudo systemctl daemon-reload
-sudo systemctl start tan-sequencer tan-prover
+sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 ```
 
 > [!WARNING]
@@ -140,7 +140,7 @@ The prover auto-loads the contract address from `.nowa-zk/deployments.json`, but
 
 ```bash
 # 1. Stop prover
-sudo systemctl stop tan-prover
+sudo systemctl stop nowa-zk-prover
 
 # 2. Find your new deployment file (replace CHAIN_ID with actual value from deployment)
 ls -lt ~/nowa-zk/contracts/deployments/
@@ -157,10 +157,10 @@ find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
 find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # 6. Restart prover
-sudo systemctl start tan-prover
+sudo systemctl start nowa-zk-prover
 
 # 7. Monitor - should see NEW contract address and start from batch 0
-sudo journalctl -u tan-prover -f
+sudo journalctl -u nowa-zk-prover -f
 ```
 
 ### Prover Resuming from Old Batch (Need to Start from 0)
@@ -178,7 +178,7 @@ The prover stores its database in `~/nowa-zk/.nowa-zk/` directory (usually `prov
 
 ```bash
 # Stop prover
-sudo systemctl stop tan-prover
+sudo systemctl stop nowa-zk-prover
 
 # Find and delete prover database files
 find ~/nowa-zk/.nowa-zk/ -name "*.db" -ls
@@ -192,8 +192,8 @@ find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 sudo rm -rf /var/lib/nowa-zk/prover/data/*
 
 # Restart
-sudo systemctl start tan-prover
-sudo journalctl -u tan-prover -f
+sudo systemctl start nowa-zk-prover
+sudo journalctl -u nowa-zk-prover -f
 # Should see: "No previous state found" or "Starting from batch #0"
 ```
 
@@ -205,7 +205,7 @@ sudo journalctl -u tan-prover -f
 
 **Check logs:**
 ```bash
-sudo journalctl -u tan-sequencer -n 50
+sudo journalctl -u nowa-zk-sequencer -n 50
 ```
 
 **Common issues:**
@@ -234,7 +234,7 @@ sudo journalctl -u tan-sequencer -n 50
 
 **Check logs:**
 ```bash
-sudo journalctl -u tan-prover -n 50
+sudo journalctl -u nowa-zk-prover -n 50
 ```
 
 **Common issues:**
@@ -250,7 +250,7 @@ sudo journalctl -u tan-prover -n 50
 2. **Wrong contract address**
    ```bash
    # Check service file
-   sudo cat /etc/systemd/system/tan-prover.service | grep contract
+   sudo cat /etc/systemd/system/nowa-zk-prover.service | grep contract
    
    # Verify contract exists on chain
    cast code <CONTRACT_ADDRESS> --rpc-url $RPC
@@ -283,7 +283,7 @@ Delete the prover database to force a resync from L1:
 
 ```bash
 # 1. Stop the prover
-sudo systemctl stop tan-prover  # or Ctrl+C if running manually
+sudo systemctl stop nowa-zk-prover  # or Ctrl+C if running manually
 
 # 2. Check which batch is already on L1
 cast call <CONTRACT_ADDRESS> "totalBatches()" --rpc-url $RPC
@@ -294,7 +294,7 @@ cd ~/Nowa-ZK  # or wherever your project is
 rm -rf .nowa-zk/prover/data/*
 
 # 4. Restart prover (will resync from L1)
-sudo systemctl start tan-prover
+sudo systemctl start nowa-zk-prover
 # OR for local development:
 make run-prover
 ```
@@ -356,30 +356,30 @@ forge build
 
 ### Variables Not Persisting
 
-If you `source /etc/tan/.env` but variables disappear:
+If you `source /etc/nowa-zk/.env` but variables disappear:
 
 **Solution 1: Use `set -a`**
 ```bash
 set -a          # Enable auto-export
-source /etc/tan/.env
+source /etc/nowa-zk/.env
 set +a          # Disable auto-export
 ```
 
 **Solution 2: Export manually**
 ```bash
-export $(grep -v '^#' /etc/tan/.env | xargs)
+export $(grep -v '^#' /etc/nowa-zk/.env | xargs)
 ```
 
 **Solution 3: Use in one line**
 ```bash
-env $(cat /etc/tan/.env | xargs) forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+env $(cat /etc/nowa-zk/.env | xargs) forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
 ```
 
 ### Check If Variables Are Set
 
 ```bash
 # Print all variables
-cat /etc/tan/.env
+cat /etc/nowa-zk/.env
 
 # Test if loaded in current shell
 echo "RPC=$RPC"
@@ -394,8 +394,8 @@ If you encounter an issue not covered here:
 
 1. **Check service logs:**
    ```bash
-   sudo journalctl -u tan-sequencer -f
-   sudo journalctl -u tan-prover -f
+   sudo journalctl -u nowa-zk-sequencer -f
+   sudo journalctl -u nowa-zk-prover -f
    ```
 
 2. **Check system resources:**
@@ -412,5 +412,5 @@ If you encounter an issue not covered here:
 
 4. **Check all services:**
    ```bash
-   sudo systemctl status tan-sequencer tan-prover
+   sudo systemctl status nowa-zk-sequencer nowa-zk-prover
    ```

@@ -29,7 +29,7 @@ This project adheres to a Code of Conduct that all contributors are expected to 
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/tannetwork/nowa-zk.git
+   git remote add upstream https://github.com/nowafinance/nowa-zk.git
    ```
 
 ## Development Workflow

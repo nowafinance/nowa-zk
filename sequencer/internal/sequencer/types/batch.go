@@ -1,6 +1,6 @@
 package types
 
-import "github.com/tannetwork/zk-sequencer/sequencer/pkg/rpc"
+import "github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
 
 // Batch represents a batch of transactions
 type Batch struct {
