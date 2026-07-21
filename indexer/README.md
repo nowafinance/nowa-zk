@@ -1,16 +1,16 @@
-# Sequencer
+# Indexer
 
-ZK Sequencer monitors blockchain, builds transaction batches, provides API for prover.
+ZK Indexer monitors blockchain, builds transaction batches, provides API for prover.
 
 ## Quick Start
 
 ```bash
 # Build
-go build -o sequencer-bin ./cmd/sequencer
+go build -o indexer-bin ./cmd/indexer
 
-# Start sequencer
+# Start indexer
 export RPC_URL=http://localhost:8545
-./sequencer-bin start
+./indexer-bin start
 
 # Clear all data
 rm -rf ./data/
@@ -95,9 +95,9 @@ go test ./... -coverprofile=coverage.out
 # Terminal 1: Start local chain
 anvil --port 8545
 
-# Terminal 2: Start sequencer
+# Terminal 2: Start indexer
 export RPC_URL=http://localhost:8545
-./sequencer-bin start
+./indexer-bin start
 ```
 
 See [/CODEME.md](../CODEME.md) for full commands.

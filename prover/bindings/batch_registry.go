@@ -42,7 +42,7 @@ type BatchRegistryBatch struct {
 
 // BatchRegistryMetaData contains all meta data concerning the BatchRegistry contract.
 var BatchRegistryMetaData = &bind.MetaData{
-	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"_verifier\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_stateManager\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_sequencer\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_finalizationDelay\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"STATE_MANAGER\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractStateManager\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batchExists\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"exists\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batchHashToNumber\",\"inputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batches\",\"inputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"verifiedAt\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumBatchRegistry.BatchStatus\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getBatch\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"batch\",\"type\":\"tuple\",\"internalType\":\"structBatchRegistry.Batch\",\"components\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"verifiedAt\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumBatchRegistry.BatchStatus\"}]}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getBatchNumber\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getCurrentStateRoot\",\"inputs\":[],\"outputs\":[{\"name\":\"stateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"nextBatchNumber\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"owner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerBatch\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"batchData\",\"type\":\"bytes\",\"internalType\":\"bytes\"},{\"name\":\"proofA\",\"type\":\"uint256[2]\",\"internalType\":\"uint256[2]\"},{\"name\":\"proofB\",\"type\":\"uint256[2][2]\",\"internalType\":\"uint256[2][2]\"},{\"name\":\"proofC\",\"type\":\"uint256[2]\",\"internalType\":\"uint256[2]\"},{\"name\":\"publicInputs\",\"type\":\"uint256[6]\",\"internalType\":\"uint256[6]\"}],\"outputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"sequencer\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"totalBatches\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"transferOwnership\",\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unpause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"updateSequencer\",\"inputs\":[{\"name\":\"newSequencer\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"updateVerifier\",\"inputs\":[{\"name\":\"newVerifier\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"verifier\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIVerifier\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BatchFinalized\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"BatchRegistered\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"batchHash\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"FinalizationDelayUpdated\",\"inputs\":[{\"name\":\"oldDelay\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"newDelay\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferred\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Paused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"SequencerUpdated\",\"inputs\":[{\"name\":\"oldSequencer\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newSequencer\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Unpaused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"VerifierUpdated\",\"inputs\":[{\"name\":\"oldVerifier\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newVerifier\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false}]",
+	ABI: "[{\"type\":\"constructor\",\"inputs\":[{\"name\":\"_verifier\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_stateManager\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_indexer\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_finalizationDelay\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"STATE_MANAGER\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractStateManager\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batchExists\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"exists\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batchHashToNumber\",\"inputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"batches\",\"inputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"verifiedAt\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumBatchRegistry.BatchStatus\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getBatch\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"outputs\":[{\"name\":\"batch\",\"type\":\"tuple\",\"internalType\":\"structBatchRegistry.Batch\",\"components\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"verifiedAt\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"status\",\"type\":\"uint8\",\"internalType\":\"enumBatchRegistry.BatchStatus\"}]}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getBatchNumber\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getCurrentStateRoot\",\"inputs\":[],\"outputs\":[{\"name\":\"stateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"nextBatchNumber\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"owner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerBatch\",\"inputs\":[{\"name\":\"batchHash\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"batchData\",\"type\":\"bytes\",\"internalType\":\"bytes\"},{\"name\":\"proofA\",\"type\":\"uint256[2]\",\"internalType\":\"uint256[2]\"},{\"name\":\"proofB\",\"type\":\"uint256[2][2]\",\"internalType\":\"uint256[2][2]\"},{\"name\":\"proofC\",\"type\":\"uint256[2]\",\"internalType\":\"uint256[2]\"},{\"name\":\"publicInputs\",\"type\":\"uint256[6]\",\"internalType\":\"uint256[6]\"}],\"outputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"indexer\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"totalBatches\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"transferOwnership\",\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"unpause\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"updateIndexer\",\"inputs\":[{\"name\":\"newIndexer\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"updateVerifier\",\"inputs\":[{\"name\":\"newVerifier\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"verifier\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIVerifier\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BatchFinalized\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"BatchRegistered\",\"inputs\":[{\"name\":\"batchNumber\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"batchHash\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"},{\"name\":\"oldStateRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"newStateRoot\",\"type\":\"bytes32\",\"indexed\":false,\"internalType\":\"bytes32\"},{\"name\":\"submitter\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"FinalizationDelayUpdated\",\"inputs\":[{\"name\":\"oldDelay\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"},{\"name\":\"newDelay\",\"type\":\"uint256\",\"indexed\":false,\"internalType\":\"uint256\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferred\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Paused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"IndexerUpdated\",\"inputs\":[{\"name\":\"oldIndexer\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newIndexer\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Unpaused\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"VerifierUpdated\",\"inputs\":[{\"name\":\"oldVerifier\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newVerifier\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false}]",
 }
 
 // BatchRegistryABI is the input ABI used to generate the binding from.
@@ -540,12 +540,12 @@ func (_BatchRegistry *BatchRegistryCallerSession) Paused() (bool, error) {
 	return _BatchRegistry.Contract.Paused(&_BatchRegistry.CallOpts)
 }
 
-// Sequencer is a free data retrieval call binding the contract method 0x5c1bba38.
+// Indexer is a free data retrieval call binding the contract method 0x5c1bba38.
 //
-// Solidity: function sequencer() view returns(address)
-func (_BatchRegistry *BatchRegistryCaller) Sequencer(opts *bind.CallOpts) (common.Address, error) {
+// Solidity: function indexer() view returns(address)
+func (_BatchRegistry *BatchRegistryCaller) Indexer(opts *bind.CallOpts) (common.Address, error) {
 	var out []interface{}
-	err := _BatchRegistry.contract.Call(opts, &out, "sequencer")
+	err := _BatchRegistry.contract.Call(opts, &out, "indexer")
 
 	if err != nil {
 		return *new(common.Address), err
@@ -557,18 +557,18 @@ func (_BatchRegistry *BatchRegistryCaller) Sequencer(opts *bind.CallOpts) (commo
 
 }
 
-// Sequencer is a free data retrieval call binding the contract method 0x5c1bba38.
+// Indexer is a free data retrieval call binding the contract method 0x5c1bba38.
 //
-// Solidity: function sequencer() view returns(address)
-func (_BatchRegistry *BatchRegistrySession) Sequencer() (common.Address, error) {
-	return _BatchRegistry.Contract.Sequencer(&_BatchRegistry.CallOpts)
+// Solidity: function indexer() view returns(address)
+func (_BatchRegistry *BatchRegistrySession) Indexer() (common.Address, error) {
+	return _BatchRegistry.Contract.Indexer(&_BatchRegistry.CallOpts)
 }
 
-// Sequencer is a free data retrieval call binding the contract method 0x5c1bba38.
+// Indexer is a free data retrieval call binding the contract method 0x5c1bba38.
 //
-// Solidity: function sequencer() view returns(address)
-func (_BatchRegistry *BatchRegistryCallerSession) Sequencer() (common.Address, error) {
-	return _BatchRegistry.Contract.Sequencer(&_BatchRegistry.CallOpts)
+// Solidity: function indexer() view returns(address)
+func (_BatchRegistry *BatchRegistryCallerSession) Indexer() (common.Address, error) {
+	return _BatchRegistry.Contract.Indexer(&_BatchRegistry.CallOpts)
 }
 
 // TotalBatches is a free data retrieval call binding the contract method 0x69ff6abb.
@@ -717,25 +717,25 @@ func (_BatchRegistry *BatchRegistryTransactorSession) Unpause() (*types.Transact
 	return _BatchRegistry.Contract.Unpause(&_BatchRegistry.TransactOpts)
 }
 
-// UpdateSequencer is a paid mutator transaction binding the contract method 0x43ae20a3.
+// UpdateIndexer is a paid mutator transaction binding the contract method 0x43ae20a3.
 //
-// Solidity: function updateSequencer(address newSequencer) returns()
-func (_BatchRegistry *BatchRegistryTransactor) UpdateSequencer(opts *bind.TransactOpts, newSequencer common.Address) (*types.Transaction, error) {
-	return _BatchRegistry.contract.Transact(opts, "updateSequencer", newSequencer)
+// Solidity: function updateIndexer(address newIndexer) returns()
+func (_BatchRegistry *BatchRegistryTransactor) UpdateIndexer(opts *bind.TransactOpts, newIndexer common.Address) (*types.Transaction, error) {
+	return _BatchRegistry.contract.Transact(opts, "updateIndexer", newIndexer)
 }
 
-// UpdateSequencer is a paid mutator transaction binding the contract method 0x43ae20a3.
+// UpdateIndexer is a paid mutator transaction binding the contract method 0x43ae20a3.
 //
-// Solidity: function updateSequencer(address newSequencer) returns()
-func (_BatchRegistry *BatchRegistrySession) UpdateSequencer(newSequencer common.Address) (*types.Transaction, error) {
-	return _BatchRegistry.Contract.UpdateSequencer(&_BatchRegistry.TransactOpts, newSequencer)
+// Solidity: function updateIndexer(address newIndexer) returns()
+func (_BatchRegistry *BatchRegistrySession) UpdateIndexer(newIndexer common.Address) (*types.Transaction, error) {
+	return _BatchRegistry.Contract.UpdateIndexer(&_BatchRegistry.TransactOpts, newIndexer)
 }
 
-// UpdateSequencer is a paid mutator transaction binding the contract method 0x43ae20a3.
+// UpdateIndexer is a paid mutator transaction binding the contract method 0x43ae20a3.
 //
-// Solidity: function updateSequencer(address newSequencer) returns()
-func (_BatchRegistry *BatchRegistryTransactorSession) UpdateSequencer(newSequencer common.Address) (*types.Transaction, error) {
-	return _BatchRegistry.Contract.UpdateSequencer(&_BatchRegistry.TransactOpts, newSequencer)
+// Solidity: function updateIndexer(address newIndexer) returns()
+func (_BatchRegistry *BatchRegistryTransactorSession) UpdateIndexer(newIndexer common.Address) (*types.Transaction, error) {
+	return _BatchRegistry.Contract.UpdateIndexer(&_BatchRegistry.TransactOpts, newIndexer)
 }
 
 // UpdateVerifier is a paid mutator transaction binding the contract method 0x97fc007c.
@@ -1501,9 +1501,9 @@ func (_BatchRegistry *BatchRegistryFilterer) ParsePaused(log types.Log) (*BatchR
 	return event, nil
 }
 
-// BatchRegistrySequencerUpdatedIterator is returned from FilterSequencerUpdated and is used to iterate over the raw logs and unpacked data for SequencerUpdated events raised by the BatchRegistry contract.
-type BatchRegistrySequencerUpdatedIterator struct {
-	Event *BatchRegistrySequencerUpdated // Event containing the contract specifics and raw log
+// BatchRegistryIndexerUpdatedIterator is returned from FilterIndexerUpdated and is used to iterate over the raw logs and unpacked data for IndexerUpdated events raised by the BatchRegistry contract.
+type BatchRegistryIndexerUpdatedIterator struct {
+	Event *BatchRegistryIndexerUpdated // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -1517,7 +1517,7 @@ type BatchRegistrySequencerUpdatedIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *BatchRegistrySequencerUpdatedIterator) Next() bool {
+func (it *BatchRegistryIndexerUpdatedIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -1526,7 +1526,7 @@ func (it *BatchRegistrySequencerUpdatedIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(BatchRegistrySequencerUpdated)
+			it.Event = new(BatchRegistryIndexerUpdated)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -1541,7 +1541,7 @@ func (it *BatchRegistrySequencerUpdatedIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(BatchRegistrySequencerUpdated)
+		it.Event = new(BatchRegistryIndexerUpdated)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -1557,60 +1557,60 @@ func (it *BatchRegistrySequencerUpdatedIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *BatchRegistrySequencerUpdatedIterator) Error() error {
+func (it *BatchRegistryIndexerUpdatedIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *BatchRegistrySequencerUpdatedIterator) Close() error {
+func (it *BatchRegistryIndexerUpdatedIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// BatchRegistrySequencerUpdated represents a SequencerUpdated event raised by the BatchRegistry contract.
-type BatchRegistrySequencerUpdated struct {
-	OldSequencer common.Address
-	NewSequencer common.Address
+// BatchRegistryIndexerUpdated represents a IndexerUpdated event raised by the BatchRegistry contract.
+type BatchRegistryIndexerUpdated struct {
+	OldIndexer common.Address
+	NewIndexer common.Address
 	Raw          types.Log // Blockchain specific contextual infos
 }
 
-// FilterSequencerUpdated is a free log retrieval operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
+// FilterIndexerUpdated is a free log retrieval operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
 //
-// Solidity: event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer)
-func (_BatchRegistry *BatchRegistryFilterer) FilterSequencerUpdated(opts *bind.FilterOpts, oldSequencer []common.Address, newSequencer []common.Address) (*BatchRegistrySequencerUpdatedIterator, error) {
+// Solidity: event IndexerUpdated(address indexed oldIndexer, address indexed newIndexer)
+func (_BatchRegistry *BatchRegistryFilterer) FilterIndexerUpdated(opts *bind.FilterOpts, oldIndexer []common.Address, newIndexer []common.Address) (*BatchRegistryIndexerUpdatedIterator, error) {
 
-	var oldSequencerRule []interface{}
-	for _, oldSequencerItem := range oldSequencer {
-		oldSequencerRule = append(oldSequencerRule, oldSequencerItem)
+	var oldIndexerRule []interface{}
+	for _, oldIndexerItem := range oldIndexer {
+		oldIndexerRule = append(oldIndexerRule, oldIndexerItem)
 	}
-	var newSequencerRule []interface{}
-	for _, newSequencerItem := range newSequencer {
-		newSequencerRule = append(newSequencerRule, newSequencerItem)
+	var newIndexerRule []interface{}
+	for _, newIndexerItem := range newIndexer {
+		newIndexerRule = append(newIndexerRule, newIndexerItem)
 	}
 
-	logs, sub, err := _BatchRegistry.contract.FilterLogs(opts, "SequencerUpdated", oldSequencerRule, newSequencerRule)
+	logs, sub, err := _BatchRegistry.contract.FilterLogs(opts, "IndexerUpdated", oldIndexerRule, newIndexerRule)
 	if err != nil {
 		return nil, err
 	}
-	return &BatchRegistrySequencerUpdatedIterator{contract: _BatchRegistry.contract, event: "SequencerUpdated", logs: logs, sub: sub}, nil
+	return &BatchRegistryIndexerUpdatedIterator{contract: _BatchRegistry.contract, event: "IndexerUpdated", logs: logs, sub: sub}, nil
 }
 
-// WatchSequencerUpdated is a free log subscription operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
+// WatchIndexerUpdated is a free log subscription operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
 //
-// Solidity: event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer)
-func (_BatchRegistry *BatchRegistryFilterer) WatchSequencerUpdated(opts *bind.WatchOpts, sink chan<- *BatchRegistrySequencerUpdated, oldSequencer []common.Address, newSequencer []common.Address) (event.Subscription, error) {
+// Solidity: event IndexerUpdated(address indexed oldIndexer, address indexed newIndexer)
+func (_BatchRegistry *BatchRegistryFilterer) WatchIndexerUpdated(opts *bind.WatchOpts, sink chan<- *BatchRegistryIndexerUpdated, oldIndexer []common.Address, newIndexer []common.Address) (event.Subscription, error) {
 
-	var oldSequencerRule []interface{}
-	for _, oldSequencerItem := range oldSequencer {
-		oldSequencerRule = append(oldSequencerRule, oldSequencerItem)
+	var oldIndexerRule []interface{}
+	for _, oldIndexerItem := range oldIndexer {
+		oldIndexerRule = append(oldIndexerRule, oldIndexerItem)
 	}
-	var newSequencerRule []interface{}
-	for _, newSequencerItem := range newSequencer {
-		newSequencerRule = append(newSequencerRule, newSequencerItem)
+	var newIndexerRule []interface{}
+	for _, newIndexerItem := range newIndexer {
+		newIndexerRule = append(newIndexerRule, newIndexerItem)
 	}
 
-	logs, sub, err := _BatchRegistry.contract.WatchLogs(opts, "SequencerUpdated", oldSequencerRule, newSequencerRule)
+	logs, sub, err := _BatchRegistry.contract.WatchLogs(opts, "IndexerUpdated", oldIndexerRule, newIndexerRule)
 	if err != nil {
 		return nil, err
 	}
@@ -1620,8 +1620,8 @@ func (_BatchRegistry *BatchRegistryFilterer) WatchSequencerUpdated(opts *bind.Wa
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(BatchRegistrySequencerUpdated)
-				if err := _BatchRegistry.contract.UnpackLog(event, "SequencerUpdated", log); err != nil {
+				event := new(BatchRegistryIndexerUpdated)
+				if err := _BatchRegistry.contract.UnpackLog(event, "IndexerUpdated", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -1642,12 +1642,12 @@ func (_BatchRegistry *BatchRegistryFilterer) WatchSequencerUpdated(opts *bind.Wa
 	}), nil
 }
 
-// ParseSequencerUpdated is a log parse operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
+// ParseIndexerUpdated is a log parse operation binding the contract event 0xcd58b762453bd126b48db83f2cecd464f5281dd7e5e6824b528c09d0482984d6.
 //
-// Solidity: event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer)
-func (_BatchRegistry *BatchRegistryFilterer) ParseSequencerUpdated(log types.Log) (*BatchRegistrySequencerUpdated, error) {
-	event := new(BatchRegistrySequencerUpdated)
-	if err := _BatchRegistry.contract.UnpackLog(event, "SequencerUpdated", log); err != nil {
+// Solidity: event IndexerUpdated(address indexed oldIndexer, address indexed newIndexer)
+func (_BatchRegistry *BatchRegistryFilterer) ParseIndexerUpdated(log types.Log) (*BatchRegistryIndexerUpdated, error) {
+	event := new(BatchRegistryIndexerUpdated)
+	if err := _BatchRegistry.contract.UnpackLog(event, "IndexerUpdated", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log

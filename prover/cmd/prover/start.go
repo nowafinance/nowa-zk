@@ -39,13 +39,13 @@ import (
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start prover service to fetch batches and submit proofs",
-	Long:  `Fetches transaction batches from sequencer API, generates ZK proofs, and submits to smart contract.`,
+	Long:  `Fetches transaction batches from indexer API, generates ZK proofs, and submits to smart contract.`,
 	Run:   start,
 }
 
 var (
 	keysDir            string
-	sequencerURL       string
+	indexerURL       string
 	rpcURL             string
 	contractAddr       string
 	privateKeyHex      string
@@ -55,14 +55,18 @@ var (
 	maxRebuildAttempts int
 	clearHalt          bool
 	testFailure        bool
+	dataDir            string
 )
 
 func init() {
 	// Keys directory (default: ./keys)
 	startCmd.Flags().StringVarP(&keysDir, "keys-dir", "k", "./keys", "")
 
-	// Sequencer API URL (default: http://localhost:8080)
-	startCmd.Flags().StringVarP(&sequencerURL, "sequencer-url", "s", "http://localhost:8080", "")
+	// Data directory (default: ~/.nowa-zk/prover/data)
+	startCmd.Flags().StringVarP(&dataDir, "data-dir", "d", "", "Directory to store prover state database (default: ~/.nowa-zk/prover/data)")
+
+	// Indexer API URL (default: http://localhost:8080)
+	startCmd.Flags().StringVarP(&indexerURL, "indexer-url", "s", "http://localhost:8080", "")
 
 	// Ethereum RPC URL (default: http://localhost:8545)
 	startCmd.Flags().StringVarP(&rpcURL, "rpc-url", "r", "", "Ethereum RPC URL")
@@ -86,7 +90,7 @@ func init() {
 	startCmd.Flags().BoolVar(&testFailure, "test-failure", false, "[TESTING] Intentionally corrupt proof to test error handling")
 }
 
-// Batch represents a batch from sequencer API
+// Batch represents a batch from indexer API
 type Batch struct {
 	Number        uint64        `json:"number"`
 	Hash          string        `json:"hash"`
@@ -96,7 +100,7 @@ type Batch struct {
 	Transactions  []Transaction `json:"transactions"`
 }
 
-// Transaction from sequencer
+// Transaction from indexer
 type Transaction struct {
 	Hash  string      `json:"hash"`
 	From  string      `json:"from"`
@@ -112,7 +116,7 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Set defaults from env if not provided via flags
 	if rpcURL == "" {
-		if envRPCProver := os.Getenv("RPC_PROVER"); envRPCProver != "" {
+		if envRPCProver := os.Getenv("L1_RPC_URL"); envRPCProver != "" {
 			rpcURL = envRPCProver
 		} else if envRPC := os.Getenv("RPC"); envRPC != "" {
 			rpcURL = envRPC
@@ -183,7 +187,7 @@ func start(cmd *cobra.Command, args []string) {
 	log.Println("========================================")
 	log.Println("  ZK Rollup Prover Service")
 	log.Println("========================================")
-	log.Printf("Sequencer API: %s\n", sequencerURL)
+	log.Printf("Indexer API: %s\n", indexerURL)
 	log.Printf("RPC URL: %s\n", rpcURL)
 	log.Printf("Contract: %s\n", contractAddr)
 	log.Printf("Poll interval: %d seconds\n", pollInterval)
@@ -222,12 +226,18 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to instantiate BatchRegistry contract: %v", err)
 	}
 
-	// Initialize storage (use home directory for consistency with keys and deployments)
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("❌ Failed to get home directory: %v", err)
+	// Initialize storage (use home directory for consistency with keys and deployments, unless overridden)
+	var storePath string
+	if dataDir != "" {
+		storePath = dataDir
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("❌ Failed to get home directory: %v", err)
+		}
+		storePath = filepath.Join(homeDir, ".nowa-zk", "prover", "data")
 	}
-	storePath := filepath.Join(homeDir, ".nowa-zk", "prover", "data")
+
 	if err := os.MkdirAll(storePath, 0755); err != nil {
 		log.Fatalf("❌ Failed to create storage directory: %v", err)
 	}
@@ -331,8 +341,8 @@ func start(cmd *cobra.Command, args []string) {
 	log.Println()
 
 	for {
-		// 1. Get the latest batch number from the sequencer
-		latestBatch, err := fetchLatestBatch(sequencerURL)
+		// 1. Get the latest batch number from the indexer
+		latestBatch, err := fetchLatestBatch(indexerURL)
 		if err != nil {
 			log.Printf("⚠️  Failed to fetch latest batch info: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
@@ -356,7 +366,7 @@ func start(cmd *cobra.Command, args []string) {
 		}
 
 		// 4. Fetch the specific batch we want to process
-		batch, err := fetchBatch(sequencerURL, nextBatchNum)
+		batch, err := fetchBatch(indexerURL, nextBatchNum)
 		if err != nil {
 			log.Printf("⚠️  Failed to fetch batch #%d: %v\n", nextBatchNum, err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
@@ -382,11 +392,11 @@ func start(cmd *cobra.Command, args []string) {
 
 		// Generate proof using LOCAL state root as PrevStateRoot
 		log.Println("   🔐 Generating proof...")
-		sequencerAddr := hashAddress(auth.From.Hex())
+		indexerAddr := hashAddress(auth.From.Hex())
 
 		// Use paranoid mode submission (handles proof generation, verification, submission, and rebuild)
 		tx, _, calculatedNewStateRoot, err := submitProofWithParanoidMode(
-			client, auth, contractAddr, batch, ccs, pk, vk, localStateRoot, sequencerAddr,
+			client, auth, contractAddr, batch, ccs, pk, vk, localStateRoot, indexerAddr,
 			store, enableParanoidMode, maxRebuildAttempts, testFailure,
 		)
 
@@ -516,8 +526,8 @@ func connectEthereum(rpcURL, privateKeyHex string) (*ethclient.Client, *bind.Tra
 	return client, auth, nil
 }
 
-func fetchLatestBatch(sequencerURL string) (*Batch, error) {
-	resp, err := http.Get(sequencerURL + "/prover/batch/latest")
+func fetchLatestBatch(indexerURL string) (*Batch, error) {
+	resp, err := http.Get(indexerURL + "/prover/batch/latest")
 	if err != nil {
 		return nil, err
 	}
@@ -540,8 +550,8 @@ func fetchLatestBatch(sequencerURL string) (*Batch, error) {
 	return &batch, nil
 }
 
-func fetchBatch(sequencerURL string, number uint64) (*Batch, error) {
-	url := fmt.Sprintf("%s/prover/batch/%d", sequencerURL, number)
+func fetchBatch(indexerURL string, number uint64) (*Batch, error) {
+	url := fmt.Sprintf("%s/prover/batch/%d", indexerURL, number)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -561,7 +571,7 @@ func fetchBatch(sequencerURL string, number uint64) (*Batch, error) {
 	return &batch, nil
 }
 
-func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, prevStateRoot *big.Int, sequencerAddr *big.Int) (groth16.Proof, witness.Witness, *big.Int, error) {
+func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, prevStateRoot *big.Int, indexerAddr *big.Int) (groth16.Proof, witness.Witness, *big.Int, error) {
 	// Convert batch to circuit witness
 	var circuit circuits.Circuit
 
@@ -617,7 +627,7 @@ func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.Pro
 
 	circuit.BatchNumber = big.NewInt(int64(batch.Number))
 	circuit.Timestamp = big.NewInt(batch.Timestamp)
-	circuit.SequencerAddr = sequencerAddr
+	circuit.IndexerAddr = indexerAddr
 
 	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -724,7 +734,7 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	log.Printf("DEBUG: PublicInputs[2] (NewStateRoot): %s\n", publicInputs[2].String())
 	log.Printf("DEBUG: PublicInputs[3] (BatchNumber): %s\n", publicInputs[3].String())
 	log.Printf("DEBUG: PublicInputs[4] (Timestamp): %s\n", publicInputs[4].String())
-	log.Printf("DEBUG: PublicInputs[5] (Sequencer): %s\n", publicInputs[5].String())
+	log.Printf("DEBUG: PublicInputs[5] (Indexer): %s\n", publicInputs[5].String())
 	log.Printf("DEBUG: Expected BatchNumber: %d\n", batch.Number)
 
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
@@ -1062,7 +1072,7 @@ func submitProofWithParanoidMode(
 	pk groth16.ProvingKey,
 	vk groth16.VerifyingKey,
 	localStateRoot *big.Int,
-	sequencerAddr *big.Int,
+	indexerAddr *big.Int,
 	store *storage.ProverStore,
 	enableParanoid bool,
 	maxRebuilds int,
@@ -1070,7 +1080,7 @@ func submitProofWithParanoidMode(
 ) (*types.Transaction, *types.Receipt, *big.Int, error) {
 
 	// Level 1: Try with initial proof (3 quick retries for network issues)
-	proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
+	proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, indexerAddr)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -1119,7 +1129,7 @@ func submitProofWithParanoidMode(
 		log.Printf("   🔧 Rebuild attempt %d/%d\n", rebuild, maxRebuilds)
 
 		// Regenerate proof
-		proof, publicWitness, calculatedNewStateRoot, err = generateProof(batch, ccs, pk, localStateRoot, sequencerAddr)
+		proof, publicWitness, calculatedNewStateRoot, err = generateProof(batch, ccs, pk, localStateRoot, indexerAddr)
 		if err != nil {
 			log.Printf("   ❌ Proof regeneration failed: %v\n", err)
 			continue

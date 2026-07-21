@@ -31,7 +31,7 @@ Daily operations and maintenance:
 
 System design and technical details:
 
-- **[Data Flow](architecture/data-flow.md)** - How data flows through the system (User → Sequencer → Prover → L1)
+- **[Data Flow](architecture/data-flow.md)** - How data flows through the system (User → Indexer → Prover → L1)
 
 ### 📊 Project
 
@@ -57,7 +57,7 @@ Development tracking:
 ### When Things Go Wrong
 
 1. Check [Troubleshooting Guide](operations/troubleshooting.md) first
-2. Review service logs: `sudo journalctl -u nowa-zk-sequencer -f`
+2. Review service logs: `sudo journalctl -u nowa-zk-indexer -f`
 3. Verify environment variables are loaded correctly
 
 ---

@@ -1,4 +1,4 @@
-package sequencer
+package indexer
 
 import (
 	"encoding/json"
@@ -11,9 +11,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/websocket/v2"
-	_ "github.com/nowafinance/nowa-zk/sequencer/docs" // Swagger docs
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
-	pkgLogger "github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
+	_ "github.com/nowafinance/nowa-zk/indexer/docs" // Swagger docs
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
+	pkgLogger "github.com/nowafinance/nowa-zk/indexer/pkg/logger"
 )
 
 // APIServer provides REST API and WebSocket for the prover
@@ -30,7 +30,7 @@ type APIServer struct {
 func NewAPIServer(store *BatchStore, port int) *APIServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		AppName:               "Nowa-ZK Sequencer",
+		AppName:               "Nowa-ZK Indexer",
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
 	})
@@ -53,14 +53,14 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 }
 
 // Start starts the API server
-// @title Nowa-ZK Sequencer API
+// @title Nowa-ZK Indexer API
 // @version 1.0
-// @description REST API for the Nowa-ZK Rollup Sequencer
+// @description REST API for the Nowa-ZK Rollup Indexer
 // @BasePath /
 func (api *APIServer) Start() error {
 	// Swagger
 	api.app.Get("/swagger/*", swagger.New(swagger.Config{
-		Title:       "Nowa-ZK Sequencer API",
+		Title:       "Nowa-ZK Indexer API",
 		CustomStyle: `.swagger-ui .topbar { display: none }`,
 	}))
 
@@ -132,7 +132,7 @@ func (api *APIServer) handleHealth(c *fiber.Ctx) error {
 }
 
 // handleStatus godoc
-// @Summary Get sequencer status
+// @Summary Get indexer status
 // @Description Returns current status, batch count, and batch data range
 // @Tags Meta
 // @Produce json
@@ -253,7 +253,7 @@ func (api *APIServer) handleWebSocket(c *websocket.Conn) {
 	// Send welcome message
 	welcomeMsg := fiber.Map{
 		"type":    "welcome",
-		"message": "Connected to sequencer WebSocket",
+		"message": "Connected to indexer WebSocket",
 		"time":    time.Now().Unix(),
 	}
 	if err := c.WriteJSON(welcomeMsg); err != nil {

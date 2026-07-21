@@ -2,7 +2,7 @@
 
 ## Overview
 
-The ZK-Sequencer is a critical component of the Nowa-ZK network infrastructure. Security is our top priority, and we take all security vulnerabilities seriously. This document outlines our security policy and procedures.
+The ZK-Indexer is a critical component of the Nowa-ZK network infrastructure. Security is our top priority, and we take all security vulnerabilities seriously. This document outlines our security policy and procedures.
 
 ## Supported Versions
 
@@ -33,7 +33,7 @@ Send details of the vulnerability to our security team:
 Please provide as much information as possible:
 
 - **Type of vulnerability** (e.g., buffer overflow, SQL injection, cross-site scripting)
-- **Component affected** (contracts, sequencer, prover)
+- **Component affected** (contracts, indexer, prover)
 - **Affected versions** or commit hash
 - **Step-by-step instructions** to reproduce the issue
 - **Proof of concept** or exploit code (if available)
@@ -122,7 +122,7 @@ If you're contributing code, please follow these security practices:
 - Run static analysis tools (Slither, Mythril)
 - Get security reviews for critical functions
 
-#### Go Services (Sequencer/Prover)
+#### Go Services (Indexer/Prover)
 - Validate all inputs
 - Use safe integer arithmetic
 - Handle errors explicitly
@@ -226,7 +226,7 @@ For security-related inquiries:
 
 ## Acknowledgments
 
-We thank the security research community for helping keep ZK-Sequencer and the Nowa-ZK network secure.
+We thank the security research community for helping keep ZK-Indexer and the Nowa-ZK network secure.
 
 ---
 

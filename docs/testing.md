@@ -15,7 +15,7 @@ make test
 
 # Verify binaries
 ls -lh build/
-# Should show: sequencer-bin, prover-bin
+# Should show: indexer-bin, prover-bin
 ```
 
 ---
@@ -56,15 +56,15 @@ grep PRIVATE_KEY .env
 
 ---
 
-## 2. Sequencer Testing
+## 2. Indexer Testing
 
 ### Unit Tests
 ```bash
-cd sequencer
+cd indexer
 go test ./... -v
 
 # Specific package
-go test ./internal/sequencer -v
+go test ./internal/indexer -v
 
 # Coverage
 go test ./... -cover -coverprofile=coverage.out
@@ -73,8 +73,8 @@ go tool cover -html=coverage.out
 
 ### Integration Test
 ```bash
-# Start sequencer
-make run-sequencer
+# Start indexer
+make run-indexer
 
 # Test API
 curl http://localhost:8080/health
@@ -101,12 +101,12 @@ lsof -i :8080
 kill -9 <PID>
 
 # Error: "failed to connect to state db"
-rm -rf ~/.nowa-zk/sequencer/data
-make run-sequencer
+rm -rf ~/.nowa-zk/indexer/data
+make run-indexer
 
 # Error: "RPC connection failed"
-# Check RPC_SEQUENCER in .env
-curl -X POST $RPC_SEQUENCER -H "Content-Type: application/json" \
+# Check L2_RPC_URL in .env
+curl -X POST $L2_RPC_URL -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 ```
 
@@ -208,8 +208,8 @@ make anvil
 make deploy
 cat ~/.nowa-zk/deployments.json
 
-# Terminal 3: Sequencer
-make run-sequencer
+# Terminal 3: Indexer
+make run-indexer
 
 # Terminal 4: Prover  
 make run-prover
@@ -279,23 +279,23 @@ ls -lh contracts/src/generated/RollupVerifier.sol
 
 ### Runtime Issues
 
-**Sequencer not creating batches**
+**Indexer not creating batches**
 ```bash
 # Check RPC connection
-curl -X POST $RPC_SEQUENCER -H "Content-Type: application/json" \
+curl -X POST $L2_RPC_URL -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
 # Check transactions in mempool
 curl http://localhost:8080/api/mempool | jq
 
 # Reset state
-rm -rf ~/.nowa-zk/sequencer/data
-make run-sequencer
+rm -rf ~/.nowa-zk/indexer/data
+make run-indexer
 ```
 
 **Prover not processing batches**
 ```bash
-# Check sequencer is running
+# Check indexer is running
 curl http://localhost:8080/health
 
 # Check batches available
@@ -306,13 +306,13 @@ cat ~/.nowa-zk/deployments.json
 # Should match what prover is using
 
 # Manual contract check
-cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $RPC_PROVER
+cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $L1_RPC_URL
 ```
 
 **State root mismatch**
 ```bash
 # Get contract state root
-cast call <CONTRACT_ADDR> "getCurrentStateRoot()" --rpc-url $RPC_PROVER
+cast call <CONTRACT_ADDR> "getCurrentStateRoot()" --rpc-url $L1_RPC_URL
 
 # Reset prover state (WARNING: deletes progress)
 rm -rf ~/.nowa-zk/prover/data
@@ -322,7 +322,7 @@ make run-prover
 **Gas estimation failures**
 ```bash
 # Check wallet has funds
-cast balance <YOUR_ADDRESS> --rpc-url $RPC_PROVER
+cast balance <YOUR_ADDRESS> --rpc-url $L1_RPC_URL
 
 # Increase gas limit in code if needed
 # Or use faster RPC endpoint
@@ -333,7 +333,7 @@ cast balance <YOUR_ADDRESS> --rpc-url $RPC_PROVER
 **Port conflicts**
 ```bash
 # Find process using port
-lsof -i :8080  # Sequencer
+lsof -i :8080  # Indexer
 lsof -i :8081  # Prover API
 lsof -i :8545  # Anvil
 
@@ -344,7 +344,7 @@ kill -9 <PID>
 **RPC timeouts**
 ```bash
 # Test RPC latency
-time curl -X POST $RPC_PROVER -H "Content-Type: application/json" \
+time curl -X POST $L1_RPC_URL -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
 # Use local node or faster endpoint
@@ -355,9 +355,9 @@ time curl -X POST $RPC_PROVER -H "Content-Type: application/json" \
 
 **Corrupted database**
 ```bash
-# Sequencer
-rm -rf ~/.nowa-zk/sequencer/data
-make run-sequencer
+# Indexer
+rm -rf ~/.nowa-zk/indexer/data
+make run-indexer
 
 # Prover (WARNING: loses progress)
 rm -rf ~/.nowa-zk/prover/data
@@ -392,7 +392,7 @@ grep ERROR prover.log
 
 ### State Inspection
 ```bash
-# Check BadgerDB (Sequencer)
+# Check BadgerDB (Indexer)
 # Keys: last_batch_number, batch_<N>, tx_<hash>
 
 # Check BadgerDB (Prover)  
@@ -404,10 +404,10 @@ grep ERROR prover.log
 ### Contract Debugging
 ```bash
 # Get batch info from contract
-cast call <CONTRACT_ADDR> "getBatch(uint256)" <BATCH_NUM> --rpc-url $RPC_PROVER
+cast call <CONTRACT_ADDR> "getBatch(uint256)" <BATCH_NUM> --rpc-url $L1_RPC_URL
 
 # Get total batches
-cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $RPC_PROVER
+cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $L1_RPC_URL
 
 # Check events
 cast logs --address <CONTRACT_ADDR> --from-block <START> --to-block latest
@@ -437,7 +437,7 @@ make test
 
 # Expected: All tests pass
 # contracts: forge test
-# sequencer: go test ./...
+# indexer: go test ./...
 # prover: go test ./...
 ```
 
@@ -449,7 +449,7 @@ make test
 |-----------|---------|---------|
 | All | `make test` | Run all unit tests |
 | Contracts | `cd contracts && forge test` | Contract unit tests |
-| Sequencer | `cd sequencer && go test ./...` | Sequencer unit tests |
+| Indexer | `cd indexer && go test ./...` | Indexer unit tests |
 | Prover | `cd prover && go test ./...` | Prover unit tests |
 | E2E | See section 4 | Full system test |
 | Error Handling | `--test-failure` flag | Test paranoid mode |
@@ -462,7 +462,7 @@ make test
 Before deployment:
 - [ ] `make clean && make setup && make build && make test` passes
 - [ ] Contracts deploy successfully
-- [ ] Sequencer creates batches from transactions
+- [ ] Indexer creates batches from transactions
 - [ ] Prover processes batches and submits proofs
 - [ ] Error handling tested (paranoid mode)
 - [ ] State recovery tested (restart components)

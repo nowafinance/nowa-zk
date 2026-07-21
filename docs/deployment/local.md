@@ -1,6 +1,6 @@
 # Local Development Setup
 
-This guide describes how to set up the **Nowa-ZK Sequencer and Prover** locally for development and testing purposes.
+This guide describes how to set up the **Nowa-ZK Indexer and Prover** locally for development and testing purposes.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ make setup
 ```
 
 This command will:
-1.  Build the **Prover** and **Sequencer** binaries.
+1.  Build the **Prover** and **Indexer** binaries.
 2.  Compile the ZK circuit and run Trusted Setup.
 3.  Generate artifacts in `~/.nowa-zk/keys/`.
 4.  Generate and compile the `RollupVerifier.sol` contract.
@@ -97,7 +97,7 @@ Deploy the contracts to your local chain (or testnet).
 set -a && source .env && set +a
 cd contracts
 mkdir deployments
-forge script script/Deploy.s.sol --rpc-url $RPC_PROVER --broadcast
+forge script script/Deploy.s.sol --rpc-url $L1_RPC_URL --broadcast
 
 # Copy deployment file to home directory so prover can auto-load it
 cp deployments/deployments.json ~/.nowa-zk/deployments.json
@@ -105,11 +105,11 @@ cp deployments/deployments.json ~/.nowa-zk/deployments.json
 cd ..
 ```
 
-### Terminal 3: Start Sequencer
+### Terminal 3: Start Indexer
 
 ```bash
 # Run from project root (reads .env automatically)
-make run-sequencer
+make run-indexer
 ```
 
 ### Terminal 4: Start Prover

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/errors"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/errors"
 	"gopkg.in/yaml.v2"
 )
 
@@ -19,11 +19,11 @@ func LoadFromEnv() (*types.Config, error) {
 	config := types.DefaultConfig()
 
 	// Load RPC URL (required)
-	// Priority: NOWA_ZK_RPC_URL > RPC_SEQUENCER > RPC_URL > RPC
+	// Priority: NOWA_ZK_RPC_URL > L2_RPC_URL > RPC_URL > RPC
 	if nowaZkRpcUrl := os.Getenv("NOWA_ZK_RPC_URL"); nowaZkRpcUrl != "" {
 		config.RPCURL = nowaZkRpcUrl
-	} else if rpcSequencer := os.Getenv("RPC_SEQUENCER"); rpcSequencer != "" {
-		config.RPCURL = rpcSequencer
+	} else if rpcIndexer := os.Getenv("L2_RPC_URL"); rpcIndexer != "" {
+		config.RPCURL = rpcIndexer
 	} else if rpcUrl := os.Getenv("RPC_URL"); rpcUrl != "" {
 		config.RPCURL = rpcUrl
 	} else if rpc := os.Getenv("RPC"); rpc != "" {

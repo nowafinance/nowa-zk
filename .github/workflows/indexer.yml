@@ -1,18 +1,18 @@
-name: Sequencer CI
+name: Indexer CI
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "sequencer/**"
-      - ".github/workflows/sequencer.yml"
+      - "indexer/**"
+      - ".github/workflows/indexer.yml"
   pull_request:
     paths:
-      - "sequencer/**"
-      - ".github/workflows/sequencer.yml"
+      - "indexer/**"
+      - ".github/workflows/indexer.yml"
 
 concurrency:
-  group: sequencer-${{ github.ref }}
+  group: indexer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,14 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: sequencer
+        working-directory: indexer
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24.10"
-          cache-dependency-path: sequencer/go.sum
+          cache-dependency-path: indexer/go.sum
 
       - name: Test
         run: go test -v -race ./...

@@ -17,7 +17,7 @@ interface IVerifier {
      * @param proofA First component of the proof (G1 point)
      * @param proofB Second component of the proof (G2 point)
      * @param proofC Third component of the proof (G1 point)
-     * @param publicInputs Array of public inputs [BatchRoot, PrevStateRoot, NewStateRoot, BatchNumber, Timestamp, SequencerAddr]
+     * @param publicInputs Array of public inputs [BatchRoot, PrevStateRoot, NewStateRoot, BatchNumber, Timestamp, IndexerAddr]
      * @return valid True if the proof is valid, false otherwise
      */
     function verifyProof(

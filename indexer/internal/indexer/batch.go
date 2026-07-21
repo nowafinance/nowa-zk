@@ -1,4 +1,4 @@
-package sequencer
+package indexer
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/smt"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/smt"
 )
 
 // BatchBuilder builds batches from transactions
@@ -316,14 +317,16 @@ func (bb *BatchBuilder) updateStateFromTransaction(tx *rpc.Transaction, blockNum
 
 // computeBatchHash computes the batch hash
 func (bb *BatchBuilder) computeBatchHash(batch *types.Batch) string {
-	data := fmt.Sprintf("%d:%s:%s:%d",
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%d:%s:%s:%d",
 		batch.Number,
 		batch.OldStateRoot,
 		batch.NewStateRoot,
-		batch.Timestamp)
+		batch.Timestamp))
 	for _, tx := range batch.Transactions {
-		data += ":" + tx.Hash
+		sb.WriteString(":")
+		sb.WriteString(tx.Hash)
 	}
-	hash := crypto.Keccak256Hash([]byte(data))
+	hash := crypto.Keccak256Hash([]byte(sb.String()))
 	return hash.Hex()
 }

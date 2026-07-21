@@ -1,6 +1,6 @@
 # Cloud Setup Guide
 
-This guide describes how to deploy the **Nowa-ZK Sequencer and Prover** on a Linux cloud server.
+This guide describes how to deploy the **Nowa-ZK Indexer and Prover** on a Linux cloud server.
 
 ## Prerequisites
 
@@ -97,13 +97,13 @@ forge build
 cd ..
 ```
 
-### Build Sequencer
+### Build Indexer
 
 ```bash
-cd ~/nowa-zk/sequencer
+cd ~/nowa-zk/indexer
 
-# Build sequencer binary
-go build -o ../build/sequencer-bin ./cmd/sequencer
+# Build indexer binary
+go build -o ../build/indexer-bin ./cmd/indexer
 
 cd ..
 ```
@@ -112,7 +112,7 @@ cd ..
 
 ```bash
 # Create directory for persistent data
-sudo mkdir -p /var/lib/nowa-zk/sequencer/state
+sudo mkdir -p /var/lib/nowa-zk/indexer/state
 sudo mkdir -p /var/lib/nowa-zk/prover/keys
 sudo mkdir -p /var/lib/nowa-zk/prover/data
 
@@ -145,13 +145,13 @@ sudo nano /etc/nowa/.env
 ### `/etc/nowa/.env`
 
 ```bash
-RPC_SEQUENCER=http://0.0.0.0:8545
-RPC_PROVER=https://ethereum-sepolia-rpc.publicnode.com
+L2_RPC_URL=http://0.0.0.0:8545
+L1_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 TRAFFIC_GEN_KEY=0xYOUR_TRAFFIC_GEN_PRIVATE_KEY_HERE
 INDEX_FROM_BLOCK=0
 PROVER_API=http://0.0.0.0:8081
-STATE_DB_PATH=/var/lib/nowa-zk/sequencer/state
+STATE_DB_PATH=/var/lib/nowa-zk/indexer/state
 ```
 
 
@@ -183,10 +183,10 @@ cd ~/nowa-zk/contracts
 mkdir -p deployments
 
 # Deploy to L1 (Sepolia/Mainnet)
-forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
+forge script script/Deploy.s.sol:Deploy --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY --broadcast
 
 # Optional: Deploy+Verify contracts on block explorer
-# forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
+# forge script script/Deploy.s.sol:Deploy --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
 
 cd ..
 ```
@@ -196,7 +196,7 @@ cd ..
 > [!NOTE]
 > **Expected Warning**: You may see `Warning: Script contains a transaction to 0x... which does not contain any code.`
 > 
-> This is normal! The deployment script sets your deployer address as the authorized sequencer. Since your address is an EOA (wallet), not a contract, it has no code. Just type `yes` to continue.
+> This is normal! The deployment script sets your deployer address as the authorized indexer. Since your address is an EOA (wallet), not a contract, it has no code. Just type `yes` to continue.
 
 **Save the deployed contract address** - you'll need it for the prover service configuration.
 
@@ -213,12 +213,12 @@ cat ~/nowa-zk/contracts/deployments/deployments.json
 sample output 
 ```
 {
-  "BatchRegistry": "0x6D2B9e370832A54ea26402963d1D7fA9998d6aFA",
-  "GnarkVerifier": "0xff1F31b0c8Af5D8db25734044639316Dfe1513e4",
+  "BatchRegistry": "0xbcCF1fbBD099524f4d57986B80E8A2130e5371fB",
+  "GnarkVerifier": "0xF46f6ecd13F5D2ffAd6d91F134F3A49b6fc48A28",
   "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001",
-  "Sequencer": "0x8AA96ceA21f85b3b83E9FC5dE7e9Cc53223634D9",
-  "StateManager": "0xc0f40402F7ea6140B32871aA2091fe1FcDDc8dF3",
-  "VerifierAdapter": "0xa70b0f3D9976D3B8Cf0ECFf28D282e72d5dB6ac8"
+  "Indexer": "0x8AA96ceA21f85b3b83E9FC5dE7e9Cc53223634D9",
+  "StateManager": "0x94c10873A2d060a3e133C86dfE275694E726c336",
+  "VerifierAdapter": "0x5cfFd99c02eD2Ff1B5c1F421A62D972860e0fC19"
 }
 ```
 
@@ -304,14 +304,14 @@ First, set your username (this only needs to be done once):
 USERNAME=prover
 ```
 
-### Sequencer Service
+### Indexer Service
 
-Create the sequencer service file:
+Create the indexer service file:
 
 ```bash
-sudo tee /etc/systemd/system/nowa-sequencer.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/nowa-indexer.service > /dev/null <<EOF
 [Unit]
-Description=Nowa-ZK Sequencer Service
+Description=Nowa-ZK Indexer Service
 After=network-online.target
 
 [Service]
@@ -319,7 +319,7 @@ User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
 EnvironmentFile=/etc/nowa/.env
-ExecStart=/home/$USERNAME/nowa-zk/build/sequencer-bin start
+ExecStart=/home/$USERNAME/nowa-zk/build/indexer-bin start
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -345,7 +345,7 @@ User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
 EnvironmentFile=/etc/nowa/.env
-ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start --keys-dir /var/lib/nowa-zk/prover/keys
+ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start --keys-dir /var/lib/nowa-zk/prover/keys --data-dir /var/lib/nowa-zk/prover/data
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -364,24 +364,24 @@ EOF
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable nowa-sequencer nowa-prover
+sudo systemctl enable nowa-indexer nowa-prover
 ```
 
-### Start Sequencer
+### Start Indexer
 
 ```bash
-sudo systemctl start nowa-sequencer
+sudo systemctl start nowa-indexer
 ```
 
 **Check Status & Logs:**
 ```bash
-sudo systemctl status nowa-sequencer
-sudo journalctl -u nowa-sequencer -f
+sudo systemctl status nowa-indexer
+sudo journalctl -u nowa-indexer -f
 ```
 
 ### Start Prover
 
-Once the sequencer is running smoothly:
+Once the indexer is running smoothly:
 
 ```bash
 sudo systemctl start nowa-prover
@@ -401,17 +401,17 @@ sudo journalctl -u nowa-prover -f
 
 ```bash
 # Check both services
-sudo systemctl status nowa-sequencer nowa-prover
+sudo systemctl status nowa-indexer nowa-prover
 
 # Follow logs
-sudo journalctl -u nowa-sequencer -f
+sudo journalctl -u nowa-indexer -f
 sudo journalctl -u nowa-prover -f
 ```
 
 ### Test API Endpoints
 
 ```bash
-# Check sequencer status
+# Check indexer status
 curl http://localhost:8080/status
 
 # Check latest batch
@@ -426,7 +426,7 @@ curl http://localhost:8080/batch/latest
 
 ```bash
 # Check logs
-sudo journalctl -u nowa-sequencer -n 50
+sudo journalctl -u nowa-indexer -n 50
 sudo journalctl -u nowa-prover -n 50
 
 # Verify binaries exist
@@ -514,7 +514,7 @@ rm -rf ~/.cache/go-build
 
 ### Nowa-ZK Disk Strategy
 
-Your sequencer state (`/var/lib/nowa-zk`) will grow over time. Options:
+Your indexer state (`/var/lib/nowa-zk`) will grow over time. Options:
 
 | Strategy | Description |
 |----------|-------------|

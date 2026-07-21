@@ -1,11 +1,11 @@
-package sequencer
+package indexer
 
 import (
 	"sync"
 	"time"
 
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
 )
 
 // processBlockRange fetches and processes a range of blocks (up to 100)
@@ -121,7 +121,7 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 		// Check for fetch errors
 		if res.err != nil {
 			logger.Error("🚨 Block %d failed to fetch: %v", blockNum, res.err)
-			logger.Error("⏸️  Sequencer will retry entire range on next poll")
+			logger.Error("⏸️  Indexer will retry entire range on next poll")
 			return false
 		}
 

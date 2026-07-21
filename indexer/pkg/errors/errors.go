@@ -2,7 +2,7 @@ package errors
 
 import "fmt"
 
-// Error represents a sequencer error with context
+// Error represents a indexer error with context
 type Error struct {
 	Code    string
 	Message string

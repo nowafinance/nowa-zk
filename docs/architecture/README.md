@@ -10,7 +10,7 @@ This directory contains comprehensive architecture documentation for the Nowa-ZK
 - **[Storage](./storage.md)** - Data retention and cleanup strategies
 
 ### Components
-- **[Sequencer](./sequencer.md)** - L2 transaction sequencing and batch creation
+- **[Indexer](./indexer.md)** - L2 transaction sequencing and batch creation
 - **[Prover](./prover.md)** - ZK proof generation and L1 submission
 - **[Smart Contracts](./contracts.md)** - L1 verification and state management
 
@@ -22,4 +22,4 @@ This directory contains comprehensive architecture documentation for the Nowa-ZK
 
 - [Deployment Guide](../deployment/cloud.md)
 - [Development Setup](../deployment/local.md)
-- [API Documentation](../../sequencer/README.md)
+- [API Documentation](../../indexer/README.md)

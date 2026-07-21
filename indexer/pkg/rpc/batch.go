@@ -21,8 +21,8 @@ type SubmitBatchProofResponse struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// SubmitBatchProof submits a batch proof to the sequencer contract
-// This is a stub implementation that will be completed when the sequencer contract is ready
+// SubmitBatchProof submits a batch proof to the indexer contract
+// This is a stub implementation that will be completed when the indexer contract is ready
 func (c *Client) SubmitBatchProof(ctx context.Context, proof *BatchProof) (*SubmitBatchProofResponse, error) {
 	// TODO: Implement actual contract interaction
 	// For now, this is a stub that returns an error indicating it's not yet implemented

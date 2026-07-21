@@ -50,11 +50,11 @@ logs/
 **/tmp/
 dir_data 
 
-# --- Sequencer Specific ---
-sequencer/sequencer
-sequencer/sequencer-bin
-sequencer/cmd/sequencer/sequencer
-sequencer/data/
+# --- Indexer Specific ---
+indexer/indexer
+indexer/indexer-bin
+indexer/cmd/indexer/indexer
+indexer/data/
 
 # --- Prover Specific ---
 prover/keys/

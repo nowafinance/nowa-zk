@@ -1,6 +1,6 @@
 # Prover
 
-ZK Prover for Nowa-ZK Sequencer - Generates proofs and submits to smart contract.
+ZK Prover for Nowa-ZK Indexer - Generates proofs and submits to smart contract.
 
 ## Quick Start
 
@@ -36,13 +36,13 @@ Generates proving/verifying keys and exports Solidity verifier contract.
 
 ### Start
 
-Fetches batches from sequencer API, generates proofs, submits to contract.
+Fetches batches from indexer API, generates proofs, submits to contract.
 
 ```bash
 ./prover-bin start --contract 0xABC... --private-key abc123...
 # Options:
 #   -k, --keys-dir string        Keys directory (default: ./keys)
-#   -s, --sequencer-url string   Sequencer API URL (default: http://localhost:8080)
+#   -s, --indexer-url string   Indexer API URL (default: http://localhost:8080)
 #   -r, --rpc-url string         Ethereum RPC URL (default: http://localhost:8545)
 #   -c, --contract string        Contract address (REQUIRED)
 #   -p, --private-key string     Private key for submitting txs (REQUIRED)
@@ -93,7 +93,7 @@ go tool cover -html=coverage.out
 1. **Setup** - Generate keys once
 2. **Deploy** - Deploy `RollupVerifier.sol` to chain
 3. **Start** - Run prover to process batches
-4. Prover polls sequencer API for new batches
+4. Prover polls indexer API for new batches
 5. Generates ZK proof for each batch
 6. Submits proof to smart contract for verification
 

@@ -4,23 +4,23 @@ FROM golang:1.24 AS builder
 WORKDIR /app
 
 # Copy dependency files first for caching
-COPY sequencer/go.mod sequencer/go.sum ./sequencer/
+COPY indexer/go.mod indexer/go.sum ./indexer/
 COPY prover/go.mod prover/go.sum ./prover/
 
 # Download dependencies
-WORKDIR /app/sequencer
+WORKDIR /app/indexer
 RUN go mod download
 WORKDIR /app/prover
 RUN go mod download
 
 # Copy source code
 WORKDIR /app
-COPY sequencer ./sequencer
+COPY indexer ./indexer
 COPY prover ./prover
 
-# Build Sequencer
-WORKDIR /app/sequencer
-RUN CGO_ENABLED=1 GOOS=linux go build -o /app/bin/sequencer ./cmd/sequencer
+# Build Indexer
+WORKDIR /app/indexer
+RUN CGO_ENABLED=1 GOOS=linux go build -o /app/bin/indexer ./cmd/indexer
 
 # Build Prover
 WORKDIR /app/prover
@@ -42,14 +42,14 @@ WORKDIR /app
 RUN mkdir -p /app/data /app/keys /app/config
 
 # Copy binaries from builder
-COPY --from=builder /app/bin/sequencer /usr/local/bin/sequencer
+COPY --from=builder /app/bin/indexer /usr/local/bin/indexer
 COPY --from=builder /app/bin/prover /usr/local/bin/prover
 
 # Expose ports
-# Sequencer API & WebSocket
+# Indexer API & WebSocket
 EXPOSE 8080 8546
 # Prover RPC (if applicable) or metrics
 EXPOSE 9000
 
 # Default entrypoint (can be overridden)
-CMD ["sequencer", "start"]
+CMD ["indexer", "start"]

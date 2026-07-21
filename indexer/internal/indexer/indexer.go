@@ -1,4 +1,4 @@
-package sequencer
+package indexer
 
 import (
 	"context"
@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/errors"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/errors"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
 )
 
-// Service is the main sequencer service
+// Service is the main indexer service
 type Service struct {
 	rpcClient    *rpc.Client
 	wsClient     *rpc.WebSocketClient
@@ -30,7 +30,7 @@ func DefaultConfig() *types.Config {
 	return types.DefaultConfig()
 }
 
-// New creates a new sequencer service
+// New creates a new indexer service
 func New() *Service {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
@@ -40,7 +40,7 @@ func New() *Service {
 	}
 }
 
-// NewWithConfig creates a new sequencer service with custom config
+// NewWithConfig creates a new indexer service with custom config
 func NewWithConfig(config *types.Config) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
@@ -50,9 +50,9 @@ func NewWithConfig(config *types.Config) *Service {
 	}
 }
 
-// Start initializes and starts the sequencer service
+// Start initializes and starts the indexer service
 func (s *Service) Start() error {
-	logger.Info("🚀 Starting ZK Sequencer...")
+	logger.Info("🚀 Starting ZK Indexer...")
 
 	// Initialize RPC client
 	var err error
@@ -132,16 +132,16 @@ func (s *Service) Start() error {
 		logger.Info("🧹 Cleanup job scheduled (queries prover at %s every 5 minutes)", s.config.ProverAPI)
 	}
 
-	logger.Info("✅ ZK Sequencer is running!")
+	logger.Info("✅ ZK Indexer is running!")
 	logger.Info("📡 Listening for new blocks and building batches...")
 	logger.Info("🌐 REST API available at http://localhost:%d", s.config.APIPort)
 
 	return nil
 }
 
-// Stop gracefully stops the sequencer service
+// Stop gracefully stops the indexer service
 func (s *Service) Stop() error {
-	logger.Info("🛑 Stopping ZK Sequencer...")
+	logger.Info("🛑 Stopping ZK Indexer...")
 
 	// Cancel context to stop all goroutines
 	s.cancel()
@@ -177,7 +177,7 @@ func (s *Service) Stop() error {
 
 	select {
 	case <-done:
-		logger.Info("✅ ZK Sequencer stopped")
+		logger.Info("✅ ZK Indexer stopped")
 	case <-time.After(5 * time.Second):
 		logger.Warn("Timeout waiting for goroutines to finish")
 	}
@@ -646,9 +646,9 @@ func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumbe
 // Info returns service information
 func (s *Service) Info() string {
 	if s.batches == nil {
-		return "zk-sequencer initialized (not started)"
+		return "zk-indexer initialized (not started)"
 	}
-	return "zk-sequencer running"
+	return "zk-indexer running"
 }
 
 // initStartingBlock determines the starting block number and persists it to the DB if needed.

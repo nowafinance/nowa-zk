@@ -41,7 +41,7 @@ type Circuit struct {
 	NewStateRoot  frontend.Variable `gnark:",public"` // State root after execution
 	BatchNumber   frontend.Variable `gnark:",public"` // Rollup batch number
 	Timestamp     frontend.Variable `gnark:",public"` // Block timestamp
-	SequencerAddr frontend.Variable `gnark:",public"` // Address of sequencer
+	IndexerAddr frontend.Variable `gnark:",public"` // Address of indexer
 
 	// Private Witness: Transaction batch
 	Transactions [BatchSize]Transaction
@@ -108,9 +108,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// Field constraint: timestamp should be within valid range
 	api.AssertIsLessOrEqual(circuit.Timestamp, 2000000000) // Reasonable Unix timestamp ceiling
 
-	// Ensure sequencer address is non-zero (check that it's not equal to 0)
+	// Ensure indexer address is non-zero (check that it's not equal to 0)
 	// Since AssertIsNotEqual doesn't exist, we use a workaround
-	isZero := api.IsZero(circuit.SequencerAddr)
+	isZero := api.IsZero(circuit.IndexerAddr)
 	api.AssertIsEqual(isZero, 0) // Assert that isZero is false
 
 	return nil

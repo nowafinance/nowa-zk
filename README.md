@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/logo.png" alt="Nowa Logo" width="150" />
-  <h1>Nowa-ZK Sequencer 🚀</h1>
+  <h1>Nowa-ZK: Indexer & Prover 🚀</h1>
   <p><b>⚡ Fast • 🔒 Secure • 🌐 Decentralized</b></p>
 
   [![License](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
@@ -13,13 +13,13 @@
 
 **Nowa-ZK** is a cutting-edge Layer 2 scaling solution leveraging Zero-Knowledge (ZK) proofs to ensure security, scalability, and fast finality. Built on a modular architecture involving Ethereum as Layer 1 and a Cosmos SDK-based EVM as Layer 2, Nowa-ZK offers a high-performance execution environment for decentralized applications.
 
-This repository contains the official implementation of the **ZK-Sequencer**, **Prover**, and **Smart Contracts** for the Nowa-ZK network.
+This repository contains the official implementation of the **Indexer** (formerly ZK-Indexer), **Prover**, and **Smart Contracts** for the Nowa-ZK network.
 
 ---
 
 ## 🌟 Key Features
 
-- **High-Performance Sequencer:** Continuously indexes blocks and batches transactions (128 txs/batch) for efficient proof generation.
+- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches transactions (128 txs/batch) for efficient proof generation.
 - **Succinct ZK Proofs:** Utilizes Groth16 to compress transactions and prove state transitions with minimal L1 footprint (~4KB per batch).
 - **EVM Compatibility:** Built alongside a Cosmos EVM L2, allowing seamless deployment of Ethereum smart contracts.
 - **Fast Finality:** Achieves ~1 second block times on L2 while maintaining Ethereum-grade security.
@@ -30,8 +30,8 @@ This repository contains the official implementation of the **ZK-Sequencer**, **
 
 The system consists of three main operational components contained within this repository:
 
-1. **[Sequencer](./sequencer)**: Acts as the coordinator. It indexes L2 data, builds transaction batches, and provides data availability via a REST/WebSocket API.
-2. **[Prover](./prover)**: The computational engine. It fetches batches from the Sequencer, generates Groth16 Zero-Knowledge proofs, and submits them to L1.
+1. **[Indexer](./indexer)**: Acts as the data bridge coordinator. It indexes L2 data from the decentralized Cosmos Indexer, builds transaction batches, and provides data availability via a REST/WebSocket API.
+2. **[Prover](./prover)**: The computational engine. It fetches batches from the Indexer, generates Groth16 Zero-Knowledge proofs, and submits them to L1.
 3. **[Contracts](./contracts)**: The L1 foundation. Includes the `BatchRegistry` which verifies ZK proofs and manages the canonical L2 state on Ethereum.
 
 For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md)**.
@@ -40,11 +40,12 @@ For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md
 
 ## 🚀 Quick Start Guide
 
-This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
+This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally using our `Makefile`. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
 
 ### Prerequisites
 - **Go**: 1.24.10 or higher
 - **Foundry**: Latest version (for compiling/deploying contracts)
+- **Make**: For running automated setup commands
 - **Git**: To clone the repository
 
 ### 1. Clone & Initialize
@@ -54,69 +55,48 @@ git clone https://github.com/nowafinance/nowa-zk.git
 cd nowa-zk
 ```
 
-### 2. Clean Up (Optional)
-*Run this if you have previously started the system and need a fresh state.*
+### 2. Full Setup
+
+The `setup` command compiles the binaries, runs the Trusted Setup for ZK keys, and generates the `RollupVerifier.sol` contract. All generated files are safely stored in `~/.nowa-zk/`.
 
 ```bash
-# Clear Sequencer Data
-rm -rf sequencer/data/
-
-# Clean Prover Keys & Contracts
-rm -rf prover/keys/
-
-# Clean compiled contracts
-(cd contracts && forge clean)
+make setup
 ```
 
-### 3. Build & Setup Components
+### 3. Deploy Smart Contracts
 
-**Generate Prover Keys & Verifier Contract:**
+Create and edit a `.env` file in the root directory to configure the network connections and provide your deployment private key:
+
 ```bash
-cd prover
-go run ./cmd/prover setup
-cd ..
+nano .env
 ```
 
-**Build Smart Contracts:**
-```bash
-cd contracts
-forge build
-cd ..
+Add the following required keys into the `.env` file:
+```env
+L2_RPC_URL=https://archival-node.nowa.finance
+L1_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 ```
 
-### 4. Deploy Smart Contracts
-
-Create a `.env` file in the `contracts` directory with your `RPC_URL` and `PRIVATE_KEY`.
+Save the file, then deploy the contracts:
 
 ```bash
-cd contracts
+make deploy
+```
+*Note: This command automatically saves your contract deployment addresses to `~/.nowa-zk/deployments.json` so the Prover can find them.*
 
-export RPC_PROVER=https://archival-node.nowa.finance
-# RPC_PROVER=https://ethereum-sepolia-rpc.publicnode.com
-export PRIVATE_KEY=0x.........
+### 4. Start the System
 
-forge script script/Deploy.s.sol:Deploy --rpc-url $RPC_PROVER --private-key $PRIVATE_KEY --broadcast
+The `Makefile` will automatically read your `.env` variables. Open two separate terminals and start the Indexer and Prover:
 
-cd ..
+**Terminal 1 (Start Indexer):**
+```bash
+make run-indexer
 ```
 
-### 5. Start the System
-
-**Start the Sequencer:**
+**Terminal 2 (Start Prover):**
 ```bash
-cd sequencer
-export RPC_URL=https://archival-node.nowa.finance  # Point to your L2 node/RPC
-go run ./cmd/sequencer start
-```
-
-**Start the Prover** *(in a new terminal)*:
-```bash
-cd prover
-export DEPLOYED_CONTRACT_ADDRESS=<DEPLOYED_CONTRACT_ADDRESS> # deployments.json -> BatchRegistry  
-export PRIVATE_KEY=<YOUR_PRIVATE_KEY>
-export RPC_PROVER=https://node1.nowa.finance
-
-go run ./cmd/prover start --contract $DEPLOYED_CONTRACT_ADDRESS --private-key $PRIVATE_KEY
+make run-prover
 ```
 
 ---
@@ -127,11 +107,11 @@ Dive deeper into the Nowa-ZK ecosystem:
 
 - 📄 **[Litepaper](litepaper.md)** - Full architectural and technical overview.
 - 🗺️ **[Roadmap](ROADMAP.md)** - Development milestones and future phases.
-- 🔌 **[API Documentation](docs/api.md)** - Detailed endpoints for Sequencer and Prover interaction.
+- 🔌 **[API Documentation](docs/api.md)** - Detailed endpoints for Indexer and Prover interaction.
 - 🛡️ **[Security Policy](SECURITY.md)** - Vulnerability reporting and security guidelines.
 
 **Component READMEs:**
-- [Sequencer Documentation](sequencer/README.md)
+- [Indexer Documentation](indexer/README.md)
 - [Prover Documentation](prover/README.md)
 - [Smart Contracts Documentation](contracts/README.md)
 

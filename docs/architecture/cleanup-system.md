@@ -2,18 +2,18 @@
 
 ## Overview
 
-The cleanup system optimizes storage by automatically deleting old batch data from the sequencer once batches have been proven and submitted to L1. This prevents unbounded storage growth while ensuring data is available when needed.
+The cleanup system optimizes storage by automatically deleting old batch data from the indexer once batches have been proven and submitted to L1. This prevents unbounded storage growth while ensuring data is available when needed.
 
 ## Problem Statement
 
 **Before Cleanup:**
-- Sequencer stores ALL batches forever
+- Indexer stores ALL batches forever
 - Each batch: ~11 MB (128 full transactions)
 - 100,000 batches = ~1.1 TB storage
 - Redundant data (prover has submitted to L1)
 
 **With Cleanup:**
-- Sequencer deletes proven batches
+- Indexer deletes proven batches
 - Only keeps recent unproven batches
 - **98% storage reduction**
 
@@ -21,7 +21,7 @@ The cleanup system optimizes storage by automatically deleting old batch data fr
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    Sequencer                              │
+│                    Indexer                              │
 │                                                           │
 │  ┌─────────────────────────────────────────────────────┐ │
 │  │  Cleanup Job (runs every 5 minutes)                  │ │
@@ -72,9 +72,9 @@ Returns information about the latest batch proven and submitted to L1.
 }
 ```
 
-### 2. Sequencer Prover Client
+### 2. Indexer Prover Client
 
-**File:** `sequencer/internal/prover/client.go`
+**File:** `indexer/internal/prover/client.go`
 
 HTTP client that queries the prover API:
 
@@ -92,7 +92,7 @@ func (c *Client) GetLatestProvenBatch() (uint64, error) {
 
 ### 3. Cleanup Tracker
 
-**File:** `sequencer/internal/sequencer/store.go`
+**File:** `indexer/internal/indexer/store.go`
 
 Tracks cleanup progress to avoid re-processing:
 
@@ -111,7 +111,7 @@ func (bs *BatchStore) DeleteBatch(batchNum uint64) error
 
 ### 4. Cleanup Logic
 
-**File:** `sequencer/internal/sequencer/cleanup.go`
+**File:** `indexer/internal/indexer/cleanup.go`
 
 Core cleanup algorithm:
 
@@ -141,7 +141,7 @@ func (bs *BatchStore) CleanupOldBatches(proverClient ProverClient) error {
 
 ### 5. Scheduled Job
 
-**File:** `sequencer/internal/sequencer/sequencer.go`
+**File:** `indexer/internal/indexer/indexer.go`
 
 Runs cleanup periodically:
 
@@ -183,7 +183,7 @@ PROVER_API=http://192.168.1.100:8081
 
 ### Initial State
 ```
-Sequencer DB: Batches 1-1000 (all stored)
+Indexer DB: Batches 1-1000 (all stored)
 Prover: Latest proven = 1000 (submitted to L1)
 Tracker: last_deleted = 0
 ```
@@ -233,7 +233,7 @@ The `last_deleted_batch` tracker ensures:
 
 ### 3. Graceful Degradation
 If prover is unavailable:
-- ✅ Sequencer continues operating normally
+- ✅ Indexer continues operating normally
 - ✅ Cleanup logs warning and skips
 - ✅ Retries automatically in 5 minutes
 
@@ -246,14 +246,14 @@ Cleanup only deletes batches **after** L1 submission confirmation from prover.
 
 **Without Cleanup:**
 ```
-Sequencer: 100,000 batches × 11 MB = 1.1 TB
+Indexer: 100,000 batches × 11 MB = 1.1 TB
 Prover:    100,000 batches × 4 KB = 400 MB
 Total:     1.1 TB
 ```
 
 **With Cleanup (98,000 proven):**
 ```
-Sequencer: 2,000 recent batches × 11 MB = 22 GB
+Indexer: 2,000 recent batches × 11 MB = 22 GB
 Prover:    100,000 metadata × 4 KB = 400 MB
 Total:     22.4 GB
 ```
@@ -315,7 +315,7 @@ Shows batch data range:
 
 **Current:** 5 minutes
 
-**Adjust in:** `sequencer/internal/sequencer/sequencer.go`
+**Adjust in:** `indexer/internal/indexer/indexer.go`
 
 ```go
 // Change from 5 minutes to desired value
@@ -366,7 +366,7 @@ for batchNum := lastDeleted + 1; batchNum < latestProven - 10; batchNum++ {
 
 **If missing:**
 - Verify `PROVER_API` is set in `.env`
-- Restart sequencer
+- Restart indexer
 
 ### Prover Connection Issues
 
@@ -386,12 +386,12 @@ for batchNum := lastDeleted + 1; batchNum < latestProven - 10; batchNum++ {
 **Check:**
 1. Is prover actually proving batches? (check prover logs)
 2. Query prover: `curl http://localhost:8081/batches/latest`
-3. Check sequencer `/status` endpoint for `last_deleted`
+3. Check indexer `/status` endpoint for `last_deleted`
 4. Verify cleanup logs show deletion counts
 
 ## Related Documentation
 
 - [Storage Architecture](./storage.md)
-- [Sequencer Details](./sequencer.md)
+- [Indexer Details](./indexer.md)
 - [Prover Details](./prover.md)
 - [Data Flow](./data-flow.md)

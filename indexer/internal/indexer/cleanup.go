@@ -1,10 +1,10 @@
-package sequencer
+package indexer
 
 import (
 	"fmt"
 	"log"
 
-	"github.com/nowafinance/nowa-zk/sequencer/internal/prover"
+	"github.com/nowafinance/nowa-zk/indexer/internal/prover"
 )
 
 // ProverClient interface for easier testing
@@ -26,7 +26,7 @@ func (bs *BatchStore) CleanupOldBatches(proverClient ProverClient) error {
 	if err != nil {
 		// Don't fail if prover is unavailable - just skip cleanup this round
 		log.Printf("⚠️  Cleanup skipped: Unable to reach prover API (%v). Will retry later.", err)
-		return nil // Return nil so sequencer doesn't crash
+		return nil // Return nil so indexer doesn't crash
 	}
 	log.Printf("🧹 Cleanup: Latest proven batch: %d", latestProven)
 
@@ -38,7 +38,7 @@ func (bs *BatchStore) CleanupOldBatches(proverClient ProverClient) error {
 
 	// 3. Delete batches in range (lastDeleted+1 to latestProven-1)
 	// Note: Prover already has all necessary data (tx hashes, metadata, etc.)
-	// So we can completely delete sequencer data without saving metadata
+	// So we can completely delete indexer data without saving metadata
 	deleteCount := 0
 	for batchNum := lastDeleted + 1; batchNum < latestProven; batchNum++ {
 		// Delete batch completely (no metadata save needed)

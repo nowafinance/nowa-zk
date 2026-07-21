@@ -1,8 +1,8 @@
-# Sequencer Data Flow Architecture
+# Indexer Data Flow Architecture
 
 ## Overview
 
-The Nowa-ZK sequencer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size transaction batches.
+The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size transaction batches.
 
 ---
 
@@ -278,7 +278,7 @@ Actions:
 
 ## Code References
 
-- **Main loop:** [`sequencer/internal/sequencer/sequencer.go`](../../sequencer/internal/sequencer/sequencer.go)
-- **Block processing:** [`sequencer/internal/sequencer/process_block_range.go`](../../sequencer/internal/sequencer/process_block_range.go)
-- **Batch building:** [`sequencer/internal/sequencer/batch_builder.go`](../../sequencer/internal/sequencer/batch_builder.go)
-- **Storage:** [`sequencer/internal/storage/store.go`](../../sequencer/internal/storage/store.go)
+- **Main loop:** [`indexer/internal/indexer/indexer.go`](../../indexer/internal/indexer/indexer.go)
+- **Block processing:** [`indexer/internal/indexer/process_block_range.go`](../../indexer/internal/indexer/process_block_range.go)
+- **Batch building:** [`indexer/internal/indexer/batch_builder.go`](../../indexer/internal/indexer/batch_builder.go)
+- **Storage:** [`indexer/internal/storage/store.go`](../../indexer/internal/storage/store.go)

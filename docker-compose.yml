@@ -1,10 +1,10 @@
 services:
 
-  # --- Sequencer Service ---
-  sequencer:
+  # --- Indexer Service ---
+  indexer:
     build: .
-    container_name: nowa-zk-sequencer
-    command: sequencer start --state-db-path /app/data/state
+    container_name: nowa-zk-indexer
+    command: indexer start --state-db-path /app/data/state
     ports:
       - "8080:8080"
     env_file:
@@ -14,7 +14,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./dir_data/sequencer:/app/data
+      - ./dir_data/indexer:/app/data
       - ./.nowa-zk:/app/.nowa-zk
     networks:
       - nowa-zk-net
@@ -24,7 +24,7 @@ services:
   prover:
     build: .
     container_name: nowa-zk-prover
-    command: prover start --sequencer-url http://sequencer:8080 --keys-dir /app/.nowa-zk/keys
+    command: prover start --indexer-url http://indexer:8080 --keys-dir /app/.nowa-zk/keys
     env_file:
       - .env
     extra_hosts:

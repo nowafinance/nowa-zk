@@ -120,8 +120,8 @@ FN:106,BatchRegistry.onlyOwner
 FNDA:0,BatchRegistry.onlyOwner
 DA:107,0
 DA:112,775
-FN:112,BatchRegistry.onlySequencer
-FNDA:775,BatchRegistry.onlySequencer
+FN:112,BatchRegistry.onlyIndexer
+FNDA:775,BatchRegistry.onlyIndexer
 DA:113,775
 DA:118,1
 FN:118,BatchRegistry.whenNotPaused
@@ -134,8 +134,8 @@ DA:125,6
 BRDA:125,0,0,2
 BRDA:125,0,1,4
 DA:129,775
-FN:129,BatchRegistry._onlySequencer
-FNDA:775,BatchRegistry._onlySequencer
+FN:129,BatchRegistry._onlyIndexer
+FNDA:775,BatchRegistry._onlyIndexer
 DA:130,775
 BRDA:130,1,0,1
 BRDA:130,1,1,774
@@ -276,8 +276,8 @@ DA:342,0
 BRDA:342,27,0,-
 DA:344,0
 DA:354,2
-FN:354,BatchRegistry.updateSequencer
-FNDA:2,BatchRegistry.updateSequencer
+FN:354,BatchRegistry.updateIndexer
+FNDA:2,BatchRegistry.updateIndexer
 DA:355,1
 BRDA:355,28,0,-
 BRDA:355,28,1,1

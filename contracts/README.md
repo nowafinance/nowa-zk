@@ -1,6 +1,6 @@
 # Smart Contracts
 
-Solidity contracts for ZK-Sequencer - batch verification and state management.
+Solidity contracts for ZK-Indexer - batch verification and state management.
 
 ## Contracts
 

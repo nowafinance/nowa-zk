@@ -1,9 +1,9 @@
-package sequencer
+package indexer
 
 import (
 	"sync"
 
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
 )
 
 // TransactionPool manages pending transactions

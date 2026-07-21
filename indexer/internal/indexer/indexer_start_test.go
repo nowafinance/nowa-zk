@@ -1,16 +1,16 @@
-package sequencer
+package indexer
 
 import (
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
 )
 
 func TestGetStartingBlock(t *testing.T) {
 	// Setup temporary directory for DB
-	tmpDir, err := os.MkdirTemp("", "sequencer_test_start_block")
+	tmpDir, err := os.MkdirTemp("", "indexer_test_start_block")
 	if err != nil {
 		t.Fatal(err)
 	}

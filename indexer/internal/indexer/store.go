@@ -1,4 +1,4 @@
-package sequencer
+package indexer
 
 import (
 	"encoding/binary"
@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer/types"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
 )
 
 // BatchStore stores batches locally

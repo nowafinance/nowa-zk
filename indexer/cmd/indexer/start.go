@@ -6,9 +6,9 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/nowafinance/nowa-zk/sequencer/internal/sequencer"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/config"
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/logger"
+	"github.com/nowafinance/nowa-zk/indexer/internal/indexer"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/config"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/logger"
 )
 
 var (
@@ -23,10 +23,10 @@ var (
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the sequencer service",
-	Long:  `Start the ZK Sequencer service with optional configuration overrides.`,
+	Short: "Start the indexer service",
+	Long:  `Start the ZK Indexer service with optional configuration overrides.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		logger.Info("🚀 Starting ZK Sequencer...")
+		logger.Info("🚀 Starting ZK Indexer...")
 
 		// Load configuration from env and command-line flags
 		cfg, err := config.LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath, batchSize, apiPort)
@@ -35,9 +35,9 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		// Create sequencer service with config
+		// Create indexer service with config
 		logger.Info("🔧 Config: RPC=%s, BatchSize=%d", cfg.RPCURL, cfg.BatchSize)
-		s := sequencer.NewWithConfig(cfg)
+		s := indexer.NewWithConfig(cfg)
 
 		// Clear all data if --reset flag is set
 		if reset {
@@ -51,11 +51,11 @@ var startCmd = &cobra.Command{
 
 		// Start the service
 		if err := s.Start(); err != nil {
-			logger.Error("Failed to start sequencer: %v", err)
+			logger.Error("Failed to start indexer: %v", err)
 			return err
 		}
 
-		logger.Info("✅ ZK Sequencer started successfully")
+		logger.Info("✅ ZK Indexer started successfully")
 
 		// Wait for interrupt signal
 		sigChan := make(chan os.Signal, 1)
@@ -66,11 +66,11 @@ var startCmd = &cobra.Command{
 
 		// Stop the service gracefully
 		if err := s.Stop(); err != nil {
-			logger.Error("Failed to stop sequencer: %v", err)
+			logger.Error("Failed to stop indexer: %v", err)
 			return err
 		}
 
-		logger.Info("✅ ZK Sequencer stopped gracefully")
+		logger.Info("✅ ZK Indexer stopped gracefully")
 		return nil
 	},
 }

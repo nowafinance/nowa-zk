@@ -56,7 +56,7 @@ func BenchmarkWitnessGeneration(b *testing.B) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -95,7 +95,7 @@ func BenchmarkProofGeneration(b *testing.B) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	// Compile & Setup
 	emptyCircuit := Circuit{}
@@ -140,7 +140,7 @@ func BenchmarkVerification(b *testing.B) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	// Compile, Setup, Prove
 	emptyCircuit := Circuit{}

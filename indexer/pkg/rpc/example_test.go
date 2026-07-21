@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/nowafinance/nowa-zk/sequencer/pkg/rpc"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
 )
 
 func ExampleNewClientFromEnv() {
