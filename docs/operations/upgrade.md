@@ -1,9 +1,9 @@
 # Cloud Upgrade Guide
 
-This guide describes how to upgrade the **Nowa-ZK Sequencer and Prover** running on a cloud server with systemd services.
+This guide describes how to upgrade the **Nowa-ZK Indexer and Prover** running on a cloud server with systemd services.
 
 > [!IMPORTANT]
-> This upgrade process **preserves all chain data**. The sequencer state and prover data will remain intact.
+> This upgrade process **preserves all chain data**. The indexer state and prover data will remain intact.
 
 ---
 
@@ -22,13 +22,13 @@ This guide describes how to upgrade the **Nowa-ZK Sequencer and Prover** running
 Stop the running systemd services to ensure no data corruption during the update.
 
 ```bash
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 ```
 
 Verify they are stopped:
 
 ```bash
-sudo systemctl status nowa-zk-sequencer nowa-zk-prover
+sudo systemctl status nowa-zk-indexer nowa-zk-prover
 ```
 
 ---
@@ -113,13 +113,13 @@ cd ~/nowa-zk/contracts
 cd ..
 ```
 
-#### Rebuild Sequencer
+#### Rebuild Indexer
 
 ```bash
-cd ~/nowa-zk/sequencer
+cd ~/nowa-zk/indexer
 
-# Rebuild sequencer binary
-go build -o ../build/sequencer-bin ./cmd/sequencer
+# Rebuild indexer binary
+go build -o ../build/indexer-bin ./cmd/indexer
 
 cd ..
 ```
@@ -142,7 +142,7 @@ cd ..
 Start the services again. They will pick up the newly built binaries automatically.
 
 ```bash
-sudo systemctl start nowa-zk-sequencer nowa-zk-prover
+sudo systemctl start nowa-zk-indexer nowa-zk-prover
 ```
 
 ---
@@ -152,15 +152,15 @@ sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 Check the logs to ensure everything started correctly and is processing blocks.
 
 ```bash
-# Check Sequencer Logs
-sudo journalctl -u nowa-zk-sequencer -f
+# Check Indexer Logs
+sudo journalctl -u nowa-zk-indexer -f
 
 # Check Prover Logs (in another terminal)
 sudo journalctl -u nowa-zk-prover -f
 ```
 
 **Look for:**
-- ✅ "Sequencer started" or similar startup message
+- ✅ "Indexer started" or similar startup message
 - ✅ Block processing continuing from last height
 - ✅ No error messages
 - ✅ Prover connecting and processing batches
@@ -171,19 +171,19 @@ sudo journalctl -u nowa-zk-prover -f
 
 ```bash
 # Full upgrade workflow
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 cd ~/nowa-zk
 git pull origin main
 
 # Rebuild binaries
-cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
+cd indexer && go build -o ../build/indexer-bin ./cmd/indexer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 
 # Restart services
-sudo systemctl start nowa-zk-sequencer nowa-zk-prover
+sudo systemctl start nowa-zk-indexer nowa-zk-prover
 
 # Monitor
-sudo journalctl -u nowa-zk-sequencer -f
+sudo journalctl -u nowa-zk-indexer -f
 ```
 
 ---
@@ -194,7 +194,7 @@ If the upgrade fails, you can rollback:
 
 ```bash
 # Stop services
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 
 # Revert to previous version
 cd ~/nowa-zk
@@ -202,11 +202,11 @@ git log --oneline -5  # Find previous commit hash
 git checkout <previous-commit-hash>
 
 # Rebuild
-cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
+cd indexer && go build -o ../build/indexer-bin ./cmd/indexer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 
 # Restart
-sudo systemctl start nowa-zk-sequencer nowa-zk-prover
+sudo systemctl start nowa-zk-indexer nowa-zk-prover
 ```
 
 ---
@@ -217,10 +217,10 @@ sudo systemctl start nowa-zk-sequencer nowa-zk-prover
 
 ```bash
 # Check service status
-sudo systemctl status nowa-zk-sequencer nowa-zk-prover
+sudo systemctl status nowa-zk-indexer nowa-zk-prover
 
 # View detailed logs
-sudo journalctl -u nowa-zk-sequencer -n 100
+sudo journalctl -u nowa-zk-indexer -n 100
 sudo journalctl -u nowa-zk-prover -n 100
 
 # Verify binaries were built
@@ -234,11 +234,11 @@ ls -lh ~/nowa-zk/build/
 cd ~/nowa-zk
 
 # Clean Go cache
-cd sequencer && go clean -cache && cd ..
+cd indexer && go clean -cache && cd ..
 cd prover && go clean -cache && cd ..
 
 # Try building again
-cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
+cd indexer && go build -o ../build/indexer-bin ./cmd/indexer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 ```
 
@@ -248,10 +248,10 @@ If you suspect state corruption:
 
 ```bash
 # Stop services
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 
 # Backup state
-sudo cp -r /var/lib/nowa-zk/sequencer/state /var/lib/nowa-zk/sequencer/state.backup
+sudo cp -r /var/lib/nowa-zk/indexer/state /var/lib/nowa-zk/indexer/state.backup
 ```
 
 ---

@@ -6,7 +6,7 @@ import {StateManager} from "./StateManager.sol";
 
 /**
  * @title BatchRegistry
- * @notice Core contract for batch registration and verification in the zk-sequencer system
+ * @notice Core contract for batch registration and verification in the zk-indexer system
  * @dev This contract registers batches of transactions, verifies ZK proofs using IVerifier,
  *      and manages batch state through StateManager. It implements a two-phase commit:
  *      1. Register & Verify (immediate)
@@ -46,8 +46,8 @@ contract BatchRegistry {
     /// @notice Emitted when a batch is finalized
     event BatchFinalized(uint256 indexed batchNumber, bytes32 indexed newStateRoot);
 
-    /// @notice Emitted when sequencer is updated
-    event SequencerUpdated(address indexed oldSequencer, address indexed newSequencer);
+    /// @notice Emitted when indexer is updated
+    event IndexerUpdated(address indexed oldIndexer, address indexed newIndexer);
 
     /// @notice Emitted when ownership is transferred
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -82,8 +82,8 @@ contract BatchRegistry {
     /// @notice Owner address (can be updated to a multisig in the future)
     address public owner;
 
-    /// @notice Authorized sequencer address
-    address public sequencer;
+    /// @notice Authorized indexer address
+    address public indexer;
 
     /// @notice Paused flag to stop batch registration in emergencies
     bool public paused;
@@ -94,9 +94,9 @@ contract BatchRegistry {
         _;
     }
 
-    /// @notice Modifier to restrict access to sequencer
-    modifier onlySequencer() {
-        _onlySequencer();
+    /// @notice Modifier to restrict access to indexer
+    modifier onlyIndexer() {
+        _onlyIndexer();
         _;
     }
 
@@ -111,9 +111,9 @@ contract BatchRegistry {
         require(msg.sender == owner, "BatchRegistry: caller is not the owner");
     }
 
-    /// @notice Internal function to check sequencer
-    function _onlySequencer() internal view {
-        require(msg.sender == sequencer, "BatchRegistry: caller is not the sequencer");
+    /// @notice Internal function to check indexer
+    function _onlyIndexer() internal view {
+        require(msg.sender == indexer, "BatchRegistry: caller is not the indexer");
     }
 
     /// @notice Internal function to check if contract is not paused
@@ -125,17 +125,17 @@ contract BatchRegistry {
      * @notice Constructor initializes the BatchRegistry
      * @param _verifier Address of the IVerifier contract
      * @param _stateManager Address of the StateManager contract
-     * @param _sequencer Address of the authorized sequencer
+     * @param _indexer Address of the authorized indexer
      */
-    constructor(address _verifier, address _stateManager, address _sequencer) {
+    constructor(address _verifier, address _stateManager, address _indexer) {
         require(_verifier != address(0), "BatchRegistry: verifier cannot be zero address");
         require(_stateManager != address(0), "BatchRegistry: stateManager cannot be zero address");
-        require(_sequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
+        require(_indexer != address(0), "BatchRegistry: indexer cannot be zero address");
 
         owner = msg.sender;
         verifier = IVerifier(_verifier);
         STATE_MANAGER = StateManager(_stateManager);
-        sequencer = _sequencer;
+        indexer = _indexer;
         nextBatchNumber = 1;
     }
 
@@ -151,7 +151,7 @@ contract BatchRegistry {
      * @param proofA The first part of the ZK proof (G1 point)
      * @param proofB The second part of the ZK proof (G2 point)
      * @param proofC The third part of the ZK proof (G1 point)
-     * @param publicInputs The public inputs [BatchRoot, PrevStateRoot, NewStateRoot, BatchNumber, Timestamp, SequencerAddr]
+     * @param publicInputs The public inputs [BatchRoot, PrevStateRoot, NewStateRoot, BatchNumber, Timestamp, IndexerAddr]
      *
      * @return batchNumber The assigned batch number
      */
@@ -163,7 +163,7 @@ contract BatchRegistry {
         uint256[2][2] calldata proofB,
         uint256[2] calldata proofC,
         uint256[6] calldata publicInputs
-    ) external onlySequencer whenNotPaused returns (uint256 batchNumber) {
+    ) external onlyIndexer whenNotPaused returns (uint256 batchNumber) {
         // Input validation
         require(batchHash != bytes32(0), "BatchRegistry: batch hash cannot be zero");
         require(newStateRoot != bytes32(0), "BatchRegistry: new state root cannot be zero");
@@ -197,12 +197,12 @@ contract BatchRegistry {
         // publicInputs[2] = NewStateRoot
         // publicInputs[3] = BatchNumber
         // publicInputs[4] = Timestamp
-        // publicInputs[5] = SequencerAddr
+        // publicInputs[5] = IndexerAddr
 
         require(bytes32(publicInputs[2]) == newStateRoot, "BatchRegistry: publicInputs[2] must match newStateRoot");
         require(publicInputs[3] == batchNumber, "BatchRegistry: publicInputs[3] must match batchNumber");
         require(publicInputs[4] <= block.timestamp + 300, "BatchRegistry: timestamp cannot be too far in future");
-        require(publicInputs[5] == uint256(uint160(msg.sender)), "BatchRegistry: sequencer address mismatch");
+        require(publicInputs[5] == uint256(uint160(msg.sender)), "BatchRegistry: indexer address mismatch");
 
         // Verify the ZK proof
         bool proofValid = verifier.verifyProof(proofA, proofB, proofC, publicInputs);
@@ -271,15 +271,15 @@ contract BatchRegistry {
     // ========== Admin Functions ==========
 
     /**
-     * @notice Updates the sequencer address
+     * @notice Updates the indexer address
      * @dev Only callable by owner
-     * @param newSequencer The address of the new sequencer
+     * @param newIndexer The address of the new indexer
      */
-    function updateSequencer(address newSequencer) external onlyOwner {
-        require(newSequencer != address(0), "BatchRegistry: sequencer cannot be zero address");
-        address oldSequencer = sequencer;
-        sequencer = newSequencer;
-        emit SequencerUpdated(oldSequencer, newSequencer);
+    function updateIndexer(address newIndexer) external onlyOwner {
+        require(newIndexer != address(0), "BatchRegistry: indexer cannot be zero address");
+        address oldIndexer = indexer;
+        indexer = newIndexer;
+        emit IndexerUpdated(oldIndexer, newIndexer);
     }
 
     /**

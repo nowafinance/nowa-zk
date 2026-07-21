@@ -12,7 +12,7 @@ echo -e "${BLUE}===============================================${NC}"
 echo ""
 
 # Defined Paths based on Cloud Deployment Guide
-SEQ_STATE_DIR="/var/lib/nowa-zk/sequencer"
+SEQ_STATE_DIR="/var/lib/nowa-zk/indexer"
 PROVER_DIR="/var/lib/nowa-zk/prover"
 USER_CONFIG_DIR="$HOME/.nowa-zk"
 REPO_BUILD_DIR="$HOME/nowa-zk/build"
@@ -36,9 +36,9 @@ measure_dir() {
     echo ""
 }
 
-# 1. Sequencer Storage
+# 1. Indexer Storage
 # This contains the Chain State / DB. This is the main directory that grows "per batch".
-measure_dir "Sequencer Storage (State & DB)" "$SEQ_STATE_DIR"
+measure_dir "Indexer Storage (State & DB)" "$SEQ_STATE_DIR"
 
 # 2. Prover Storage
 # This contains the Proving Keys (large, static) and any generated proof data.
@@ -56,7 +56,7 @@ fi
 
 echo -e "${BLUE}===============================================${NC}"
 echo -e "To measure growth per batch:"
-echo "1. Run this script and note the 'Sequencer Storage' size."
+echo "1. Run this script and note the 'Indexer Storage' size."
 echo "2. Process a batch."
 echo "3. Run this script again and calculate the difference."
 echo -e "${BLUE}===============================================${NC}"

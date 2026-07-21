@@ -1,6 +1,6 @@
-# Contributing to ZK-Sequencer
+# Contributing to ZK-Indexer
 
-Thank you for your interest in contributing to the ZK-Sequencer project! We welcome contributions from the community and are excited to work with you.
+Thank you for your interest in contributing to the ZK-Indexer project! We welcome contributions from the community and are excited to work with you.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ This project adheres to a Code of Conduct that all contributors are expected to 
 ### Prerequisites
 
 Ensure you have the following installed:
-- **Go 1.24.10+** for sequencer and prover
+- **Go 1.24.10+** for indexer and prover
 - **Foundry** (forge, cast, anvil) for smart contracts
 - **Git** for version control
 - **Docker** (optional) for testing
@@ -52,9 +52,9 @@ forge build
 forge test
 ```
 
-#### Sequencer (Go)
+#### Indexer (Go)
 ```bash
-cd sequencer
+cd indexer
 go mod download
 go build ./...
 go test ./...
@@ -158,8 +158,8 @@ Use keywords in your commit message or PR description to automatically close iss
    # Contracts
    cd contracts && forge test
    
-   # Sequencer
-   cd sequencer && go test ./...
+   # Indexer
+   cd indexer && go test ./...
    
    # Prover
    cd prover && go test ./...
@@ -317,9 +317,9 @@ anvil
 # Deploy contracts locally
 forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 
-# Run sequencer locally
-cd sequencer
-go run cmd/sequencer/main.go --config config.local.yaml
+# Run indexer locally
+cd indexer
+go run cmd/indexer/main.go --config config.local.yaml
 ```
 
 ### Debugging
@@ -359,4 +359,4 @@ If you have questions about contributing, please:
 3. Open a GitHub Discussion
 4. Reach out to maintainers
 
-Thank you for contributing to ZK-Sequencer! 🚀
+Thank you for contributing to ZK-Indexer! 🚀

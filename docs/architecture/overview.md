@@ -18,7 +18,7 @@
 ┌─────────────────────────────┴───────────────────────────────┐
 │                         Prover                               │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  • Fetches batches from sequencer                       │ │
+│  │  • Fetches batches from indexer                       │ │
 │  │  • Generates ZK proofs (Groth16)                        │ │
 │  │  • Submits proofs to L1                                 │ │
 │  │  • Stores metadata (tx hashes only, ~4KB per batch)     │ │
@@ -28,7 +28,7 @@
                               │ Fetch batches
                               │ Cleanup queries
 ┌─────────────────────────────┴───────────────────────────────┐
-│                       Sequencer                              │
+│                       Indexer                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  • Indexes L2 blockchain                                │ │
 │  │  • Groups transactions into batches (128 txs)           │ │
@@ -55,7 +55,7 @@
 - **Block Time**: ~1 second
 - **Finality**: Instant soft finality, proven on L1
 
-### Sequencer
+### Indexer
 - **Purpose**: Batch L2 transactions for proving
 - **Batch Size**: 128 transactions per batch
 - **Storage**: Full batch data until L1 finalization
@@ -76,10 +76,10 @@
 ## Data Flow Summary
 
 1. **User** → Submits transaction to **L2 Blockchain**
-2. **Sequencer** → Indexes L2 blocks, groups into batches
+2. **Indexer** → Indexes L2 blocks, groups into batches
 3. **Prover** → Fetches batch, generates proof, submits to L1
 4. **L1 Contract** → Verifies proof, updates state root
-5. **Sequencer** → Queries prover, deletes old batch data (cleanup)
+5. **Indexer** → Queries prover, deletes old batch data (cleanup)
 
 See [Data Flow](./data-flow.md) for detailed transaction lifecycle.
 
@@ -91,23 +91,23 @@ See [Data Flow](./data-flow.md) for detailed transaction lifecycle.
 - Constant L1 verification cost per batch
 
 ### Data Efficiency
-- Sequencer: Stores batches temporarily until proven
+- Indexer: Stores batches temporarily until proven
 - Prover: Only stores metadata (~4KB per batch)
 - Cleanup: Automatic deletion based on L1 finality
 
 ### Security
 - L1 inherits Ethereum security
 - ZK proofs ensure validity
-- No trust in sequencer or prover (verifiable)
+- No trust in indexer or prover (verifiable)
 
 ## Storage Optimization
 
 ### Before Cleanup
-- Sequencer stores all batches (~11MB each)
+- Indexer stores all batches (~11MB each)
 - Storage grows indefinitely
 
 ### With Cleanup System
-- Sequencer deletes batches after L1 finalization
+- Indexer deletes batches after L1 finalization
 - Query prover every 5 minutes for latest proven batch
 - Only keeps recent unproven batches
 - **Result**: ~98% storage reduction
@@ -120,7 +120,7 @@ See [Cleanup System](./cleanup-system.md) for implementation details.
 ```
 L2 Blockchain
     ↓
-Sequencer (single instance)
+Indexer (single instance)
     ↓
 Prover (single instance)
     ↓
@@ -131,7 +131,7 @@ L1 Ethereum
 ```
 L2 Blockchain
     ↓
-Multiple Sequencers (redundancy)
+Multiple Indexers (redundancy)
     ↓
 Prover Pool (load balancing)
     ↓
@@ -143,7 +143,7 @@ L1 Ethereum
 | Component | Technologies |
 |-----------|-------------|
 | L2 Blockchain | Cosmos SDK, EVM module |
-| Sequencer | Go, BadgerDB, Fiber API |
+| Indexer | Go, BadgerDB, Fiber API |
 | Prover | Go, gnark (Groth16), BadgerDB |
 | Smart Contracts | Solidity, Foundry |
 | ZK Circuit | gnark constraint system |
@@ -156,12 +156,12 @@ L1 Ethereum
 | Batch Size | 128 transactions |
 | Proof Generation | ~2-5 minutes per batch |
 | L1 Submission | ~1 transaction per batch |
-| Storage per Batch | Sequencer: 0 (deleted), Prover: 4KB |
+| Storage per Batch | Indexer: 0 (deleted), Prover: 4KB |
 | Cleanup Frequency | Every 5 minutes |
 
 ## Next Steps
 
-- Read [Sequencer Architecture](./sequencer.md)
+- Read [Indexer Architecture](./indexer.md)
 - Read [Prover Architecture](./prover.md)
 - Read [Cleanup System](./cleanup-system.md)
 - Review [Data Flow](./data-flow.md)

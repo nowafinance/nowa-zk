@@ -72,7 +72,7 @@ func TestRollupCircuit(t *testing.T) {
 	circuit.NewStateRoot = expectedNewStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	// Create witness for proving
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -122,7 +122,7 @@ func TestRollupCircuitInvalidRoot(t *testing.T) {
 	circuit.NewStateRoot = expectedNewStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -164,7 +164,7 @@ func TestRollupCircuitInvalidStateRoot(t *testing.T) {
 	circuit.NewStateRoot = wrongStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
@@ -208,7 +208,7 @@ func TestRollupCircuitEmptyBatch(t *testing.T) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(2)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestRollupCircuitInvalidTimestamp(t *testing.T) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = invalidTimestamp
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	require.NoError(t, err)
@@ -294,7 +294,7 @@ func BenchmarkRollupCircuit(b *testing.B) {
 	circuit.NewStateRoot = expectedStateRoot
 	circuit.BatchNumber = big.NewInt(1)
 	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.SequencerAddr = big.NewInt(9999)
+	circuit.IndexerAddr = big.NewInt(9999)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

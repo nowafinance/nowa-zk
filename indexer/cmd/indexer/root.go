@@ -1,0 +1,26 @@
+package main
+
+import (
+	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/nowafinance/nowa-zk/indexer/pkg/logger"
+)
+
+var rootCmd = &cobra.Command{
+	Use:   "indexer",
+	Short: "ZK Indexer for Nowa-ZK network",
+	Long:  `A ZK Indexer service that monitors the Nowa-ZK blockchain, collects transactions, builds batches, and provides APIs.`,
+}
+
+func init() {
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(trafficGenCmd)
+}
+
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		logger.Error("Failed to execute command: %v", err)
+		os.Exit(1)
+	}
+}

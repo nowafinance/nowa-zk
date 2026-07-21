@@ -1,4 +1,4 @@
-# Project Milestones - ZK Sequencer
+# Project Milestones - ZK Indexer
 
 ## Phase 1: Foundation & Infrastructure
 
@@ -7,9 +7,9 @@
 - **Due date**: 2025-11-10
 - **Description**: Initialize repo layout, Hardhat scaffolding, CI, and baseline docs.
 - **Scope**:
-  - Create dirs: contracts, sequencer, prover, docs, docker, scripts, .github/workflows
+  - Create dirs: contracts, indexer, prover, docs, docker, scripts, .github/workflows
   - Initialize Hardhat skeleton in contracts/
-  - Add CI (contracts, sequencer, prover)
+  - Add CI (contracts, indexer, prover)
   - Update README and ROADMAP
 - **Acceptance**:
   - CI jobs green
@@ -59,7 +59,7 @@
 
 ---
 
-## Phase 2: Sequencer Core
+## Phase 2: Indexer Core
 
 ### Milestone 2.1 — Transaction Pool ✅
 - **Status**: COMPLETED
@@ -86,7 +86,7 @@
   - Deterministic batch hash; persisted batches
   - Execution traces compatible with circuit witness format
 
-### Milestone 2.3 — Sequencer Service ✅
+### Milestone 2.3 — Indexer Service ✅
 - **Status**: COMPLETED
 - **Due date**: TBD
 - **Description**: Main loop and lifecycle management.
@@ -155,7 +155,7 @@
   - Concurrent workers
   - ✅ Basic persistence
 - **Acceptance**:
-  - Sequencer → Prover request/response flow reliable
+  - Indexer → Prover request/response flow reliable
 
 
 
@@ -171,7 +171,7 @@
   - docs/ structure complete (getting-started, architecture, api, ops)
   - Quickstart guide tested by external contributor
   - ✅ Cloud setup guide (systemd)
-  - OpenAPI 3.0 spec for sequencer and prover APIs
+  - OpenAPI 3.0 spec for indexer and prover APIs
   - Configuration reference with all env vars
 - **Acceptance**:
   - New contributor can run E2E locally using only docs
@@ -209,14 +209,14 @@
 - **Scope**:
   - Clone and start local Nowa-ZK node (separate repo)
   - Deploy contracts to Nowa-ZK EVM using Foundry
-  - Configure sequencer to connect to Nowa-ZK RPC
-  - Run sequencer+prover; submit 1000 real txs to nowa-zk
+  - Configure indexer to connect to Nowa-ZK RPC
+  - Run indexer+prover; submit 1000 real txs to nowa-zk
   - Generate proof and verify on Nowa-ZK chain
   - scripts/test-e2e.sh to automate entire flow
 - **Acceptance**:
   - Script completes end-to-end without manual intervention
   - Batch verified on-chain on nowa-zk
-  - State roots match between sequencer and nowa-zk
+  - State roots match between indexer and nowa-zk
 
 ### Milestone 5.3 — Monitoring & Observability
 - **Status**: PLANNED
@@ -238,7 +238,7 @@
 - **Description**: Security review and production hardening.
 - **Scope**:
   - Third-party smart contract audit
-  - Security review of sequencer/prover
+  - Security review of indexer/prover
   - Rate limiting and DDoS protection
   - Key management best practices
 - **Acceptance**:
@@ -257,7 +257,7 @@
 - ✅ 1.4 State Synchronization
 - ✅ 2.1 Transaction Pool
 - ✅ 2.2 Batch Builder
-- ✅ 2.3 Sequencer Service
+- ✅ 2.3 Indexer Service
 - ✅ 2.4 REST API
 - ✅ 3.1 Gnark Project Setup
 

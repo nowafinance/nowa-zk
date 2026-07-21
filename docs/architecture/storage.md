@@ -12,7 +12,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
 - **Retention**: Full history (immutable)
 - **Access**: RPC queries
 
-### Sequencer
+### Indexer
 - **Purpose**: Batch staging for proof generation
 - **Technology**: BadgerDB (LSM tree)
 - **Retention**: Recent unproven batches only
@@ -39,7 +39,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Sequencer Batch Creation                                    │
+│  Indexer Batch Creation                                    │
 │  • Full transaction data stored (~11MB per batch)            │
 │  • Kept until proven on L1                                   │
 │  Retention: ~5-10 minutes (until proving)                    │
@@ -62,7 +62,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Sequencer Cleanup                                           │
+│  Indexer Cleanup                                           │
 │  • Deletes batch after L1 confirmation                       │
 │  • Queries prover every 5 minutes                            │
 │  • Keeps only recent unproven batches                        │
@@ -72,7 +72,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
 
 ## Storage Breakdown
 
-### Sequencer Database Schema
+### Indexer Database Schema
 
 **BadgerDB Keys:**
 
@@ -140,7 +140,7 @@ uint256 public latestBatch;
 | Component | Data Type | Retention | Size per Batch |
 |-----------|-----------|-----------|----------------|
 | L2 Blockchain | Full transactions | Forever | N/A (separate system) |
-| Sequencer | Full batch data | Until L1 proven | ~11 MB |
+| Indexer | Full batch data | Until L1 proven | ~11 MB |
 | Prover | Metadata only | Forever | ~4 KB |
 | L1 Contract | State roots | Forever | ~64 bytes |
 
@@ -149,7 +149,7 @@ uint256 public latestBatch;
 See [Cleanup System](./cleanup-system.md) for detailed implementation.
 
 ### Key Points
-- Sequencer deletes batches after L1 proof submission
+- Indexer deletes batches after L1 proof submission
 - Prover queries determine when it's safe to delete
 - Cleanup runs every 5 minutes
 - Tracks progress to avoid re-scanning
@@ -159,14 +159,14 @@ See [Cleanup System](./cleanup-system.md) for detailed implementation.
 ### Write Performance
 | Component | Operation | Latency |
 |-----------|-----------|---------|
-| Sequencer | Save batch | ~10ms |
+| Indexer | Save batch | ~10ms |
 | Prover | Save metadata | ~5ms |
 | L1 Contract | Store state | ~12s (block time) |
 
 ### Read Performance
 | Component | Operation | Latency |
 |-----------|-----------|---------|
-| Sequencer | Get batch | ~5ms |
+| Indexer | Get batch | ~5ms |
 | Prover | Get metadata | ~3ms |
 | L1 Contract | Read state | ~100ms (RPC) |
 
@@ -187,7 +187,7 @@ With cleanup (keeping 2-3 hours):
 
 ### Current Implementation
 - No archival layer (L2 blockchain is source of truth)
-- Sequencer deletes proven batches
+- Indexer deletes proven batches
 - Prover keeps lightweight metadata
 
 ### Future Options
@@ -209,20 +209,20 @@ With cleanup (keeping 2-3 hours):
 
 ## Disaster Recovery
 
-### Sequencer Recovery
-1. Restart sequencer → reads `last_processed_block`
+### Indexer Recovery
+1. Restart indexer → reads `last_processed_block`
 2. Resumes from last checkpoint
 3. Rebuilds incomplete batch from DB
 4. Continues processing
 
 ### Prover Recovery
 1. Restart prover → reads `last_processed_batch`
-2. Queries sequencer for next batch
+2. Queries indexer for next batch
 3. Continues proving from checkpoint
 4. No data loss (L1 is source of truth)
 
 ### Complete Data Loss
-**Sequencer:**
+**Indexer:**
 - Can rebuild from L2 blockchain (source of truth)
 - Query L2 RPC for historical blocks
 - Recreate batches deterministically
@@ -236,7 +236,7 @@ With cleanup (keeping 2-3 hours):
 
 ### BadgerDB Tuning
 
-**Sequencer:**
+**Indexer:**
 ```go
 opts := badger.DefaultOptions(path)
 opts.ValueLogFileSize = 256 << 20  // 256MB (large batches)
@@ -254,18 +254,18 @@ opts.NumCompactors = 2
 ## Monitoring
 
 ### Key Metrics
-- Sequencer DB size
+- Indexer DB size
 - Prover DB size
 - Batches deleted per cleanup run
 - Cleanup duration
 - Storage growth rate
 
 ### Alerts
-- Sequencer DB > 500GB (cleanup may be failing)
+- Indexer DB > 500GB (cleanup may be failing)
 - Prover DB > 10GB (unexpected for metadata)
 - Cleanup failing for > 30 minutes
 
 ## Related Documentation
 - [Cleanup System](./cleanup-system.md)
-- [Sequencer Architecture](./sequencer.md)
+- [Indexer Architecture](./indexer.md)
 - [Prover Architecture](./prover.md)

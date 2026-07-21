@@ -1,6 +1,6 @@
 # 🐳 Docker Setup Guide
 
-This guide describes how to run the **nowa-zk** system (Sequencer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Sepolia, or any EVM-compatible chain).
+This guide describes how to run the **nowa-zk** system (Indexer & Prover) using Docker, connecting to an **external blockchain network** (e.g., Sepolia, or any EVM-compatible chain).
 
 ---
 
@@ -129,7 +129,7 @@ cd ..
 
 ### 5. Start Docker Services
 
-Start the Sequencer and Prover containers:
+Start the Indexer and Prover containers:
 
 ```bash
 docker compose up -d
@@ -137,7 +137,7 @@ docker compose up -d
 
 This will:
 - Build Docker images for both services
-- Start the Sequencer on port `8080`
+- Start the Indexer on port `8080`
 - Start the Prover service
 - Automatically load configuration from `.env`
 
@@ -158,8 +158,8 @@ docker compose ps
 ### View Logs
 
 ```bash
-# Follow sequencer logs
-docker compose logs -f sequencer
+# Follow indexer logs
+docker compose logs -f indexer
 
 # Follow prover logs
 docker compose logs -f prover
@@ -170,10 +170,10 @@ docker compose logs -f
 
 ### Test API Endpoints
 
-The Sequencer API is exposed on port **8080**:
+The Indexer API is exposed on port **8080**:
 
 ```bash
-# Check sequencer status
+# Check indexer status
 curl http://localhost:8080/status
 
 # Check latest batch
@@ -234,14 +234,14 @@ docker compose stats
 *   Verify `keys/` directory exists with `.pk` and `.vk` files
 *   Check that docker-compose mounts keys correctly
 
-### Sequencer not processing blocks
+### Indexer not processing blocks
 
 ```bash
 # Check logs for errors
-docker compose logs sequencer | grep -i error
+docker compose logs indexer | grep -i error
 
 # Verify RPC connection
-docker compose exec sequencer curl -X POST $RPC \
+docker compose exec indexer curl -X POST $RPC \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 ```

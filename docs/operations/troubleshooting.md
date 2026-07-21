@@ -50,7 +50,7 @@ RPC=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
 PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
 INDEX_FROM_BLOCK=0
 ETHERSCAN_API_KEY=YOUR_KEY
-STATE_DB_PATH=/var/lib/nowa-zk/sequencer/state
+STATE_DB_PATH=/var/lib/nowa-zk/indexer/state
 ```
 
 **Common mistakes:**
@@ -79,7 +79,7 @@ You must regenerate keys AND redeploy contracts:
 
 ```bash
 # 1. Stop services
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 
 # 2. Navigate to project
 cd ~/nowa-zk
@@ -118,7 +118,7 @@ sudo nano /etc/systemd/system/nowa-zk-prover.service
 
 # 10. Restart
 sudo systemctl daemon-reload
-sudo systemctl start nowa-zk-sequencer nowa-zk-prover
+sudo systemctl start nowa-zk-indexer nowa-zk-prover
 ```
 
 > [!WARNING]
@@ -201,11 +201,11 @@ sudo journalctl -u nowa-zk-prover -f
 
 ## Service Not Starting
 
-### Sequencer Won't Start
+### Indexer Won't Start
 
 **Check logs:**
 ```bash
-sudo journalctl -u nowa-zk-sequencer -n 50
+sudo journalctl -u nowa-zk-indexer -n 50
 ```
 
 **Common issues:**
@@ -331,11 +331,11 @@ sudo rm -rf /var/lib/nowa-zk/prover/data/*
 ```bash
 # Clear Go cache
 cd ~/nowa-zk
-cd sequencer && go clean -cache && go mod tidy && cd ..
+cd indexer && go clean -cache && go mod tidy && cd ..
 cd prover && go clean -cache && go mod tidy && cd ..
 
 # Rebuild
-cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer && cd ..
+cd indexer && go build -o ../build/indexer-bin ./cmd/indexer && cd ..
 cd prover && go build -o ../build/prover-bin ./cmd/prover && cd ..
 ```
 
@@ -394,7 +394,7 @@ If you encounter an issue not covered here:
 
 1. **Check service logs:**
    ```bash
-   sudo journalctl -u nowa-zk-sequencer -f
+   sudo journalctl -u nowa-zk-indexer -f
    sudo journalctl -u nowa-zk-prover -f
    ```
 
@@ -412,5 +412,5 @@ If you encounter an issue not covered here:
 
 4. **Check all services:**
    ```bash
-   sudo systemctl status nowa-zk-sequencer nowa-zk-prover
+   sudo systemctl status nowa-zk-indexer nowa-zk-prover
    ```

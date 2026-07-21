@@ -1,12 +1,12 @@
 # Prover-RS (Rust ZK Prover)
 
-> **Status**: 🚧 Planned for 2026
+> **Status**: 🚧 Planned for 2027
 
-This directory is reserved for the future Rust implementation of the ZK prover for the ZK-Sequencer project.
+This directory is reserved for the future Rust implementation of the ZK prover for the ZK-Indexer project.
 
 ## Overview
 
-The ZK-Sequencer currently uses a **Go-based prover** built with [Gnark](https://github.com/Consensys/gnark) (see [`../prover/`](../prover/)). This Rust implementation will serve as an alternative, high-performance prover implementation planned for development in 2026.
+The ZK-Indexer currently uses a **Go-based prover** built with [Gnark](https://github.com/Consensys/gnark) (see [`../prover/`](../prover/)). This Rust implementation will serve as an alternative, high-performance prover implementation planned for development in 2027.
 
 ## Motivation
 
@@ -21,14 +21,14 @@ The ZK-Sequencer currently uses a **Go-based prover** built with [Gnark](https:/
 ### Goals
 
 - **Performance Parity**: Match or exceed Go prover performance
-- **API Compatibility**: Maintain compatibility with existing sequencer interface
+- **API Compatibility**: Maintain compatibility with existing indexer interface
 - **Modularity**: Allow switching between Go and Rust provers
 - **Optimization**: Leverage Rust's performance characteristics for proof generation
 
 ## Timeline
 
 - **2025**: Go prover (Gnark) - Current implementation
-- **2026**: Rust prover - Planned implementation
+- **2027**: Rust prover - Planned implementation
 - **Future**: Potential for both implementations to coexist
 
 ## Planned Technology Stack
@@ -45,7 +45,7 @@ The ZK-Sequencer currently uses a **Go-based prover** built with [Gnark](https:/
 - **Circuit Compatibility**: Ensure circuits can be shared or translated between Go and Rust
 - **Witness Generation**: Efficient witness data processing
 - **Proof Generation**: Optimized proof computation
-- **Integration**: Seamless integration with existing sequencer service
+- **Integration**: Seamless integration with existing indexer service
 
 ## Current Status
 
@@ -55,7 +55,7 @@ The Go prover in [`../prover/`](../prover/) is the current active implementation
 
 ## Future Development
 
-When development begins in 2026, this directory will contain:
+When development begins in 2027, this directory will contain:
 
 - Rust project structure (Cargo.toml, src/, etc.)
 - Circuit implementations
@@ -67,13 +67,13 @@ When development begins in 2026, this directory will contain:
 ## Related Documentation
 
 - **Go Prover**: See [`../prover/README.md`](../prover/README.md)
-- **Sequencer**: See [`../sequencer/README.md`](../sequencer/README.md)
+- **Indexer**: See [`../indexer/README.md`](../indexer/README.md)
 - **Project Roadmap**: See [`../ROADMAP.md`](../ROADMAP.md)
 - **Milestones**: See [`../docs/milestone.md`](../docs/milestone.md)
 
 ## Contributing
 
-This project is not yet accepting contributions for the Rust prover. Once development begins in 2026, please refer to the main [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+This project is not yet accepting contributions for the Rust prover. Once development begins in 2027, please refer to the main [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
 ## Questions?
 
@@ -85,5 +85,5 @@ For questions about the Rust prover plans or timeline, please:
 ---
 
 **Last Updated**: November 2025  
-**Planned Start**: 2026
+**Planned Start**: 2027
 

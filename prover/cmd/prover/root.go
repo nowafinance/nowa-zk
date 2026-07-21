@@ -8,8 +8,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "prover",
-	Short: "ZK Sequencer for Nowa-ZK network",
-	Long:  `A ZK Sequencer service that monitors the Nowa-ZK blockchain, collects transactions, builds batches, and provides APIs.`,
+	Short: "ZK Indexer for Nowa-ZK network",
+	Long:  `A ZK Indexer service that monitors the Nowa-ZK blockchain, collects transactions, builds batches, and provides APIs.`,
 }
 
 func init() {

@@ -1,0 +1,33 @@
+name: Indexer CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "indexer/**"
+      - ".github/workflows/indexer.yml"
+  pull_request:
+    paths:
+      - "indexer/**"
+      - ".github/workflows/indexer.yml"
+
+concurrency:
+  group: indexer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.10"
+          cache-dependency-path: indexer/go.sum
+
+      - name: Test
+        run: go test -v -race ./...

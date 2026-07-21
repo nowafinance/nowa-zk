@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 /**
  * @title StateManager
- * @notice Manages state root storage, updates, and validation for the zk-sequencer system
+ * @notice Manages state root storage, updates, and validation for the zk-indexer system
  * @dev This contract handles the storage and retrieval of state roots, which represent
  *      the Merkle root of the entire system state at a given point in time. State roots
  *      are updated when batches are processed and verified.

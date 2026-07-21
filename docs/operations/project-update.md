@@ -20,7 +20,7 @@ Use this guide when:
 
 ```bash
 # 1. Stop both services
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 
 # 2. Navigate to project
 cd ~/nowa-zk
@@ -80,7 +80,7 @@ find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
 
 # 10. Reload systemd and restart both services
 sudo systemctl daemon-reload
-sudo systemctl start nowa-zk-sequencer nowa-zk-prover
+sudo systemctl start nowa-zk-indexer nowa-zk-prover
 
 # 11. Monitor (check that prover uses new contract and starts from batch 0)
 sudo journalctl -u nowa-zk-prover -f
@@ -115,14 +115,14 @@ fi
 
 # --- 1. Stop Services ---
 echo "🛑 Stopping services..."
-sudo systemctl stop nowa-zk-sequencer nowa-zk-prover
+sudo systemctl stop nowa-zk-indexer nowa-zk-prover
 
 # --- 2. Cleanup Data (Reset Database) ---
 echo "🧹 Cleaning up old data..."
-# Clear Sequencer State
-if [ -d "/var/lib/nowa-zk/sequencer/state" ]; then
-    sudo rm -rf /var/lib/nowa-zk/sequencer/state/*
-    echo "   - Sequencer state cleared"
+# Clear Indexer State
+if [ -d "/var/lib/nowa-zk/indexer/state" ]; then
+    sudo rm -rf /var/lib/nowa-zk/indexer/state/*
+    echo "   - Indexer state cleared"
 fi
 # Clear Prover Data/Keys
 if [ -d "/var/lib/nowa-zk/prover" ]; then
@@ -139,7 +139,7 @@ git pull origin main
 # Clean old artifacts
 cd prover
 go clean
-cd ../sequencer
+cd ../indexer
 go clean
 cd ../contracts
 forge clean
@@ -162,8 +162,8 @@ cd ..
 
 # Build Go binaries
 echo "🏗️  Building binaries..."
-cd sequencer
-go build -o ../build/sequencer-bin ./cmd/sequencer
+cd indexer
+go build -o ../build/indexer-bin ./cmd/indexer
 cd ../prover
 go build -o ../build/prover-bin ./cmd/prover
 cd ..
@@ -203,14 +203,14 @@ echo "✅ Deleted prover database"
 # --- 6. Restart Services ---
 echo "✅ Restarting services..."
 sudo systemctl daemon-reload
-sudo systemctl start nowa-zk-sequencer
+sudo systemctl start nowa-zk-indexer
 sudo systemctl start nowa-zk-prover
 
 echo "🎉 Reset Complete!"
 echo "Check status:"
-echo "  sudo systemctl status nowa-zk-sequencer"
+echo "  sudo systemctl status nowa-zk-indexer"
 echo "  sudo systemctl status nowa-zk-prover"
-echo "  sudo journalctl -u nowa-zk-sequencer -f"
+echo "  sudo journalctl -u nowa-zk-indexer -f"
 echo "  sudo journalctl -u nowa-zk-prover -f"
 ```
 
@@ -244,7 +244,7 @@ chmod +x ~/reset-nowa-zk.sh
 
 ### 3. Service Configuration
 - Prover must point to the NEW contract address
-- Sequencer continues with same config
+- Indexer continues with same config
 - Keys must be copied to persistent storage
 
 ---

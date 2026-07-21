@@ -10,7 +10,7 @@ import {VerifierAdapter} from "../src/VerifierAdapter.sol";
 
 /**
  * @title Deploy
- * @notice Foundry deployment script for zk-sequencer contracts
+ * @notice Foundry deployment script for zk-indexer contracts
  * @dev Usage:
  *      Localhost:
  *        forge script script/Deploy.s.sol:Deploy --rpc-url http://localhost:8545 --broadcast -vvvv
@@ -22,7 +22,7 @@ import {VerifierAdapter} from "../src/VerifierAdapter.sol";
  *        - PRIVATE_KEY: Deployer private key
  *        - INITIAL_STATE_ROOT (optional): Custom initial state root
  *        - FINALIZATION_DELAY (optional): Custom finalization delay in seconds
- *        - SEQUENCER_ADDRESS (optional): Custom sequencer address (defaults to deployer)
+ *        - INDEXER_ADDRESS (optional): Custom indexer address (defaults to deployer)
  */
 contract Deploy is Script {
     // Deployment addresses
@@ -33,7 +33,7 @@ contract Deploy is Script {
 
     // Configuration
     bytes32 public initialStateRoot;
-    address public sequencerAddress;
+    address public indexerAddress;
 
     // Default values
     bytes32 public constant DEFAULT_INITIAL_STATE_ROOT =
@@ -53,8 +53,8 @@ contract Deploy is Script {
         }
         address deployer = vm.addr(deployerPrivateKey);
 
-        // Default sequencer to deployer if not specified
-        sequencerAddress = vm.envOr("SEQUENCER_ADDRESS", deployer);
+        // Default indexer to deployer if not specified
+        indexerAddress = vm.envOr("INDEXER_ADDRESS", deployer);
 
         console.log("=== Deployment Configuration ===");
         console.log("Deployer:", deployer);
@@ -68,7 +68,7 @@ contract Deploy is Script {
         console.log("Chain ID:", block.chainid);
         console.log("Initial State Root:", vm.toString(initialStateRoot));
 
-        console.log("Sequencer:", sequencerAddress);
+        console.log("Indexer:", indexerAddress);
         console.log("");
     }
 
@@ -101,7 +101,7 @@ contract Deploy is Script {
         // Step 3: Deploy BatchRegistry
         console.log("3. Deploying BatchRegistry...");
         // Note: We pass 0 as finalizationDelay because ZK rollups finalize immediately
-        batchRegistry = new BatchRegistry(address(verifierAdapter), address(stateManager), sequencerAddress);
+        batchRegistry = new BatchRegistry(address(verifierAdapter), address(stateManager), indexerAddress);
         console.log("   BatchRegistry deployed at:", address(batchRegistry));
         console.log("");
 
@@ -145,7 +145,7 @@ contract Deploy is Script {
         // Verify BatchRegistry
         require(address(batchRegistry.STATE_MANAGER()) == address(stateManager), "BatchRegistry STATE_MANAGER mismatch");
         require(address(batchRegistry.verifier()) == address(verifierAdapter), "BatchRegistry verifier mismatch");
-        require(batchRegistry.sequencer() == sequencerAddress, "Sequencer not set correctly");
+        require(batchRegistry.indexer() == indexerAddress, "Indexer not set correctly");
         require(batchRegistry.nextBatchNumber() == 1, "Next batch number should be 1");
         require(!batchRegistry.paused(), "BatchRegistry should not be paused");
         console.log("  BatchRegistry: OK");
@@ -164,8 +164,8 @@ contract Deploy is Script {
         vm.serializeAddress(json, "GnarkVerifier", address(gnarkVerifier));
         vm.serializeAddress(json, "VerifierAdapter", address(verifierAdapter));
         vm.serializeAddress(json, "BatchRegistry", address(batchRegistry));
-        vm.serializeAddress(json, "Sequencer", sequencerAddress);
-        vm.serializeAddress(json, "Sequencer", sequencerAddress);
+        vm.serializeAddress(json, "Indexer", indexerAddress);
+        vm.serializeAddress(json, "Indexer", indexerAddress);
 
         string memory finalJson = vm.serializeBytes32(json, "InitialStateRoot", initialStateRoot);
 

@@ -1,13 +1,13 @@
 # Nowa-ZK Project Makefile
 
-.PHONY: all clean setup build test anvil deploy-local run-sequencer run-prover help check-batch
+.PHONY: all clean-artifacts setup build test anvil deploy-local run-indexer run-prover help check-batch
 
 # Default target: Full fresh setup and test
-all: clean setup build test
+all: clean-artifacts setup build test
 
 # Default target for CI dependencies
 deps:
-	@cd sequencer && go mod download
+	@cd indexer && go mod download
 	@cd prover && go mod download
 	@make install-swag
 
@@ -17,13 +17,23 @@ install-swag:
 
 # --- 1. Clean ---
 
-clean:
-	@echo "🧹 Cleaning up..."
+clean-artifacts:
+	@echo "🧹 Cleaning build artifacts..."
 	@cd contracts && forge clean && rm -rf broadcast/ cache/ deployments/ out/ src/generated/
-	@cd sequencer && go clean
+	@cd indexer && go clean
 	@cd prover && go clean
 	@rm -rf build/
+
+clean-data:
+	@echo "🗑️  Clearing databases (Indexer & Prover)..."
+	@rm -rf ~/.nowa-zk/indexer/data
+	@rm -rf ~/.nowa-zk/prover/data
+	@echo "✅ Databases cleared! (Keys and deployments were kept)"
+
+clean-global: clean-artifacts
+	@echo "💥 Wiping all global configurations, keys, and data..."
 	@rm -rf ~/.nowa-zk/
+	@echo "✅ Global state wiped!"
 
 # --- 2. Setup (Keys & Verifier) ---
 
@@ -34,13 +44,13 @@ setup: install-swag swagger swagger-prover build-prover
 	@./build/prover-bin setup --output-dir ~/.nowa-zk/keys --contract-output contracts/src/generated
 	@echo "📝 Formatting generated contract..."
 	@cd contracts && forge fmt src/generated/RollupVerifier.sol
-	@echo "🏗️  Building Sequencer & Contracts..."
-	@$(MAKE) build-sequencer
+	@echo "🏗️  Building Indexer & Contracts..."
+	@$(MAKE) build-indexer
 	@$(MAKE) build-contracts
 
 # --- 3. Build ---
 
-build: install-swag swagger swagger-prover build-prover build-contracts build-sequencer
+build: install-swag swagger swagger-prover build-prover build-contracts build-indexer
 
 build-prover:
 	@echo "🏗️  Building Prover..."
@@ -52,29 +62,29 @@ build-contracts:
 	@cd contracts && forge build
 
 swagger:
-	@echo "📜 Generating Sequencer Swagger Docs..."
-	@cd sequencer && $(HOME)/go/bin/swag init -g internal/sequencer/api.go --output docs --parseDependency --parseInternal
+	@echo "📜 Generating Indexer Swagger Docs..."
+	@cd indexer && $(HOME)/go/bin/swag init -g internal/indexer/api.go --output docs --parseDependency --parseInternal
 
 swagger-prover:
 	@echo "📜 Generating Prover Swagger Docs..."
 	@cd prover && $(HOME)/go/bin/swag init -g internal/api/server.go --output docs --parseDependency --parseInternal
 
-build-sequencer:
-	@echo "🏗️  Building Sequencer..."
+build-indexer:
+	@echo "🏗️  Building Indexer..."
 	@mkdir -p build
-	@cd sequencer && go build -o ../build/sequencer-bin ./cmd/sequencer
+	@cd indexer && go build -o ../build/indexer-bin ./cmd/indexer
 
 # --- 4. Test ---
 
-test: test-contracts test-sequencer test-prover
+test: test-contracts test-indexer test-prover
 
 test-contracts:
 	@echo "🧪 Testing Contracts..."
 	@cd contracts && forge test
 
-test-sequencer:
-	@echo "🧪 Testing Sequencer..."
-	@cd sequencer && go test ./...
+test-indexer:
+	@echo "🧪 Testing Indexer..."
+	@cd indexer && go test ./...
 
 test-prover:
 	@echo "🧪 Testing Prover..."
@@ -96,7 +106,7 @@ deploy:
 	@mkdir -p contracts/deployments
 	@# Load .env variables from ROOT .env
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
-	cd contracts && forge script script/Deploy.s.sol --rpc-url $${RPC_PROVER} --broadcast
+	cd contracts && forge script script/Deploy.s.sol --rpc-url $${L1_RPC_URL} --broadcast
 	@mkdir -p .nowa-zk
 	@echo "📦 Copying deployment file..."
 	@mkdir -p ~/.nowa-zk
@@ -110,15 +120,15 @@ deploy:
 
 # Optional: ( New Terminal ) Run Traffic Generator
 # Usage: make run-traffic-gen [COUNT=10000]
-run-traffic-gen: build-sequencer
+run-traffic-gen: build-indexer
 	@if [ -f .env ]; then export $$(grep -v '^[[:space:]]*#' .env | xargs); fi; \
-	./build/sequencer-bin traffic-gen --count $(or $(COUNT), 10000) --rpc $${RPC_SEQUENCER}
+	./build/indexer-bin traffic-gen --count $(or $(COUNT), 10000) --rpc $${L2_RPC_URL}
 
-# Terminal 3: Run Sequencer
-run-sequencer: build-sequencer
-	@mkdir -p ~/.nowa-zk/sequencer/data
+# Terminal 3: Run Indexer
+run-indexer: build-indexer
+	@mkdir -p ~/.nowa-zk/indexer/data
 	@if [ -f .env ]; then export $$(grep -v '^[[:space:]]*#' .env | xargs); fi; \
-	./build/sequencer-bin start --rpc-url $${RPC_SEQUENCER:-http://localhost:8545} --state-db-path ~/.nowa-zk/sequencer/data
+	./build/indexer-bin start --rpc-url $${L2_RPC_URL:-http://localhost:8545} --state-db-path ~/.nowa-zk/indexer/data
 
 # Terminal 4: Run Prover
 # Usage: make run-prover [CONTRACT=...] [KEY=...]
@@ -131,8 +141,9 @@ run-prover: build-prover
 
 help:
 	@echo "Nowa-ZK Makefile Commands (in execution order):"
-	@echo "  make clean           - 1. Clear artifacts"
-	@echo "  make clean-global    - 1b. Clear global artifacts (~/.nowa-zk)"
+	@echo "  make clean-artifacts - 1a. Clear build artifacts"
+	@echo "  make clean-data      - 1b. Clear indexer/prover databases only"
+	@echo "  make clean-global    - 1c. Clear global artifacts (~/.nowa-zk/)"
 	@echo "  make setup           - 2. Generate keys & verifier"
 	@echo "  make build           - 3. Build all binaries"
 	@echo "  make test            - 4. Run all tests"
@@ -140,6 +151,6 @@ help:
 	@echo "Run Workflow:"
 	@echo "  make anvil           - 5. Start chain (Term 1)"
 	@echo "  make deploy          - 6. Deploy contracts (Term 2)"
-	@echo "  make run-sequencer   - 7. Start sequencer (Term 3)"
+	@echo "  make run-indexer   - 7. Start indexer (Term 3)"
 	@echo "  make run-prover      - 8. Start prover (Term 4)"
 	@echo "  make check-batch     - 9. Check latest batch info"
