@@ -20,9 +20,10 @@ import (
 // APIServer serves the Prover API
 type APIServer struct {
 	app      *fiber.App
-	registry *bindings.BatchRegistry
-	store    *storage.ProverStore
-	port     int
+	registry    *bindings.BatchRegistry
+	store       *storage.ProverStore
+	deployments map[string]string
+	port        int
 }
 
 // BatchResponse represents the batch data returned by API
@@ -46,7 +47,7 @@ type StatusResponse struct {
 }
 
 // NewAPIServer creates a new API server
-func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, port int) *APIServer {
+func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, deployments map[string]string, port int) *APIServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               "Nowa-ZK Prover",
@@ -63,10 +64,11 @@ func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, 
 	}))
 
 	return &APIServer{
-		app:      app,
-		registry: registry,
-		store:    store,
-		port:     port,
+		app:         app,
+		registry:    registry,
+		store:       store,
+		deployments: deployments,
+		port:        port,
 	}
 }
 
@@ -93,6 +95,9 @@ func (api *APIServer) Start() error {
 	// Status
 	api.app.Get("/status/:id", api.handleGetStatus)
 
+	// Contracts
+	api.app.Get("/contracts", api.handleGetContracts)
+
 	addr := fmt.Sprintf(":%d", api.port)
 	fmt.Printf("🌍 Starting Prover API on %s\n", addr)
 	fmt.Printf("📖 Swagger UI available at http://localhost%s/swagger/index.html\n", addr)
@@ -108,6 +113,21 @@ func (api *APIServer) Start() error {
 // @Router / [get]
 func (api *APIServer) handleRoot(c *fiber.Ctx) error {
 	return c.Redirect("/swagger/index.html")
+}
+
+// handleGetContracts godoc
+// @Summary Get deployed smart contracts
+// @Description Get a list of deployed smart contracts and their addresses
+// @Tags Meta
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 404 {string} string "No contracts found"
+// @Router /contracts [get]
+func (api *APIServer) handleGetContracts(c *fiber.Ctx) error {
+	if api.deployments == nil || len(api.deployments) == 0 {
+		return c.Status(fiber.StatusNotFound).SendString("No deployed contracts found")
+	}
+	return c.JSON(api.deployments)
 }
 
 // handleLatestBatch godoc

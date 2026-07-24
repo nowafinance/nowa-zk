@@ -1,6 +1,6 @@
 # Indexer
 
-ZK Indexer monitors blockchain, builds transaction batches, provides API for prover.
+ZK Indexer monitors blockchain, builds trade batches, provides API for prover.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Environment variables:
 RPC_URL=http://localhost:8545      # Ethereum RPC endpoint (REQUIRED)
 WS_URL=ws://localhost:8546          # WebSocket endpoint (optional)
 API_PORT=8080                       # API server port (default: 8080)
-BATCH_SIZE=100                      # Transactions per batch (default: 100)
+BATCH_SIZE=128                      # Trades per batch (default: 128)
 STATE_DB_PATH=./data/state          # Database path (default: ./data/state)
 ```
 
@@ -59,9 +59,8 @@ curl http://localhost:8080/prover/batch/1
 ## How It Works
 
 1. **Monitors** blockchain for new blocks
-2. **Processes** transactions from each block
-3. **Builds** batches incrementally (128 txs per batch)
-4. **Computes** state roots using Sparse Merkle Tree  
+2. **Processes** and decodes trades from each block transaction
+3. **Builds** batches incrementally (e.g. 128 trades per batch)
 5. **Persists** batches to BadgerDB
 6. **Serves** batches via API for prover
 7. **Handles** chain reorganizations automatically
@@ -70,9 +69,8 @@ curl http://localhost:8080/prover/batch/1
 
 - ✅ Incremental batch filling
 - ✅ BadgerDB persistence
-- ✅ SMT state root calculation
+- ✅ Signature extraction (EIP-712)
 - ✅ Reorg handling with rollback
-- ✅ Balance validation
 - ✅ Thread-safe RPC client
 - ✅ REST + WebSocket API
 

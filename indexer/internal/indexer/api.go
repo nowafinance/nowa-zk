@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/websocket/v2"
@@ -41,6 +42,10 @@ func NewAPIServer(store *BatchStore, port int) *APIServer {
 		AllowOrigins: "*",
 		AllowMethods: "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
+	}))
+	app.Use(limiter.New(limiter.Config{
+		Max:        100,             // max 100 requests
+		Expiration: 1 * time.Minute, // per 1 minute
 	}))
 
 	return &APIServer{

@@ -90,7 +90,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.BatchResponse"
+                            "$ref": "#/definitions/api.BatchResponse"
                         }
                     },
                     "404": {
@@ -131,7 +131,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.BatchResponse"
+                            "$ref": "#/definitions/api.BatchResponse"
                         }
                     },
                     "400": {
@@ -148,6 +148,35 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts": {
+            "get": {
+                "description": "Get a list of deployed smart contracts and their addresses",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Meta"
+                ],
+                "summary": "Get deployed smart contracts",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No contracts found",
                         "schema": {
                             "type": "string"
                         }
@@ -178,7 +207,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StatusResponse"
+                            "$ref": "#/definitions/api.StatusResponse"
                         }
                     },
                     "400": {
@@ -192,7 +221,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_api.BatchResponse": {
+        "api.BatchResponse": {
             "type": "object",
             "properties": {
                 "batchHash": {
@@ -225,7 +254,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.StatusResponse": {
+        "api.StatusResponse": {
             "type": "object",
             "properties": {
                 "batch_number": {

@@ -28,3 +28,22 @@ func (c *TradeSignatureCircuit) Define(api frontend.API) error {
 	c.PubKey.Verify(api, sw_emulated.GetSecp256k1Params(), &c.MessageHash, &c.Sig)
 	return nil
 }
+
+// TradeBatchSize defines the number of trades in a batch
+const TradeBatchSize = 10
+
+// BatchTradeSignatureCircuit verifies multiple ECDSA signatures
+type BatchTradeSignatureCircuit struct {
+	MessageHashes [TradeBatchSize]emulated.Element[emulated.Secp256k1Fr] `gnark:",public"`
+	Sigs          [TradeBatchSize]ecdsa.Signature[emulated.Secp256k1Fr]
+	PubKeys       [TradeBatchSize]ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr] `gnark:",public"`
+}
+
+// Define declares the circuit constraints for batch
+func (c *BatchTradeSignatureCircuit) Define(api frontend.API) error {
+	params := sw_emulated.GetSecp256k1Params()
+	for i := 0; i < TradeBatchSize; i++ {
+		c.PubKeys[i].Verify(api, params, &c.MessageHashes[i], &c.Sigs[i])
+	}
+	return nil
+}

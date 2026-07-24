@@ -12,6 +12,7 @@ type Config struct {
 	StateDBPath    string        `yaml:"state_db_path"`
 	IndexFromBlock uint64        `yaml:"index_from_block"`
 	ProverAPI      string        `yaml:"prover_api"` // Prover API URL for cleanup coordination
+	TargetContract string        `yaml:"target_contract"` // Contract address to index
 }
 
 // DefaultConfig returns default configuration
@@ -20,7 +21,8 @@ func DefaultConfig() *Config {
 		BatchSize:     128,                       // 128 transactions per batch
 		BatchInterval: 5 * time.Second,           // Check/create batch every 5 seconds (reduced from 10s)
 		APIPort:       8080,                      // REST API port
-		StateDBPath:   ".nowa-zk/indexer/data", // Local storage path
-		ProverAPI:     "http://localhost:8081",   // Default prover API (can run on different server)
+		StateDBPath:    ".nowa-zk/indexer/data", // Local storage path
+		ProverAPI:      "http://localhost:8081",   // Default prover API (can run on different server)
+		TargetContract: "",                        // MUST be set via TARGET_CONTRACT env var
 	}
 }

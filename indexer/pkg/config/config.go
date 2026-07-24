@@ -81,6 +81,11 @@ func LoadFromEnv() (*types.Config, error) {
 		config.ProverAPI = proverAPI
 	}
 
+	// Load target contract (optional)
+	if targetContract := os.Getenv("TARGET_CONTRACT"); targetContract != "" {
+		config.TargetContract = targetContract
+	}
+
 	return config, nil
 }
 
@@ -140,6 +145,9 @@ func LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath string, batchSize,
 	if envConfig.ProverAPI != "" {
 		config.ProverAPI = envConfig.ProverAPI
 	}
+	if envConfig.TargetContract != "" {
+		config.TargetContract = envConfig.TargetContract
+	}
 
 	// 3. Apply command-line overrides
 	if rpcURL != "" {
@@ -161,6 +169,9 @@ func LoadWithOverrides(configPath, rpcURL, wsURL, stateDBPath string, batchSize,
 	// Validate required fields
 	if config.RPCURL == "" {
 		return nil, errors.ErrInvalidInput("NOWA_ZK_RPC_URL is required")
+	}
+	if config.TargetContract == "" {
+		return nil, errors.ErrInvalidInput("TARGET_CONTRACT is required (must specify orderbook contract address)")
 	}
 
 	return config, nil

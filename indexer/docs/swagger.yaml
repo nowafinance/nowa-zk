@@ -2,55 +2,7 @@ basePath: /
 definitions:
   big.Int:
     type: object
-  github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch:
-    properties:
-      hash:
-        type: string
-      newStateRoot:
-        type: string
-      number:
-        type: integer
-      oldStateRoot:
-        type: string
-      status:
-        description: '"pending", "proving", "ready", "submitted"'
-        type: string
-      timestamp:
-        type: integer
-      traces:
-        items:
-          $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ExecutionTrace'
-        type: array
-      transactions:
-        items:
-          $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_pkg_rpc.Transaction'
-        type: array
-    type: object
-  github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ExecutionTrace:
-    properties:
-      contractAddress:
-        description: Set for contract deployments
-        type: string
-      from:
-        type: string
-      isContractDeployment:
-        description: True if this is a contract deployment
-        type: boolean
-      newBalance:
-        type: string
-      nonce:
-        type: integer
-      oldBalance:
-        type: string
-      to:
-        description: Empty for contract deployments
-        type: string
-      txHash:
-        type: string
-      value:
-        type: string
-    type: object
-  github_com_nowafinance_nowa-zk_indexer_pkg_rpc.Transaction:
+  rpc.Transaction:
     properties:
       blockHash:
         type: string
@@ -90,6 +42,71 @@ definitions:
       value:
         $ref: '#/definitions/big.Int'
     type: object
+  types.Batch:
+    properties:
+      hash:
+        type: string
+      newStateRoot:
+        type: string
+      number:
+        type: integer
+      oldStateRoot:
+        type: string
+      status:
+        description: '"pending", "proving", "ready", "submitted"'
+        type: string
+      timestamp:
+        type: integer
+      traces:
+        items:
+          $ref: '#/definitions/types.ExecutionTrace'
+        type: array
+      trades:
+        items:
+          $ref: '#/definitions/types.ParsedTrade'
+        type: array
+      transactions:
+        items:
+          $ref: '#/definitions/rpc.Transaction'
+        type: array
+    type: object
+  types.ExecutionTrace:
+    properties:
+      contractAddress:
+        description: Set for contract deployments
+        type: string
+      from:
+        type: string
+      isContractDeployment:
+        description: True if this is a contract deployment
+        type: boolean
+      newBalance:
+        type: string
+      nonce:
+        type: integer
+      oldBalance:
+        type: string
+      to:
+        description: Empty for contract deployments
+        type: string
+      txHash:
+        type: string
+      value:
+        type: string
+    type: object
+  types.ParsedTrade:
+    properties:
+      messageHash:
+        type: string
+      pubKeyX:
+        type: string
+      pubKeyY:
+        type: string
+      sigR:
+        type: string
+      sigS:
+        type: string
+    type: object
 info:
   contact: {}
   description: REST API for the Nowa-ZK Rollup Indexer
@@ -120,7 +137,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch'
+            $ref: '#/definitions/types.Batch'
         "400":
           description: Invalid ID
           schema:
@@ -141,7 +158,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch'
+            $ref: '#/definitions/types.Batch'
         "404":
           description: Not found
           schema:
@@ -179,7 +196,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch'
+            $ref: '#/definitions/types.Batch'
         "400":
           description: Invalid ID
           schema:
@@ -200,7 +217,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch'
+            $ref: '#/definitions/types.Batch'
         "404":
           description: Not found
           schema:

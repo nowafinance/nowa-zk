@@ -43,7 +43,7 @@ setup: install-swag swagger swagger-prover build-prover
 	@mkdir -p ~/.nowa-zk/keys
 	@./build/prover-bin setup --output-dir ~/.nowa-zk/keys --contract-output contracts/src/generated
 	@echo "📝 Formatting generated contract..."
-	@cd contracts && forge fmt src/generated/RollupVerifier.sol
+	@cd contracts && forge fmt src/generated/TradeVerifier.sol
 	@echo "🏗️  Building Indexer & Contracts..."
 	@$(MAKE) build-indexer
 	@$(MAKE) build-contracts
@@ -98,8 +98,8 @@ anvil:
 
 # Deploy to custom network using .env configuration
 deploy:
-	@if [ ! -f contracts/src/generated/RollupVerifier.sol ]; then \
-		echo "⚠️  RollupVerifier.sol not found. Running setup..."; \
+	@if [ ! -f contracts/src/generated/TradeVerifier.sol ]; then \
+		echo "⚠️  TradeVerifier.sol not found. Running setup..."; \
 		$(MAKE) setup; \
 	fi
 	@echo "🚀 Deploying Contracts..."

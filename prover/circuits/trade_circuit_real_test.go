@@ -122,7 +122,7 @@ func TestTradeSignatureCircuit_RealData(t *testing.T) {
 	typedDataHash, err := typedData.HashStruct(typedData.PrimaryType, typedData.Message)
 	assert.NoError(err)
 
-	rawData := []byte(fmt.Sprintf("\x19\x01%s%s", string(domainSeparator), string(typedDataHash)))
+	rawData := fmt.Appendf(nil, "\x19\x01%s%s", string(domainSeparator), string(typedDataHash))
 	messageHash := crypto.Keccak256(rawData)
 
 	// 5. Recover Public Key using go-ethereum to ensure signature is correct

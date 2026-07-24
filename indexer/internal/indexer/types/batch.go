@@ -12,6 +12,16 @@ type Batch struct {
 	Timestamp    int64              `json:"timestamp"`
 	Status       string             `json:"status"` // "pending", "proving", "ready", "submitted"
 	Traces       []*ExecutionTrace  `json:"traces"`
+	Trades       []*ParsedTrade     `json:"trades,omitempty"`
+}
+
+// ParsedTrade contains the signatures and EIP-712 hashes for a trade
+type ParsedTrade struct {
+	MessageHash string `json:"messageHash"`
+	PubKeyX     string `json:"pubKeyX"`
+	PubKeyY     string `json:"pubKeyY"`
+	SigR        string `json:"sigR"`
+	SigS        string `json:"sigS"`
 }
 
 // ExecutionTrace represents execution trace for a transaction

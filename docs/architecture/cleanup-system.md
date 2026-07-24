@@ -8,7 +8,7 @@ The cleanup system optimizes storage by automatically deleting old batch data fr
 
 **Before Cleanup:**
 - Indexer stores ALL batches forever
-- Each batch: ~11 MB (128 full transactions)
+- Each batch: ~11 MB (128 full trades)
 - 100,000 batches = ~1.1 TB storage
 - Redundant data (prover has submitted to L1)
 
@@ -65,8 +65,6 @@ Returns information about the latest batch proven and submitted to L1.
 {
   "batchNumber": 1000,
   "batchHash": "0x...",
-  "oldStateRoot": "0x...",
-  "newStateRoot": "0x...",
   "txHash": "0x...",
   "verifiedAt": 1703001234
 }

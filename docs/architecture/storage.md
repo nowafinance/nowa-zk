@@ -7,7 +7,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
 ## Storage Layers
 
 ### L2 Blockchain
-- **Purpose**: Source of truth for recent transactions
+- **Purpose**: Source of truth for recent trades
 - **Technology**: Cosmos SDK LevelDB
 - **Retention**: Full history (immutable)
 - **Access**: RPC queries
@@ -40,7 +40,7 @@ Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency,
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  Indexer Batch Creation                                    │
-│  • Full transaction data stored (~11MB per batch)            │
+│  • Full trade data stored (~11MB per batch)            │
 │  • Kept until proven on L1                                   │
 │  Retention: ~5-10 minutes (until proving)                    │
 └─────────────────────────────────────────────────────────────┘
@@ -139,7 +139,7 @@ uint256 public latestBatch;
 
 | Component | Data Type | Retention | Size per Batch |
 |-----------|-----------|-----------|----------------|
-| L2 Blockchain | Full transactions | Forever | N/A (separate system) |
+| L2 Blockchain | Full trades | Forever | N/A (separate system) |
 | Indexer | Full batch data | Until L1 proven | ~11 MB |
 | Prover | Metadata only | Forever | ~4 KB |
 | L1 Contract | State roots | Forever | ~64 bytes |
@@ -174,7 +174,7 @@ See [Cleanup System](./cleanup-system.md) for detailed implementation.
 
 **Example: 100 TPS sustained**
 ```
-Batches per hour: 100 TPS ÷ 128 txs/batch × 3600s = ~2812 batches/hour
+Batches per hour: 100 TPS ÷ 128 trades/batch × 3600s = ~2812 batches/hour
 
 Without cleanup:
   2812 batches × 11 MB = ~31 GB/hour

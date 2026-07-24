@@ -42,7 +42,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 1: Compile circuit
 	log.Println("📦 Compiling circuit...")
-	var circuit circuits.Circuit
+	var circuit circuits.BatchTradeSignatureCircuit
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
 		log.Fatalf("❌ Failed to compile circuit: %v", err)
@@ -70,7 +70,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 4: Save proving key
 	log.Println("💾 Saving proving key...")
-	pkPath := filepath.Join(outputDir, "rollup.pk")
+	pkPath := filepath.Join(outputDir, "trade.pk")
 	pkFile, err := os.Create(pkPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create proving key file: %v", err)
@@ -85,7 +85,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 5: Save verifying key
 	log.Println("💾 Saving verifying key...")
-	vkPath := filepath.Join(outputDir, "rollup.vk")
+	vkPath := filepath.Join(outputDir, "trade.vk")
 	vkFile, err := os.Create(vkPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create verifying key file: %v", err)
@@ -100,7 +100,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 6: Save compiled circuit
 	log.Println("💾 Saving compiled circuit...")
-	ccsPath := filepath.Join(outputDir, "rollup.r1cs")
+	ccsPath := filepath.Join(outputDir, "trade.r1cs")
 	ccsFile, err := os.Create(ccsPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create compiled circuit file: %v", err)
@@ -116,7 +116,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 7: Export Solidity verifier contract
 	log.Println("📝 Generating Solidity verifier contract...")
-	solidityPath := filepath.Join(contractOutput, "RollupVerifier.sol")
+	solidityPath := filepath.Join(contractOutput, "TradeVerifier.sol")
 	solidityFile, err := os.Create(solidityPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create Solidity file: %v", err)
@@ -135,15 +135,15 @@ func setup(cmd *cobra.Command, args []string) {
 	log.Println("========================================")
 	log.Println("Generated files:")
 	log.Printf("  📁 Keys directory: %s\n", outputDir)
-	log.Println("     - rollup.pk (proving key)")
-	log.Println("     - rollup.vk (verifying key)")
-	log.Println("     - rollup.r1cs (compiled circuit)")
+	log.Println("     - trade.pk (proving key)")
+	log.Println("     - trade.vk (verifying key)")
+	log.Println("     - trade.r1cs (compiled circuit)")
 	log.Println()
 	log.Printf("  📁 Contract directory: %s\n", contractOutput)
-	log.Println("     - RollupVerifier.sol (Solidity verifier)")
+	log.Println("     - TradeVerifier.sol (Solidity verifier)")
 	log.Println()
 	log.Println("Next steps:")
-	log.Println("  1. Deploy RollupVerifier.sol to your chain")
+	log.Println("  1. Deploy TradeVerifier.sol to your chain")
 	log.Println("  2. Start prover with: ./prover-bin start")
 	log.Println("========================================")
 }

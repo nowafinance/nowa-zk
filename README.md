@@ -19,8 +19,8 @@ This repository contains the official implementation of the **Indexer** (formerl
 
 ## 🌟 Key Features
 
-- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches transactions (128 txs/batch) for efficient proof generation.
-- **Succinct ZK Proofs:** Utilizes Groth16 to compress transactions and prove state transitions with minimal L1 footprint (~4KB per batch).
+- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches trades (e.g. 128 trades/batch) for efficient proof generation.
+- **Succinct ZK Proofs:** Utilizes Groth16 to compress and verify EIP-712 trade signatures with minimal L1 footprint (~4KB per batch).
 - **EVM Compatibility:** Built alongside a Cosmos EVM L2, allowing seamless deployment of Ethereum smart contracts.
 - **Fast Finality:** Achieves ~1 second block times on L2 while maintaining Ethereum-grade security.
 
@@ -32,7 +32,7 @@ The system consists of three main operational components contained within this r
 
 1. **[Indexer](./indexer)**: Acts as the data bridge coordinator. It indexes L2 data from the decentralized Cosmos Indexer, builds transaction batches, and provides data availability via a REST/WebSocket API.
 2. **[Prover](./prover)**: The computational engine. It fetches batches from the Indexer, generates Groth16 Zero-Knowledge proofs, and submits them to L1.
-3. **[Contracts](./contracts)**: The L1 foundation. Includes the `BatchRegistry` which verifies ZK proofs and manages the canonical L2 state on Ethereum.
+3. **[Contracts](./contracts)**: The L1 foundation. Includes the `BatchRegistry` which verifies ZK proofs and manages the canonical sequence of verified trades on Ethereum.
 
 For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md)**.
 

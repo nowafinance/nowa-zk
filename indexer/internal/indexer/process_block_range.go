@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -88,22 +89,17 @@ func (s *Service) processBlockRange(startBlock, endBlock uint64) bool {
 				return
 			}
 
-			// Enrich transactions with contract addresses (also parallelized!)
+			// Filter transactions for executeBatchTradeMultiFill directed to Nowa_Orderbook
+			var filteredTxs []*rpc.Transaction
+			targetAddress := strings.ToLower(s.config.TargetContract)
+			targetSelector := "0x7864fe7a"
+
 			for _, tx := range block.Transactions {
-				if tx.IsContractDeployment {
-					if tx.ContractAddress == "" || tx.ContractAddress == "0x" {
-						receipt, err := s.rpcClient.GetTransactionReceipt(s.ctx, tx.Hash)
-						if err == nil && receipt != nil && receipt.ContractAddress != "" {
-							tx.ContractAddress = receipt.ContractAddress
-						} else if tx.ContractAddress == "" && s.ctx.Err() == nil {
-							tx.ContractAddress = rpc.ComputeContractAddress(tx.From, tx.Nonce)
-						}
-					}
-					if tx.ContractAddress != "" && tx.ContractAddress != "0x" {
-						tx.To = tx.ContractAddress
-					}
+				if strings.ToLower(tx.To) == targetAddress && strings.HasPrefix(tx.Data, targetSelector) {
+					filteredTxs = append(filteredTxs, tx)
 				}
 			}
+			block.Transactions = filteredTxs
 
 			results[index] = fetchResult{block: block, err: nil}
 		}(i)

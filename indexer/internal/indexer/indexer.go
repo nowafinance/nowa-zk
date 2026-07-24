@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
+	"strings"
 	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
 	"github.com/nowafinance/nowa-zk/indexer/pkg/errors"
 	"github.com/nowafinance/nowa-zk/indexer/pkg/logger"
@@ -206,12 +206,8 @@ func (s *Service) ClearAllData() error {
 func (s *Service) subscribeToBlocks() {
 	defer s.wg.Done()
 
-	// Use WebSocket if available, otherwise poll
-	if s.wsClient != nil {
-		s.subscribeViaWebSocket()
-	} else {
-		s.pollBlocks()
-	}
+	// Always use polling to prevent missing values in low network
+	s.pollBlocks()
 }
 
 // subscribeViaWebSocket subscribes to blocks via WebSocket
@@ -424,7 +420,11 @@ func (s *Service) processBlock(blockNum uint64) bool {
 		logger.Warn("Failed to store block hash: %v", err)
 	}
 
-	// Enrich transactions with contract addresses for deployments
+	// Filter transactions for executeBatchTradeMultiFill directed to Nowa_Orderbook
+	var filteredTxs []*rpc.Transaction
+	targetAddress := strings.ToLower(s.config.TargetContract)
+	targetSelector := "0x7864fe7a"
+
 	for _, tx := range block.Transactions {
 		// Check context before processing each transaction
 		select {
@@ -433,24 +433,11 @@ func (s *Service) processBlock(blockNum uint64) bool {
 		default:
 		}
 
-		// If this is a contract deployment, enrich with contract address
-		if tx.IsContractDeployment {
-			// Try to get contract address from receipt first (most accurate)
-			if tx.ContractAddress == "" || tx.ContractAddress == "0x" {
-				receipt, err := s.rpcClient.GetTransactionReceipt(s.ctx, tx.Hash)
-				if err == nil && receipt != nil && receipt.ContractAddress != "" {
-					tx.ContractAddress = receipt.ContractAddress
-				} else if tx.ContractAddress == "" && s.ctx.Err() == nil {
-					// Fallback: compute from sender + nonce (only if not shutting down)
-					tx.ContractAddress = rpc.ComputeContractAddress(tx.From, tx.Nonce)
-				}
-			}
-			// Set To field to contract address so it's not empty in the output
-			if tx.ContractAddress != "" && tx.ContractAddress != "0x" {
-				tx.To = tx.ContractAddress
-			}
+		if strings.ToLower(tx.To) == targetAddress && strings.HasPrefix(tx.Data, targetSelector) {
+			filteredTxs = append(filteredTxs, tx)
 		}
 	}
+	block.Transactions = filteredTxs
 
 	// Process transactions sequentially to fill incomplete batches first
 	remainingTxs := block.Transactions
@@ -465,68 +452,83 @@ func (s *Service) processBlock(blockNum uint64) bool {
 		incompleteBatch, err := s.batches.GetIncompleteBatch(s.config.BatchSize)
 		if err == nil && incompleteBatch != nil {
 			// Fill incomplete batch
-			spaceLeft := s.config.BatchSize - len(incompleteBatch.Transactions)
+			spaceLeft := s.config.BatchSize - len(incompleteBatch.Trades)
 			if spaceLeft > 0 {
-				// Take up to spaceLeft transactions
-				txsToAdd := remainingTxs
-				if len(txsToAdd) > spaceLeft {
-					txsToAdd = remainingTxs[:spaceLeft]
+				var txsToAdd []*rpc.Transaction
+				tradesAdded := 0
+				
+				for _, tx := range remainingTxs {
+					trades, _ := ParseTradesFromTxData(tx.Data)
+					if tradesAdded > 0 && tradesAdded+len(trades) > spaceLeft {
+						break // Can't fit more trades without going over (if we already added some)
+					}
+					txsToAdd = append(txsToAdd, tx)
+					tradesAdded += len(trades)
+					if tradesAdded >= spaceLeft {
+						break
+					}
 				}
 
-				// Append to incomplete batch
-				if err := s.batchBuilder.AppendToBatch(incompleteBatch, txsToAdd, blockNum); err != nil {
-					logger.Error("Failed to append to batch: %v", err)
-					return false
+				if len(txsToAdd) > 0 {
+					// Append to incomplete batch
+					if err := s.batchBuilder.AppendToBatch(incompleteBatch, txsToAdd, blockNum); err != nil {
+						logger.Error("Failed to append to batch: %v", err)
+						return false
+					}
+
+					// Save updated batch
+					if err := s.batches.SaveBatch(incompleteBatch); err != nil {
+						logger.Error("Failed to save batch: %v", err)
+						return false
+					}
+
+					// Notify WebSocket clients
+					if s.api != nil {
+						s.api.NotifyNewBatch(incompleteBatch)
+					}
+
+					logger.Info("📝 Appended %d transactions (%d trades) to batch #%d (total trades: %d/%d)",
+						len(txsToAdd), tradesAdded, incompleteBatch.Number, len(incompleteBatch.Trades), s.config.BatchSize)
+
+					remainingTxs = remainingTxs[len(txsToAdd):]
 				}
 
-				// Save updated batch
-				if err := s.batches.SaveBatch(incompleteBatch); err != nil {
-					logger.Error("Failed to save batch: %v", err)
-					return false
-				}
-
-				// Notify WebSocket clients
-				if s.api != nil {
-					s.api.NotifyNewBatch(incompleteBatch)
-				}
-
-				logger.Info("📝 Appended %d transactions to batch #%d (%d/%d)",
-					len(txsToAdd), incompleteBatch.Number, len(incompleteBatch.Transactions), s.config.BatchSize)
-
-				// Remove processed transactions
-				remainingTxs = remainingTxs[len(txsToAdd):]
-
-				// If batch is now complete, continue processing remaining transactions
-				if len(incompleteBatch.Transactions) >= s.config.BatchSize {
-					logger.Info("✅ Batch #%d completed with %d transactions", incompleteBatch.Number, len(incompleteBatch.Transactions))
-					// Batch is complete, continue processing remaining transactions
+				// If batch is now complete, log it
+				if len(incompleteBatch.Trades) >= s.config.BatchSize {
+					logger.Info("✅ Batch #%d completed with %d trades", incompleteBatch.Number, len(incompleteBatch.Trades))
 					continue
 				} else {
-					// Batch still incomplete, but we've processed all transactions from this block
-					// Continue to process remaining transactions from this block if any
 					if len(remainingTxs) == 0 {
-						logger.Info("⏸️  Batch #%d incomplete (%d/%d), all transactions from block added",
-							incompleteBatch.Number, len(incompleteBatch.Transactions), s.config.BatchSize)
+						logger.Info("⏸️  Batch #%d incomplete (%d/%d trades), all transactions from block added",
+							incompleteBatch.Number, len(incompleteBatch.Trades), s.config.BatchSize)
 					}
-					// Continue processing remaining transactions
 				}
 			}
-		}
+		} else {
+			// No incomplete batch, create new batch with remaining transactions
+			if len(remainingTxs) > 0 {
+				var txsForNewBatch []*rpc.Transaction
+				tradesAdded := 0
+				
+				for _, tx := range remainingTxs {
+					trades, _ := ParseTradesFromTxData(tx.Data)
+					if tradesAdded > 0 && tradesAdded+len(trades) > s.config.BatchSize {
+						break
+					}
+					txsForNewBatch = append(txsForNewBatch, tx)
+					tradesAdded += len(trades)
+					if tradesAdded >= s.config.BatchSize {
+						break
+					}
+				}
 
-		// No incomplete batch, create new batch with remaining transactions
-		if len(remainingTxs) > 0 {
-			// Create batch with up to BatchSize transactions
-			txsForNewBatch := remainingTxs
-			if len(txsForNewBatch) > s.config.BatchSize {
-				txsForNewBatch = remainingTxs[:s.config.BatchSize]
+				s.createBatchFromTransactions(txsForNewBatch, blockNum)
+				remainingTxs = remainingTxs[len(txsForNewBatch):]
 			}
-
-			s.createBatchFromTransactions(txsForNewBatch, blockNum)
-			remainingTxs = remainingTxs[len(txsForNewBatch):]
 		}
 	}
 
-	logger.Info("✅ Block #%d processed: %d transactions", blockNum, len(block.Transactions))
+	logger.Info("✅ Block #%d processed: %d relevant transactions", blockNum, len(block.Transactions))
 	return true
 }
 
@@ -561,11 +563,6 @@ func (s *Service) findForkPoint(currentBlock uint64) (uint64, error) {
 func (s *Service) handleReorg(forkPoint uint64) error {
 	logger.Info("Handling reorg: rolling back to block #%d", forkPoint)
 
-	// Find last batch number before fork point
-	// We need to find which batch corresponds to forkPoint
-	// For simplicity, we'll delete all batches and let them be recreated
-	// In a more sophisticated implementation, we'd track batch->block mapping
-
 	// Get latest batch to determine rollback point
 	latestBatch, err := s.batches.GetLatestBatch()
 	if err != nil {
@@ -573,23 +570,11 @@ func (s *Service) handleReorg(forkPoint uint64) error {
 		return nil
 	}
 
-	// For now, rollback all batches (simplified approach)
-	// TODO: Track which batches correspond to which blocks for precise rollback
 	if latestBatch != nil {
 		logger.Info("Rolling back batches after batch #%d", latestBatch.Number)
 
-		// Delete batches after fork point
-		// Note: This is simplified - proper implementation would track batch->block mapping
 		if err := s.batches.DeleteBatchesAfter(latestBatch.Number); err != nil {
 			return fmt.Errorf("failed to delete batches: %w", err)
-		}
-
-		// Clear SMT state (will be rebuilt from fork point)
-		// Note: SMT state should be restored from fork point, but for now we'll rebuild
-		if s.batchBuilder != nil {
-			// Reset batch builder state root to fork point state
-			// For now, we'll start fresh - proper implementation would restore SMT state
-			logger.Info("SMT state will be rebuilt from fork point")
 		}
 	}
 
@@ -597,7 +582,7 @@ func (s *Service) handleReorg(forkPoint uint64) error {
 }
 
 // createBatchFromTransactions creates a new batch directly from provided transactions
-// Only finalizes the batch if it has EXACTLY 128 transactions (config.BatchSize)
+// Only finalizes the batch if it has EXACTLY or GREATER THAN config.BatchSize trades
 func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumber uint64) {
 	// Check if context is canceled
 	select {
@@ -626,20 +611,19 @@ func (s *Service) createBatchFromTransactions(txs []*rpc.Transaction, blockNumbe
 		return
 	}
 
-	// Only notify and log if batch is complete (exactly 128 transactions)
-	if len(batch.Transactions) >= s.config.BatchSize {
+	if len(batch.Trades) >= s.config.BatchSize {
 		// Notify WebSocket clients about new batch
 		if s.api != nil {
 			s.api.NotifyNewBatch(batch)
 		}
 
-		logger.Info("🎉 Batch #%d COMPLETE: %d transactions (batch hash: %s)",
-			batch.Number, len(batch.Transactions), batch.Hash)
+		logger.Info("🎉 Batch #%d COMPLETE: %d trades (batch hash: %s)",
+			batch.Number, len(batch.Trades), batch.Hash)
 		logger.Info("✅ Ready for proof generation!")
 	} else {
 		// Batch is incomplete, just save it silently
-		logger.Info("📝 Batch #%d incomplete: %d/%d transactions",
-			batch.Number, len(batch.Transactions), s.config.BatchSize)
+		logger.Info("📝 Batch #%d incomplete: %d/%d trades",
+			batch.Number, len(batch.Trades), s.config.BatchSize)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size transaction batches.
+The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size trade batches.
 
 ---
 
@@ -25,43 +25,42 @@ The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-
     
     FOR each block in [501...600]:
         ┌─ Fetch block via RPC (with 3 retries: 2s, 4s, 6s)
-        ├─ Extract all transactions from block
+        ├─ Extract and decode all trades from block transactions
         ├─ Check for reorgs (compare block hash)
         └─ Store block hash for future checks
         
-    Result: Array of 100 blocks with ALL transactions
+    Result: Array of 100 blocks with ALL trades
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. TRANSACTION EXTRACTION (Deterministic Order)             │
+│ 3. TRADE EXTRACTION (Deterministic Order)                   │
 └─────────────────────────────────────────────────────────────┘
                            ↓
     Process blocks IN ORDER (501, 502, 503...):
     
-    Block #501: [tx1, tx2, tx3]      → Queue
-    Block #502: [tx4, tx5]           → Queue
-    Block #503: [tx6, tx7, tx8, tx9] → Queue
+    Block #501: [trade1, trade2, trade3]      → Queue
+    Block #502: [trade4, trade5]              → Queue
+    Block #503: [trade6, trade7, trade8]      → Queue
     ...
     
-    Transaction Queue (in order):
-    [tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, ...]
+    Trade Queue (in order):
+    [trade1, trade2, trade3, trade4, trade5, trade6, trade7, trade8, ...]
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. BATCH CREATION (Exactly 128 transactions)                │
+│ 4. BATCH CREATION (Exactly 128 trades)                      │
 └─────────────────────────────────────────────────────────────┘
                            ↓
     Check for incomplete batch first:
     
     IF incomplete batch exists (e.g., 50/128):
-       ├─ Fill it with next transactions (78 more)
+       ├─ Fill it with next trades (78 more)
        └─ Mark as complete at 128
     
     ELSE create new batch:
-       ├─ Take next 128 transactions
+       ├─ Take next 128 trades
        ├─ Compute batch hash
-       ├─ Compute state root transition
        └─ Save to database
        
-    IF < 128 transactions left:
+    IF < 128 trades left:
        └─ Create incomplete batch, wait for more blocks
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -86,93 +85,93 @@ The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-
 
 ### Step 1: Fetch 100 Blocks
 ```
-Block #7501: 14 transactions
-Block #7502: 16 transactions  
-Block #7503: 12 transactions
-Block #7504: 10 transactions
-Block #7505: 500 transactions  ← Large block!
-Block #7506: 15 transactions
+Block #7501: 14 trades
+Block #7502: 16 trades  
+Block #7503: 12 trades
+Block #7504: 10 trades
+Block #7505: 500 trades  ← Large block!
+Block #7506: 15 trades
 ...
-Block #7600: 8 transactions
-Total: 1,600+ transactions across 100 blocks
+Block #7600: 8 trades
+Total: 1,600+ trades across 100 blocks
 ```
 
-### Step 2: Process Transactions in Order
+### Step 2: Process Trades in Order
 ```
 Queue (deterministic order):
-[7501_tx1, 7501_tx2, ..., 7502_tx1, ..., 7505_tx1, 7505_tx2, ...]
-                                    ↓ 500 txs from one block
+[7501_trade1, 7501_trade2, ..., 7502_trade1, ..., 7505_trade1, 7505_trade2, ...]
+                                     ↓ 500 trades from one block
 ```
 
 ### Step 3: Create Batches (128 each)
 ```
-Batch #1:  128 txs from blocks 7501-7504
-Batch #2:  128 txs from blocks 7504-7505 (partial)
-Batch #3:  128 txs from block 7505
-Batch #4:  128 txs from block 7505
-Batch #5:  116 txs from block 7505 (remainder)
-Batch #6:  12 txs from 7505 + 116 from 7506-7510
+Batch #1:  128 trades from blocks 7501-7504
+Batch #2:  128 trades from blocks 7504-7505 (partial)
+Batch #3:  128 trades from block 7505
+Batch #4:  128 trades from block 7505
+Batch #5:  116 trades from block 7505 (remainder)
+Batch #6:  12 trades from 7505 + 116 from 7506-7510
 ...
-Batch #12: 95 txs (incomplete, waiting for more blocks)
+Batch #12: 95 trades (incomplete, waiting for more blocks)
 ```
 
 ### Step 4: Save Progress
 ```
 Database state:
 - last_processed_block: 7600
-- batch_1 through batch_11: Complete (128 txs each)
-- batch_12: Incomplete (95/128 txs)
+- batch_1 through batch_11: Complete (128 trades each)
+- batch_12: Incomplete (95/128 trades)
 - block_7501_hash through block_7600_hash: Saved
 ```
 
 ---
 
-## Handling Large Blocks (128+ or 1000s of Transactions)
+## Handling Large Blocks (128+ or 1000s of Trades)
 
 ### ✅ **YES, the system handles this properly!**
 
-**Example: Block with 1,000 transactions**
+**Example: Block with 1,000 trades**
 
 ```go
 // Processing loop in process_block_range.go
-remainingTxs := block.txs // 1000 transactions
+remainingTrades := block.trades // 1000 trades
 
-while len(remainingTxs) > 0 {
+while len(remainingTrades) > 0 {
     if incomplete_batch exists {
         // Fill incomplete batch first
         fill_to_128()
     }
     
-    if len(remainingTxs) >= 128 {
+    if len(remainingTrades) >= 128 {
         // Create full batch
-        batch = create_batch(remainingTxs[0:128])
-        remainingTxs = remainingTxs[128:]  // 872 left
+        batch = create_batch(remainingTrades[0:128])
+        remainingTrades = remainingTrades[128:]  // 872 left
     } else {
         // Less than 128 left
-        create_incomplete_batch(remainingTxs)
-        remainingTxs = []  // Done
+        create_incomplete_batch(remainingTrades)
+        remainingTrades = []  // Done
     }
 }
 ```
 
-**Result for 1000-tx block:**
-- Batch #1: 128 txs (from this block)
-- Batch #2: 128 txs (from this block)
-- Batch #3: 128 txs (from this block)
-- Batch #4: 128 txs (from this block)
-- Batch #5: 128 txs (from this block)
-- Batch #6: 128 txs (from this block)
-- Batch #7: 128 txs (from this block)
-- Batch #8: 104 txs (incomplete, from this block)
+**Result for 1000-trade block:**
+- Batch #1: 128 trades (from this block)
+- Batch #2: 128 trades (from this block)
+- Batch #3: 128 trades (from this block)
+- Batch #4: 128 trades (from this block)
+- Batch #5: 128 trades (from this block)
+- Batch #6: 128 trades (from this block)
+- Batch #7: 128 trades (from this block)
+- Batch #8: 104 trades (incomplete, from this block)
 
-**Then next block's transactions continue filling Batch #8!**
+**Then next block's trades continue filling Batch #8!**
 
 ---
 
 ## Key Guarantees
 
 ### 1. **Deterministic Ordering**
-- Transactions always sorted by: `(block_number, transaction_index)`
+- Trades always sorted by: `(block_number, transaction_index, log_index)`
 - Same input blocks → Same batches
 - Critical for proof reproducibility
 
@@ -184,16 +183,16 @@ On restart:
 1. Load last_processed_block = 500
 2. Load incomplete_batch (if any)
 3. Resume from block 501
-4. Same transaction order preserved
+4. Same trade order preserved
 ```
 
-### 3. **No Transaction Loss**
-- Every transaction from every block is included
-- Batches never skip transactions
+### 3. **No Trade Loss**
+- Every valid trade from every block is included
+- Batches never skip trades
 - Even if block fetch fails, entire 100-block range retries
 
-### 4. **Exactly 128 Transactions Per Batch**
-- No batch ever has more than 128 transactions
+### 4. **Exactly 128 Trades Per Batch**
+- No batch ever has more than 128 trades
 - Incomplete batches wait for more blocks
 - One block can create multiple batches
 
@@ -205,22 +204,21 @@ On restart:
 Keys stored in BadgerDB:
 
 last_processed_block:   uint64              // Latest fully processed block
-last_state_root:        string              // Current state root
 
 block_<N>_hash:         string              // For reorg detection
 
 batch_<N>:              {                   // Complete batch
   Number: uint64
-  Transactions: [128]Tx
+  Trades: [128]ParsedTrade
   Hash: string
-  OldStateRoot: string
-  NewStateRoot: string
+  OldStateRoot: string  // Hardcoded 0x0
+  NewStateRoot: string  // Hardcoded 0x0
   Timestamp: int64
 }
 
 batch_<N>_incomplete:   {                   // Incomplete batch
   Number: uint64
-  Transactions: [1-127]Tx  // Less than 128
+  Trades: [1-127]ParsedTrade  // Less than 128
   ...
 }
 ```
@@ -241,7 +239,7 @@ On next poll (2s later):
 ```
 
 **Why fail entire range?**
-- Prevents transaction order corruption
+- Prevents trade order corruption
 - If block 505 fails but 506 succeeds, skipping 505 would break order
 - Better to retry all 100 blocks than have wrong sequence
 
@@ -265,7 +263,7 @@ Actions:
 |--------|-------|-------|
 | Blocks per fetch | 100 | Configurable |
 | Poll interval | 2 seconds | Constant |
-| Batch size | 128 transactions | Fixed |
+| Batch size | 128 trades | Fixed |
 | Retry attempts | 3 per block | 2s, 4s, 6s backoff |
 | Processing speed | ~5-6 blocks/sec | Depends on RPC |
 
@@ -279,6 +277,5 @@ Actions:
 ## Code References
 
 - **Main loop:** [`indexer/internal/indexer/indexer.go`](../../indexer/internal/indexer/indexer.go)
-- **Block processing:** [`indexer/internal/indexer/process_block_range.go`](../../indexer/internal/indexer/process_block_range.go)
-- **Batch building:** [`indexer/internal/indexer/batch_builder.go`](../../indexer/internal/indexer/batch_builder.go)
-- **Storage:** [`indexer/internal/storage/store.go`](../../indexer/internal/storage/store.go)
+- **Batch building:** [`indexer/internal/indexer/batch.go`](../../indexer/internal/indexer/batch.go)
+- **Storage:** [`indexer/internal/indexer/store.go`](../../indexer/internal/indexer/store.go)

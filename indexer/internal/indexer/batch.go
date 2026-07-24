@@ -3,7 +3,6 @@ package indexer
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 	"strings"
@@ -12,27 +11,24 @@ import (
 
 	"github.com/nowafinance/nowa-zk/indexer/internal/indexer/types"
 	"github.com/nowafinance/nowa-zk/indexer/pkg/rpc"
-	"github.com/nowafinance/nowa-zk/indexer/pkg/smt"
 )
 
 // BatchBuilder builds batches from transactions
 type BatchBuilder struct {
-	batchNum  uint64
-	stateRoot string
-	smt       *smt.SparseMerkleTree // Sparse Merkle Tree for state root calculation
-	rpcClient *rpc.Client           // RPC client for querying balances
-	ctx       context.Context       // Context for RPC calls
-	mu        sync.Mutex
+	batchNum     uint64
+	rpcClient    *rpc.Client
+	ctx          context.Context
+	processedTxs map[string]bool
+	mu           sync.Mutex
 }
 
 // NewBatchBuilder creates a new batch builder
 func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string, rpcClient *rpc.Client, ctx context.Context) *BatchBuilder {
 	return &BatchBuilder{
-		batchNum:  initialBatchNum,
-		stateRoot: initialStateRoot,
-		smt:       smt.NewSparseMerkleTree(),
-		rpcClient: rpcClient,
-		ctx:       ctx,
+		batchNum:     initialBatchNum,
+		rpcClient:    rpcClient,
+		ctx:          ctx,
+		processedTxs: make(map[string]bool),
 	}
 }
 
@@ -40,10 +36,7 @@ func NewBatchBuilder(initialBatchNum uint64, initialStateRoot string, rpcClient 
 func (bb *BatchBuilder) filterProcessedTxs(txs []*rpc.Transaction) []*rpc.Transaction {
 	var uniqueTxs []*rpc.Transaction
 	for _, tx := range txs {
-		txKey := fmt.Sprintf("tx:%s", tx.Hash)
-		// Check if transaction hash already exists in SMT
-		if _, exists := bb.smt.Get(txKey); exists {
-			// Already processed, skip
+		if bb.processedTxs[tx.Hash] {
 			fmt.Printf("⚠️  Skipping duplicate transaction %s (already processed)\n", tx.Hash)
 			continue
 		}
@@ -53,265 +46,108 @@ func (bb *BatchBuilder) filterProcessedTxs(txs []*rpc.Transaction) []*rpc.Transa
 }
 
 // BuildBatch creates a new batch directly from provided transactions
-// blockNumber is used to query balances at the start of the block
 func (bb *BatchBuilder) BuildBatch(txs []*rpc.Transaction, blockNumber uint64) (*types.Batch, error) {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
-	// Filter out already processed transactions
 	txs = bb.filterProcessedTxs(txs)
-
 	if len(txs) == 0 {
 		return nil, fmt.Errorf("no transactions provided (or all were duplicates)")
 	}
 
-	// Generate execution traces with balance tracking
 	traces := make([]*types.ExecutionTrace, len(txs))
 
-	// Query balances at block start (blockNumber - 1, or blockNumber if first tx in block)
-	blockNumForBalance := blockNumber
-	if blockNumber > 0 {
-		blockNumForBalance = blockNumber - 1 // Balance at start of block
-	}
-
 	for i, tx := range txs {
-		// Get sender's old balance before transaction
-		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
-		var oldSenderBalance *big.Int
-		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
-			oldSenderBalance = new(big.Int).SetBytes(balanceBytes)
-		} else {
-			// Query from blockchain
-			balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, tx.From, blockNumForBalance)
-			if err == nil {
-				oldSenderBalance = balance
-			} else {
-				oldSenderBalance = big.NewInt(0)
-			}
-		}
-
 		trace := &types.ExecutionTrace{
 			TxHash:               tx.Hash,
 			From:                 tx.From,
 			Value:                tx.Value.String(),
 			Nonce:                tx.Nonce,
 			IsContractDeployment: tx.IsContractDeployment,
-			OldBalance:           oldSenderBalance.String(),
-			// NewBalance will be set after state update
+			OldBalance:           "0",
+			NewBalance:           "0",
 		}
 
-		// For contract deployments, use contract address instead of to
 		if tx.IsContractDeployment {
 			trace.ContractAddress = tx.ContractAddress
 		} else {
 			trace.To = tx.To
 		}
-
 		traces[i] = trace
+		
+		bb.processedTxs[tx.Hash] = true
 	}
 
-	// Compute new state root using Sparse Merkle Tree
-	oldRoot := bb.stateRoot
-
-	// Update SMT with transaction state changes
-	for i, tx := range txs {
-		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
-			return nil, fmt.Errorf("failed to update state from transaction: %w", err)
-		}
-
-		// After updating state, populate newBalance in trace
-		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
-		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
-			newBalance := new(big.Int).SetBytes(balanceBytes)
-			traces[i].NewBalance = newBalance.String()
-		} else {
-			traces[i].NewBalance = "0"
-		}
-	}
-
-	// Get new root from SMT
-	newRoot := bb.smt.RootHex()
-
-	// Create batch
 	batch := &types.Batch{
 		Number:       bb.batchNum,
 		Transactions: txs,
-		OldStateRoot: oldRoot,
-		NewStateRoot: newRoot,
+		OldStateRoot: "0x0",
+		NewStateRoot: "0x0",
 		Timestamp:    time.Now().Unix(),
 		Status:       "pending",
 		Traces:       traces,
 	}
 
-	// Compute batch hash
+	var allParsedTrades []*types.ParsedTrade
+	for _, tx := range txs {
+		if trades, err := ParseTradesFromTxData(tx.Data); err == nil && len(trades) > 0 {
+			allParsedTrades = append(allParsedTrades, trades...)
+		} else if err != nil {
+			fmt.Printf("⚠️  Failed to parse trades from tx %s: %v\n", tx.Hash, err)
+		}
+	}
+	batch.Trades = allParsedTrades
 	batch.Hash = bb.computeBatchHash(batch)
 
-	// Update state
-	bb.stateRoot = newRoot
 	bb.batchNum++
-
 	return batch, nil
 }
 
-// AppendToBatch appends transactions to an existing batch and updates state root
-// blockNumber is used to query balances at the start of the block
+// AppendToBatch appends transactions to an existing batch
 func (bb *BatchBuilder) AppendToBatch(batch *types.Batch, newTxs []*rpc.Transaction, blockNumber uint64) error {
 	bb.mu.Lock()
 	defer bb.mu.Unlock()
 
-	// Filter out already processed transactions
 	newTxs = bb.filterProcessedTxs(newTxs)
-
 	if len(newTxs) == 0 {
 		return fmt.Errorf("no transactions to append (or all were duplicates)")
 	}
 
-	// Generate execution traces for new transactions with balance tracking
 	newTraces := make([]*types.ExecutionTrace, len(newTxs))
 
-	// Query balances at block start
-	blockNumForBalance := blockNumber
-	if blockNumber > 0 {
-		blockNumForBalance = blockNumber - 1 // Balance at start of block
-	}
-
 	for i, tx := range newTxs {
-		// Get sender's old balance before transaction
-		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
-		var oldSenderBalance *big.Int
-		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
-			oldSenderBalance = new(big.Int).SetBytes(balanceBytes)
-		} else {
-			// Query from blockchain
-			balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, tx.From, blockNumForBalance)
-			if err == nil {
-				oldSenderBalance = balance
-			} else {
-				oldSenderBalance = big.NewInt(0)
-			}
-		}
-
 		trace := &types.ExecutionTrace{
 			TxHash:               tx.Hash,
 			From:                 tx.From,
 			Value:                tx.Value.String(),
 			Nonce:                tx.Nonce,
 			IsContractDeployment: tx.IsContractDeployment,
-			OldBalance:           oldSenderBalance.String(),
-			// NewBalance will be set after state update
+			OldBalance:           "0",
+			NewBalance:           "0",
 		}
 
-		// For contract deployments, use contract address instead of to
 		if tx.IsContractDeployment {
 			trace.ContractAddress = tx.ContractAddress
 		} else {
 			trace.To = tx.To
 		}
-
 		newTraces[i] = trace
+		
+		bb.processedTxs[tx.Hash] = true
 	}
 
-	// Append transactions and traces
 	batch.Transactions = append(batch.Transactions, newTxs...)
 	batch.Traces = append(batch.Traces, newTraces...)
 
-	// Update SMT with new transaction state changes
-	for i, tx := range newTxs {
-		if err := bb.updateStateFromTransaction(tx, blockNumForBalance); err != nil {
-			return fmt.Errorf("failed to update state from transaction: %w", err)
-		}
-
-		// After updating state, populate newBalance in trace
-		senderBalanceKey := fmt.Sprintf("balance:%s", tx.From)
-		if balanceBytes, exists := bb.smt.Get(senderBalanceKey); exists {
-			newBalance := new(big.Int).SetBytes(balanceBytes)
-			// Find the trace we just added (it's at the end of the batch.Traces array)
-			traceIndex := len(batch.Traces) - len(newTxs) + i
-			batch.Traces[traceIndex].NewBalance = newBalance.String()
-		} else {
-			traceIndex := len(batch.Traces) - len(newTxs) + i
-			batch.Traces[traceIndex].NewBalance = "0"
+	for _, tx := range newTxs {
+		if trades, err := ParseTradesFromTxData(tx.Data); err == nil && len(trades) > 0 {
+			batch.Trades = append(batch.Trades, trades...)
+		} else if err != nil {
+			fmt.Printf("⚠️  Failed to parse trades from tx %s: %v\n", tx.Hash, err)
 		}
 	}
 
-	// Get new root from SMT
-	newRoot := bb.smt.RootHex()
-	batch.NewStateRoot = newRoot
-
-	// Recompute batch hash (since transactions changed)
 	batch.Hash = bb.computeBatchHash(batch)
-
-	// NOTE: Do NOT update bb.stateRoot here!
-	// The builder's state root should only advance when a batch is completed.
-	// Otherwise, incomplete batches corrupt the state for future batches.
-
-	return nil
-}
-
-// updateStateFromTransaction updates the SMT with state changes from a transaction
-func (bb *BatchBuilder) updateStateFromTransaction(tx *rpc.Transaction, blockNumber uint64) error {
-	// Helper to get or query balance
-	getBalance := func(address string) (*big.Int, error) {
-		balanceKey := fmt.Sprintf("balance:%s", address)
-
-		// Check if balance exists in SMT
-		if balanceBytes, exists := bb.smt.Get(balanceKey); exists {
-			// Parse balance from bytes
-			balance := new(big.Int)
-			balance.SetBytes(balanceBytes)
-			return balance, nil
-		}
-
-		// Query balance from blockchain at block start
-		balance, err := bb.rpcClient.GetBalanceAtBlock(bb.ctx, address, blockNumber)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get balance for %s: %w", address, err)
-		}
-
-		// Store in SMT
-		bb.smt.Update(balanceKey, balance.Bytes())
-		return balance, nil
-	}
-
-	// Update sender balance
-	senderBalance, err := getBalance(tx.From)
-	if err != nil {
-		return err
-	}
-
-	// Validate sender has sufficient balance
-	totalDebit := new(big.Int).Add(tx.Value, big.NewInt(0)) // In future, add gas fees here
-	if senderBalance.Cmp(totalDebit) < 0 {
-		return fmt.Errorf("insufficient balance: account %s has %s wei, needs %s wei",
-			tx.From, senderBalance.String(), totalDebit.String())
-	}
-
-	// Decrease sender balance
-	newSenderBalance := new(big.Int).Sub(senderBalance, tx.Value)
-	if newSenderBalance.Sign() < 0 {
-		// This should never happen due to the check above, but add as safety check
-		return fmt.Errorf("internal error: negative balance after transfer for %s", tx.From)
-	}
-	senderKey := fmt.Sprintf("balance:%s", tx.From)
-	bb.smt.Update(senderKey, newSenderBalance.Bytes())
-
-	// Update receiver balance (if not contract deployment)
-	if !tx.IsContractDeployment && tx.To != "" {
-		receiverBalance, err := getBalance(tx.To)
-		if err != nil {
-			return err
-		}
-
-		// Increase receiver balance
-		newReceiverBalance := new(big.Int).Add(receiverBalance, tx.Value)
-		receiverKey := fmt.Sprintf("balance:%s", tx.To)
-		bb.smt.Update(receiverKey, newReceiverBalance.Bytes())
-	}
-
-	// Store transaction hash for tracking (optional)
-	txKey := fmt.Sprintf("tx:%s", tx.Hash)
-	bb.smt.Update(txKey, []byte(tx.Hash))
-
 	return nil
 }
 

@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,11 +32,11 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
-	"github.com/spf13/cobra"
 	"github.com/nowafinance/nowa-zk/prover/bindings"
 	"github.com/nowafinance/nowa-zk/prover/circuits"
 	"github.com/nowafinance/nowa-zk/prover/internal/api"
 	"github.com/nowafinance/nowa-zk/prover/internal/storage"
+	"github.com/spf13/cobra"
 )
 
 var startCmd = &cobra.Command{
@@ -45,7 +48,7 @@ var startCmd = &cobra.Command{
 
 var (
 	keysDir            string
-	indexerURL       string
+	indexerURL         string
 	rpcURL             string
 	contractAddr       string
 	privateKeyHex      string
@@ -98,6 +101,15 @@ type Batch struct {
 	NewStateRoot  string        `json:"newStateRoot"`
 	Timestamp     int64         `json:"timestamp"`
 	Transactions  []Transaction `json:"transactions"`
+	Trades        []ParsedTrade `json:"trades,omitempty"`
+}
+
+type ParsedTrade struct {
+	MessageHash string `json:"messageHash"`
+	PubKeyX     string `json:"pubKeyX"`
+	PubKeyY     string `json:"pubKeyY"`
+	SigR        string `json:"sigR"`
+	SigS        string `json:"sigS"`
 }
 
 // Transaction from indexer
@@ -129,30 +141,31 @@ func start(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// 1. Auto-load configuration if missing
-	if contractAddr == "" {
-		// Priority 1: Check .nowa-zk/deployments.json in CURRENT directory (where make deploy saves it)
-		localDeployPath := ".nowa-zk/deployments.json"
-		if data, err := os.ReadFile(localDeployPath); err == nil {
-			var deployments map[string]string
-			if err := json.Unmarshal(data, &deployments); err == nil {
-				if addr, ok := deployments["BatchRegistry"]; ok {
+	// 1. Auto-load configuration and deployments map
+	var loadedDeployments map[string]string
+
+	// Try local first
+	localDeployPath := ".nowa-zk/deployments.json"
+	if data, err := os.ReadFile(localDeployPath); err == nil {
+		if err := json.Unmarshal(data, &loadedDeployments); err == nil {
+			if contractAddr == "" {
+				if addr, ok := loadedDeployments["BatchRegistry"]; ok {
 					contractAddr = addr
 					log.Printf("ℹ️  Auto-loaded Contract: %s (from local .nowa-zk)", contractAddr)
 				}
 			}
 		}
+	}
 
-		// Priority 2: Check ~/.nowa-zk/deployments.json (Global/Home directory)
-		if contractAddr == "" {
-			homeDir, err := os.UserHomeDir()
-			if err == nil {
-				deploymentsPath := homeDir + "/.nowa-zk/deployments.json"
-				if data, err := os.ReadFile(deploymentsPath); err == nil {
-					// Parse JSON to map
-					var deployments map[string]string
-					if err := json.Unmarshal(data, &deployments); err == nil {
-						if addr, ok := deployments["BatchRegistry"]; ok {
+	// Try home directory if local didn't work for deployments map
+	if loadedDeployments == nil {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			deploymentsPath := homeDir + "/.nowa-zk/deployments.json"
+			if data, err := os.ReadFile(deploymentsPath); err == nil {
+				if err := json.Unmarshal(data, &loadedDeployments); err == nil {
+					if contractAddr == "" {
+						if addr, ok := loadedDeployments["BatchRegistry"]; ok {
 							contractAddr = addr
 							log.Printf("ℹ️  Auto-loaded Contract: %s (from home dir)", contractAddr)
 						}
@@ -281,7 +294,7 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Start API Server
 	// Start API server
-	apiServer := api.NewAPIServer(batchRegistry, store, 8081)
+	apiServer := api.NewAPIServer(batchRegistry, store, loadedDeployments, 8081)
 	go func() {
 		if err := apiServer.Start(); err != nil {
 			log.Fatalf("❌ Failed to start API server: %v", err)
@@ -296,49 +309,15 @@ func start(cmd *cobra.Command, args []string) {
 		log.Printf("🔄 Resuming from batch #%d", lastProcessedBatch)
 	}
 
-	// Load last known state root from DB
-	localStateRootStr, err := store.GetLastStateRoot()
-	var localStateRoot *big.Int
-	if err == nil && localStateRootStr != "" {
-		localStateRoot = parseBigInt(localStateRootStr)
-		log.Printf("📦 Loaded last known state root from DB: %s", localStateRoot.String())
-	}
-
-	// Sync with contract state to avoid re-submitting finalized batches
-	onChainBatches, err := getTotalBatches(client, contractAddr)
-	if err != nil {
-		log.Printf("⚠️  Failed to fetch on-chain batch count: %v", err)
-	} else {
-		onChainBatchesU64 := onChainBatches.Uint64()
-		log.Printf("ℹ️  Contract has %d batches, Local last processed: %d", onChainBatchesU64, lastProcessedBatch)
-
-		// Only sync state root, do NOT fast-forward batch numbers
-		// The prover should always process sequentially from lastProcessedBatch + 1
-		contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
-		if err != nil {
-			log.Printf("❌ Failed to sync state root from contract: %v", err)
-		} else {
-			localStateRoot = contractStateRoot
-			if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
-				log.Printf("⚠️  Failed to save synced state root: %v", err)
-			}
-			log.Printf("🔄 Synced Local State Root to: %s", localStateRoot.String())
-		}
-
-		// Handle contract reset/redeploy
-		if onChainBatchesU64 < lastProcessedBatch {
-			log.Printf("⚠️  WARNING: Contract has FEWER batches (%d) than local state (%d). Contract might have been reset.", onChainBatchesU64, lastProcessedBatch)
-			if onChainBatchesU64 == 0 {
-				log.Printf("⚠️  Contract is empty. Resetting local progress to 0.")
-				lastProcessedBatch = 0
-			}
-		}
-	}
+	// State root syncing has been removed as the architecture has moved to purely signature verification.
 
 	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
 	log.Println("   Polling for new batches...")
 	log.Println()
+
+	var consecutiveFailures int
+	var failingBatch uint64
 
 	for {
 		// 1. Get the latest batch number from the indexer
@@ -375,48 +354,85 @@ func start(cmd *cobra.Command, args []string) {
 
 		log.Printf("📦 Processing batch #%d (%d transactions)\n", batch.Number, len(batch.Transactions))
 
-		// 5. Ensure we have a valid OldStateRoot
-		// If we don't have a local one (startup), fetch from contract
-		if localStateRoot == nil {
-			contractStateRoot, err := getCurrentStateRoot(client, contractAddr)
-			if err != nil {
-				log.Printf("⚠️  Failed to fetch contract state root: %v\n", err)
-				time.Sleep(time.Duration(pollInterval) * time.Second)
-				continue
+		// State root logic removed.
+
+		log.Println("   🔐 Generating proofs for chunks...")
+		totalTrades := len(batch.Trades)
+		if totalTrades == 0 {
+			log.Printf("   ℹ️  No trades in batch #%d, skipping...\n", batch.Number)
+			if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
+				log.Printf("⚠️  Failed to save last processed batch: %v", err)
 			}
-			localStateRoot = contractStateRoot
-			log.Printf("   🏛️  Initialized State Root from Contract: %s\n", localStateRoot.String())
-		} else {
-			log.Printf("   💾 Using Local OldStateRoot: %s\n", localStateRoot.String())
+			lastProcessedBatch = batch.Number
+			continue
 		}
 
-		// Generate proof using LOCAL state root as PrevStateRoot
-		log.Println("   🔐 Generating proof...")
-		indexerAddr := hashAddress(auth.From.Hex())
+		numChunks := (totalTrades + circuits.TradeBatchSize - 1) / circuits.TradeBatchSize
+		
+		var finalErr error
 
-		// Use paranoid mode submission (handles proof generation, verification, submission, and rebuild)
-		tx, _, calculatedNewStateRoot, err := submitProofWithParanoidMode(
-			client, auth, contractAddr, batch, ccs, pk, vk, localStateRoot, indexerAddr,
-			store, enableParanoidMode, maxRebuildAttempts, testFailure,
-		)
+		for chunkIdx := 0; chunkIdx < numChunks; chunkIdx++ {
+			startIdx := chunkIdx * circuits.TradeBatchSize
+			endIdx := startIdx + circuits.TradeBatchSize
+			if endIdx > totalTrades {
+				endIdx = totalTrades
+			}
+			chunkTrades := batch.Trades[startIdx:endIdx]
 
-		if err != nil {
-			// Check if this is a halt error
-			if strings.HasPrefix(err.Error(), "HALTED:") {
-				// Prover has been halted - exit the main loop
+			log.Printf("   🧩 Processing chunk %d/%d (%d trades)\n", chunkIdx+1, numChunks, len(chunkTrades))
+
+			tx, _, err := submitProofWithParanoidMode(
+				client, auth, contractAddr, batch, chunkIdx, chunkTrades, ccs, pk, vk,
+				store, enableParanoidMode, maxRebuildAttempts, testFailure,
+			)
+
+			if err != nil {
+				finalErr = err
+				break
+			}
+			if tx != nil {
+				
+			}
+		}
+
+		if finalErr != nil {
+			if strings.HasPrefix(finalErr.Error(), "HALTED:") {
 				log.Println()
 				log.Println("Exiting prover due to halt state...")
 				return
 			}
+			log.Printf("   ❌ Failed to process batch #%d: %v\n", batch.Number, finalErr)
+			
+			if failingBatch == batch.Number {
+				consecutiveFailures++
+			} else {
+				failingBatch = batch.Number
+				consecutiveFailures = 1
+			}
 
-			// Other errors - log and retry after interval
-			log.Printf("   ❌ Failed to process batch #%d: %v\n", batch.Number, err)
-			time.Sleep(time.Duration(pollInterval) * time.Second)
+			if consecutiveFailures >= 5 {
+				log.Printf("   ☠️ Poison pill batch detected! Batch #%d failed 5 times. Skipping...\n", batch.Number)
+				if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
+					log.Printf("⚠️  Failed to save last processed batch: %v", err)
+				}
+				// Save metadata with status 2 (failed)
+				if err := store.SaveMetadata(batch.Number, batch.Hash, "", nil, auth.From.Hex(), "0x0", 2); err != nil {
+					log.Printf("⚠️  Failed to save batch metadata: %v", err)
+				}
+				lastProcessedBatch = batch.Number
+				consecutiveFailures = 0
+			} else {
+				time.Sleep(time.Duration(pollInterval) * time.Second)
+			}
 			continue
 		}
 
+		consecutiveFailures = 0 // reset on success
+
 		log.Printf("   ✅ Batch #%d successfully processed!\n", batch.Number)
 		log.Println()
+		tx := &types.Transaction{} // Dummy for downstream code
+		_ = tx
 
 		// Save state to store
 		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
@@ -438,16 +454,10 @@ func start(cmd *cobra.Command, args []string) {
 		// Save batch metadata (batch hash, L1 tx hash + L2 tx hashes)
 		// Status 1 = Verified (since we just submitted proof and got txHash)
 		submitter := auth.From.Hex()
-		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes, submitter, localStateRoot.String(), 1); err != nil {
+		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes, submitter, "0x0", 1); err != nil {
 			log.Printf("⚠️  Failed to save batch metadata: %v", err)
 		}
 
-		// Update local state root and persist
-		localStateRoot = calculatedNewStateRoot
-		if err := store.SaveLastStateRoot(localStateRoot.String()); err != nil {
-			log.Printf("⚠️  Failed to persist state root: %v", err)
-		}
-		log.Printf("   💾 Updated Local State Root to: %s\n", localStateRoot.String())
 
 		lastProcessedBatch = batch.Number
 	}
@@ -459,7 +469,7 @@ func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness wit
 
 func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
 	// Load compiled circuit
-	ccsFile, err := os.Open(keysDir + "/rollup.r1cs")
+	ccsFile, err := os.Open(keysDir + "/trade.r1cs")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open circuit file: %w", err)
 	}
@@ -471,7 +481,7 @@ func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, grot
 	}
 
 	// Load proving key
-	pkFile, err := os.Open(keysDir + "/rollup.pk")
+	pkFile, err := os.Open(keysDir + "/trade.pk")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open proving key: %w", err)
 	}
@@ -483,7 +493,7 @@ func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, grot
 	}
 
 	// Load verifying key
-	vkFile, err := os.Open(keysDir + "/rollup.vk")
+	vkFile, err := os.Open(keysDir + "/trade.vk")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open verifying key: %w", err)
 	}
@@ -571,174 +581,128 @@ func fetchBatch(indexerURL string, number uint64) (*Batch, error) {
 	return &batch, nil
 }
 
-func generateProof(batch *Batch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey, prevStateRoot *big.Int, indexerAddr *big.Int) (groth16.Proof, witness.Witness, *big.Int, error) {
-	// Convert batch to circuit witness
-	var circuit circuits.Circuit
+func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
+	var circuit circuits.BatchTradeSignatureCircuit
 
-	// Fill transactions (pad with zeros if needed)
-	for i := 0; i < circuits.BatchSize; i++ {
-		if i < len(batch.Transactions) {
-			tx := batch.Transactions[i]
-			nonce := parseBigInt(string(tx.Nonce))
-			amount := parseBigInt(string(tx.Value))
-			gasPrice := big.NewInt(1000000000) // 1 Gwei default
-			gasLimit := big.NewInt(21000)      // Standard transfer gas limit
-
-			// Debug: log first few transactions
-			if i < 3 || i == len(batch.Transactions)-1 {
-				log.Printf("   DEBUG TX %d: Nonce=%s, Amount=%s, From=%s, To=%s",
-					i, nonce.String(), amount.String(), tx.From[:10]+"...", tx.To[:10]+"...")
-			}
-
-			circuit.Transactions[i] = circuits.Transaction{
-				Nonce:    nonce,
-				From:     hashAddress(tx.From),
-				To:       hashAddress(tx.To),
-				Amount:   amount,
-				GasPrice: gasPrice,
-				GasLimit: gasLimit,
-				Data:     hashData(tx.Data),
-			}
-		} else {
-			// Pad with zero transactions
-			circuit.Transactions[i] = circuits.Transaction{
-				Nonce:    big.NewInt(0),
-				From:     big.NewInt(0),
-				To:       big.NewInt(0),
-				Amount:   big.NewInt(0),
-				GasPrice: big.NewInt(0),
-				GasLimit: big.NewInt(0),
-				Data:     big.NewInt(0),
-			}
-		}
+	if len(trades) == 0 {
+		return nil, nil, fmt.Errorf("no trades in chunk to generate proof")
 	}
 
-	// Compute Merkle root
-	root := computeMerkleRoot(circuit.Transactions[:])
-	log.Printf("DEBUG: Go Computed Root: %s", root.String())
+	validHash, _ := hex.DecodeString(trades[0].MessageHash)
+	validPx, _ := hex.DecodeString(trades[0].PubKeyX)
+	validPy, _ := hex.DecodeString(trades[0].PubKeyY)
+	validR, _ := hex.DecodeString(trades[0].SigR)
+	validS, _ := hex.DecodeString(trades[0].SigS)
 
-	// Set public inputs
-	circuit.BatchRoot = root
-	circuit.PrevStateRoot = prevStateRoot // Use contract's state root
+	for i := 0; i < circuits.TradeBatchSize; i++ {
+		var hashHex, pxHex, pyHex, rHex, sHex []byte
+		if i < len(trades) {
+			hashHex, _ = hex.DecodeString(trades[i].MessageHash)
+			pxHex, _ = hex.DecodeString(trades[i].PubKeyX)
+			pyHex, _ = hex.DecodeString(trades[i].PubKeyY)
+			rHex, _ = hex.DecodeString(trades[i].SigR)
+			sHex, _ = hex.DecodeString(trades[i].SigS)
+		} else {
+			hashHex = validHash
+			pxHex = validPx
+			pyHex = validPy
+			rHex = validR
+			sHex = validS
+		}
 
-	// Compute NewStateRoot using circuit logic (rolling hash)
-	circuit.NewStateRoot = computeRollingHash(circuit.PrevStateRoot.(*big.Int), circuit.Transactions[:])
-	log.Printf("DEBUG: Go Computed State Root: %s", circuit.NewStateRoot.(*big.Int).String())
+		circuit.MessageHashes[i] = emulated.ValueOf[emulated.Secp256k1Fr](hashHex)
+		circuit.PubKeys[i].X = emulated.ValueOf[emulated.Secp256k1Fp](pxHex)
+		circuit.PubKeys[i].Y = emulated.ValueOf[emulated.Secp256k1Fp](pyHex)
+		circuit.Sigs[i].R = emulated.ValueOf[emulated.Secp256k1Fr](rHex)
+		circuit.Sigs[i].S = emulated.ValueOf[emulated.Secp256k1Fr](sHex)
+	}
 
-	circuit.BatchNumber = big.NewInt(int64(batch.Number))
-	circuit.Timestamp = big.NewInt(batch.Timestamp)
-	circuit.IndexerAddr = indexerAddr
-
-	// Create witness
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	publicWitness, err := witness.Public()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	// Generate proof
 	proof, err := groth16.Prove(ccs, pk, witness)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	return proof, publicWitness, circuit.NewStateRoot.(*big.Int), nil
+	return proof, publicWitness, nil
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *Batch, proof groth16.Proof, prevStateRoot *big.Int, newStateRootBig *big.Int) (*types.Transaction, error) {
-	// 1. Reconstruct batchData string
-	batchDataStr := fmt.Sprintf("%d:%s:%s:%d",
-		batch.Number,
-		batch.PrevStateRoot,
-		batch.NewStateRoot,
-		batch.Timestamp)
-	for _, tx := range batch.Transactions {
-		batchDataStr += ":" + tx.Hash
-	}
-	batchData := []byte(batchDataStr)
-
-	// 3. Extract proof points
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, error) {
 	bn254Proof, ok := proof.(*bn254.Proof)
 	if !ok {
 		return nil, fmt.Errorf("invalid proof type")
 	}
 
-	proofA := [2]*big.Int{bn254Proof.Ar.X.BigInt(new(big.Int)), bn254Proof.Ar.Y.BigInt(new(big.Int))}
-	proofB := [2][2]*big.Int{
-		{bn254Proof.Bs.X.A1.BigInt(new(big.Int)), bn254Proof.Bs.X.A0.BigInt(new(big.Int))},
-		{bn254Proof.Bs.Y.A1.BigInt(new(big.Int)), bn254Proof.Bs.Y.A0.BigInt(new(big.Int))},
+	// Pack proof into uint256[8]
+	proof8 := [8]*big.Int{
+		bn254Proof.Ar.X.BigInt(new(big.Int)), bn254Proof.Ar.Y.BigInt(new(big.Int)),
+		bn254Proof.Bs.X.A1.BigInt(new(big.Int)), bn254Proof.Bs.X.A0.BigInt(new(big.Int)),
+		bn254Proof.Bs.Y.A1.BigInt(new(big.Int)), bn254Proof.Bs.Y.A0.BigInt(new(big.Int)),
+		bn254Proof.Krs.X.BigInt(new(big.Int)), bn254Proof.Krs.Y.BigInt(new(big.Int)),
 	}
-	proofC := [2]*big.Int{bn254Proof.Krs.X.BigInt(new(big.Int)), bn254Proof.Krs.Y.BigInt(new(big.Int))}
 
-	// 4. Recompute BatchRoot for public inputs
-	var transactions [circuits.BatchSize]circuits.Transaction
-	for i := 0; i < circuits.BatchSize; i++ {
-		if i < len(batch.Transactions) {
-			tx := batch.Transactions[i]
-			transactions[i] = circuits.Transaction{
-				Nonce:    parseBigInt(string(tx.Nonce)),
-				From:     hashAddress(tx.From),
-				To:       hashAddress(tx.To),
-				Amount:   parseBigInt(string(tx.Value)),
-				GasPrice: big.NewInt(1000000000),
-				GasLimit: big.NewInt(21000),
-				Data:     hashData(tx.Data),
-			}
-		} else {
-			transactions[i] = circuits.Transaction{
-				Nonce:    big.NewInt(0),
-				From:     big.NewInt(0),
-				To:       big.NewInt(0),
-				Amount:   big.NewInt(0),
-				GasPrice: big.NewInt(0),
-				GasLimit: big.NewInt(0),
-				Data:     big.NewInt(0),
-			}
+	// Extract commitments if they exist
+	commitments := [2]*big.Int{big.NewInt(0), big.NewInt(0)}
+	if len(bn254Proof.Commitments) > 0 {
+		commitments[0] = bn254Proof.Commitments[0].X.BigInt(new(big.Int))
+		commitments[1] = bn254Proof.Commitments[0].Y.BigInt(new(big.Int))
+	}
+
+	commitmentPok := [2]*big.Int{
+		bn254Proof.CommitmentPok.X.BigInt(new(big.Int)),
+		bn254Proof.CommitmentPok.Y.BigInt(new(big.Int)),
+	}
+
+	// Extract 120 public inputs from publicWitness
+	var buf bytes.Buffer
+	if _, err := publicWitness.WriteTo(&buf); err != nil {
+		return nil, err
+	}
+	data := buf.Bytes()
+	if len(data) < 12 {
+		return nil, fmt.Errorf("invalid witness data")
+	}
+
+	nbPublic := binary.BigEndian.Uint32(data[0:4])
+	if nbPublic != 120 {
+		return nil, fmt.Errorf("expected 120 public inputs, got %d", nbPublic)
+	}
+
+	var publicInputs [120]*big.Int
+	offset := 12
+	for i := 0; i < 120; i++ {
+		if offset+32 > len(data) {
+			return nil, fmt.Errorf("unexpected end of witness data")
 		}
-	}
-	batchRoot := computeMerkleRoot(transactions[:])
-
-	// 2. Prepare arguments
-	// Use Keccak256 for batchHash (DA check)
-	batchHash := crypto.Keccak256Hash(batchData)
-
-	// Use calculated NewStateRoot (converted to bytes32)
-	newStateRoot := common.BytesToHash(BigIntTo32Bytes(newStateRootBig))
-
-	publicInputs := [6]*big.Int{
-		batchRoot,
-		prevStateRoot,
-		newStateRootBig,
-		new(big.Int).SetUint64(batch.Number),
-		big.NewInt(batch.Timestamp),
-		hashAddress(auth.From.Hex()),
+		publicInputs[i] = new(big.Int).SetBytes(data[offset : offset+32])
+		offset += 32
 	}
 
-	// 5. Pack ABI and send transaction
-	// Added getCurrentStateRoot to ABI
-	const abiJSON = `[{"inputs":[{"internalType":"bytes32","name":"batchHash","type":"bytes32"},{"internalType":"bytes32","name":"newStateRoot","type":"bytes32"},{"internalType":"bytes","name":"batchData","type":"bytes"},{"internalType":"uint256[2]","name":"proofA","type":"uint256[2]"},{"internalType":"uint256[2][2]","name":"proofB","type":"uint256[2][2]"},{"internalType":"uint256[2]","name":"proofC","type":"uint256[2]"},{"internalType":"uint256[6]","name":"publicInputs","type":"uint256[6]"}],"name":"registerBatch","outputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"}],"stateMutability":"nonpayable","type":"function"}, {"inputs":[],"name":"getCurrentStateRoot","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[120]","name":"publicInputs","type":"uint256[120]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)
 	}
 
-	// Debug logs
-	log.Printf("DEBUG: BatchRoot (BigInt): %s\n", batchRoot.String())
-	log.Printf("DEBUG: BatchHash (Hex): %s\n", batchHash.Hex())
-	log.Printf("DEBUG: PublicInputs[0] (BatchRoot): %s\n", publicInputs[0].String())
-	log.Printf("DEBUG: PublicInputs[1] (OldStateRoot): %s\n", publicInputs[1].String())
-	log.Printf("DEBUG: PublicInputs[2] (NewStateRoot): %s\n", publicInputs[2].String())
-	log.Printf("DEBUG: PublicInputs[3] (BatchNumber): %s\n", publicInputs[3].String())
-	log.Printf("DEBUG: PublicInputs[4] (Timestamp): %s\n", publicInputs[4].String())
-	log.Printf("DEBUG: PublicInputs[5] (Indexer): %s\n", publicInputs[5].String())
-	log.Printf("DEBUG: Expected BatchNumber: %d\n", batch.Number)
-
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
-	tx, err := contract.Transact(auth, "registerBatch", batchHash, newStateRoot, batchData, proofA, proofB, proofC, publicInputs)
+
+	// Dump calldata
+	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs)
+	os.WriteFile("calldata.hex", []byte(hex.EncodeToString(calldata)), 0644)
+
+	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
+	// This will let the transaction hit the chain and revert, allowing us to debug it via txhash.
+	auth.GasLimit = 15000000
+	
+	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send transaction: %w", err)
 	}
@@ -746,41 +710,7 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	return tx, nil
 }
 
-func getCurrentStateRoot(client *ethclient.Client, contractAddr string) (*big.Int, error) {
-	const abiJSON = `[{"inputs":[],"name":"getCurrentStateRoot","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]`
-	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %w", err)
-	}
 
-	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
-	var result []interface{}
-	err = contract.Call(&bind.CallOpts{}, &result, "getCurrentStateRoot")
-	if err != nil {
-		return nil, fmt.Errorf("failed to call getCurrentStateRoot: %w", err)
-	}
-
-	// Convert bytes32 to big.Int
-	rootBytes := result[0].([32]byte)
-	return new(big.Int).SetBytes(rootBytes[:]), nil
-}
-
-func getTotalBatches(client *ethclient.Client, contractAddr string) (*big.Int, error) {
-	const abiJSON = `[{"inputs":[],"name":"totalBatches","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
-	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %w", err)
-	}
-
-	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
-	var result []interface{}
-	err = contract.Call(&bind.CallOpts{}, &result, "totalBatches")
-	if err != nil {
-		return nil, fmt.Errorf("failed to call totalBatches: %w", err)
-	}
-
-	return result[0].(*big.Int), nil
-}
 
 // Helper functions with proper field reduction
 
@@ -1068,58 +998,50 @@ func submitProofWithParanoidMode(
 	auth *bind.TransactOpts,
 	contractAddr string,
 	batch *Batch,
+	chunkIndex int,
+	trades []ParsedTrade,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
 	vk groth16.VerifyingKey,
-	localStateRoot *big.Int,
-	indexerAddr *big.Int,
 	store *storage.ProverStore,
 	enableParanoid bool,
 	maxRebuilds int,
 	testMode bool,
-) (*types.Transaction, *types.Receipt, *big.Int, error) {
+) (*types.Transaction, *types.Receipt, error) {
 
 	// Level 1: Try with initial proof (3 quick retries for network issues)
-	proof, publicWitness, calculatedNewStateRoot, err := generateProof(batch, ccs, pk, localStateRoot, indexerAddr)
+	proof, publicWitness, err := generateProof(trades, ccs, pk)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to generate proof: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
 
 	log.Println("   ✅ Proof generated")
-	log.Printf("   🧮 Calculated New State Root: %s\n", calculatedNewStateRoot.String())
 
 	// Verify locally
 	log.Println("   🔍 Verifying proof locally...")
 	if err := verifyLocal(proof, vk, publicWitness); err != nil {
-		return nil, nil, nil, fmt.Errorf("local verification failed: %w", err)
+		return nil, nil, fmt.Errorf("local verification failed: %w", err)
 	}
 	log.Println("   ✅ Proof verified locally")
 
 	// Attempt submission with retries
-	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot, 3, testMode)
+	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, proof, publicWitness, 3, testMode)
 	if err == nil {
-		return tx, receipt, calculatedNewStateRoot, nil
+		return tx, receipt, nil
 	}
 
-	// Check error type
 	errType := classifyError(err)
 	log.Printf("   ⚠️  Submission failed: %v (Type: %v)\n", err, errType)
 
-	// If batch already exists on L1, skip it (treat as success)
 	if errType == ErrorTypeDuplicate {
-		log.Println("   ℹ️  Batch already exists on L1 - skipping to next batch")
-		// Return without error to signal success (batch is on L1)
-		return tx, receipt, calculatedNewStateRoot, nil
+		log.Println("   ℹ️  Batch chunk already exists on L1 - skipping to next")
+		return tx, receipt, nil
 	}
-
-	// If it's a network error, don't rebuild - just fail
 	if errType == ErrorTypeNetwork {
-		return nil, nil, nil, fmt.Errorf("network error after retries: %w", err)
+		return nil, nil, fmt.Errorf("network error after retries: %w", err)
 	}
-
-	// Level 2: Paranoid mode - rebuild proof if enabled
 	if !enableParanoid || errType != ErrorTypeVerification {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	log.Println()
@@ -1128,51 +1050,39 @@ func submitProofWithParanoidMode(
 	for rebuild := 1; rebuild <= maxRebuilds; rebuild++ {
 		log.Printf("   🔧 Rebuild attempt %d/%d\n", rebuild, maxRebuilds)
 
-		// Regenerate proof
-		proof, publicWitness, calculatedNewStateRoot, err = generateProof(batch, ccs, pk, localStateRoot, indexerAddr)
+		proof, publicWitness, err = generateProof(trades, ccs, pk)
 		if err != nil {
 			log.Printf("   ❌ Proof regeneration failed: %v\n", err)
 			continue
 		}
-
 		log.Println("   ✅ Proof regenerated")
 
-		// Verify locally again
 		if err := verifyLocal(proof, vk, publicWitness); err != nil {
 			log.Printf("   ❌ Local verification failed: %v\n", err)
 			continue
 		}
 		log.Println("   ✅ Proof verified locally")
 
-		// Try submission again
-		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch, proof, localStateRoot, calculatedNewStateRoot, 2, testMode)
+		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, proof, publicWitness, 2, testMode)
 		if err == nil {
 			log.Println("   ✅ Proof accepted after rebuild!")
-			return tx, receipt, calculatedNewStateRoot, nil
+			return tx, receipt, nil
 		}
-
 		log.Printf("   ❌ Rebuilt proof also failed: %v\n", err)
 	}
 
-	// Level 3: HALT - All attempts failed
 	errMsg := fmt.Sprintf("Verification failed after %d rebuild attempts: %v", maxRebuilds, err)
-
-	// Save failure data
 	if saveErr := saveFailureData(batch, proof, publicWitness, errMsg); saveErr != nil {
 		log.Printf("⚠️  Failed to save failure data: %v\n", saveErr)
 	}
-
-	// Save to storage
 	var proofBuf bytes.Buffer
 	proof.WriteTo(&proofBuf)
 	if saveErr := store.SaveVerificationFailure(batch.Number, errMsg, proofBuf.Bytes()); saveErr != nil {
 		log.Printf("⚠️  Failed to save failure to storage: %v\n", saveErr)
 	}
-
-	// Halt the prover
 	haltProver(store, batch, errMsg)
 
-	return nil, nil, nil, fmt.Errorf("HALTED: %s", errMsg)
+	return nil, nil, fmt.Errorf("HALTED: %s", errMsg)
 }
 
 // attemptSubmission tries to submit and verify a proof with retries
@@ -1180,10 +1090,10 @@ func attemptSubmission(
 	client *ethclient.Client,
 	auth *bind.TransactOpts,
 	contractAddr string,
-	batch *Batch,
+	batchNumber uint64,
+	chunkIndex int,
 	proof groth16.Proof,
-	prevStateRoot *big.Int,
-	newStateRoot *big.Int,
+	publicWitness witness.Witness,
 	maxAttempts int,
 	testMode bool,
 ) (*types.Transaction, *types.Receipt, error) {
@@ -1191,23 +1101,19 @@ func attemptSubmission(
 	var tx *types.Transaction
 	var err error
 
-	// TEST MODE: Corrupt proof to simulate verification failure
 	proofToSubmit := proof
 	if testMode {
 		log.Println("   🧪 TEST MODE: Corrupting proof to simulate verification failure...")
-		// Corrupt the proof by modifying one of its points
 		bn254Proof, ok := proof.(*bn254.Proof)
 		if ok {
-			// Create a copy and corrupt it
 			corruptedProof := *bn254Proof
-			// Modify the proof by adding 1 to the X coordinate of point A
 			corruptedProof.Ar.X.Add(&corruptedProof.Ar.X, &corruptedProof.Ar.X)
 			proofToSubmit = &corruptedProof
 		}
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		tx, err = submitProof(client, auth, contractAddr, batch, proofToSubmit, prevStateRoot, newStateRoot)
+		tx, err = submitProof(client, auth, contractAddr, batchNumber, chunkIndex, proofToSubmit, publicWitness)
 		if err != nil {
 			if attempt < maxAttempts {
 				log.Printf("   ⚠️  Submission attempt %d/%d failed: %v. Retrying in 5s...\n", attempt, maxAttempts, err)

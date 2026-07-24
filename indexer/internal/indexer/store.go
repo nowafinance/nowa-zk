@@ -158,7 +158,7 @@ func (bs *BatchStore) GetIncompleteBatch(batchSize int) (*types.Batch, error) {
 	}
 
 	// Return batch if it's pending and not full
-	if batch.Status == "pending" && len(batch.Transactions) < batchSize {
+	if batch.Status == "pending" && len(batch.Trades) < batchSize {
 		return batch, nil
 	}
 

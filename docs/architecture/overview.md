@@ -7,7 +7,7 @@
 │                         L1 (Ethereum)                        │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │          BatchRegistry Smart Contract                   │ │
-│  │  • Stores batch commitments & state roots               │ │
+│  │  • Stores batch commitments                               │ │
 │  │  • Verifies ZK proofs                                   │ │
 │  │  • Manages L2 state on L1                               │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -31,7 +31,7 @@
 │                       Indexer                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  • Indexes L2 blockchain                                │ │
-│  │  • Groups transactions into batches (128 txs)           │ │
+│  │  • Groups trades into batches (128 trades)              │ │
 │  │  • Provides API for prover                              │ │
 │  │  • Cleanup: deletes proven batches (every 5 min)        │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -56,8 +56,8 @@
 - **Finality**: Instant soft finality, proven on L1
 
 ### Indexer
-- **Purpose**: Batch L2 transactions for proving
-- **Batch Size**: 128 transactions per batch
+- **Purpose**: Batch L2 trades for proving
+- **Batch Size**: 128 trades per batch
 - **Storage**: Full batch data until L1 finalization
 - **Cleanup**: Automatic deletion after prover confirms L1 submission
 
@@ -68,17 +68,17 @@
 - **Submission**: Direct to L1 BatchRegistry contract
 
 ### L1 Smart Contracts
-- **Purpose**: Verify proofs and manage L2 state
+- **Purpose**: Verify proofs and manage verified trades
 - **Contract**: BatchRegistry
 - **Verification**: On-chain Groth16 verifier
-- **State**: Tracks state roots and batch commitments
+- **State**: Tracks batch commitments and verified trades
 
 ## Data Flow Summary
 
 1. **User** → Submits transaction to **L2 Blockchain**
 2. **Indexer** → Indexes L2 blocks, groups into batches
 3. **Prover** → Fetches batch, generates proof, submits to L1
-4. **L1 Contract** → Verifies proof, updates state root
+4. **L1 Contract** → Verifies proof, records verified trades
 5. **Indexer** → Queries prover, deletes old batch data (cleanup)
 
 See [Data Flow](./data-flow.md) for detailed transaction lifecycle.
@@ -153,9 +153,9 @@ L1 Ethereum
 | Metric | Value |
 |--------|-------|
 | L2 Block Time | ~1 second |
-| Batch Size | 128 transactions |
+| Batch Size | 128 trades |
 | Proof Generation | ~2-5 minutes per batch |
-| L1 Submission | ~1 transaction per batch |
+| L1 Submission | ~1 submission transaction per batch |
 | Storage per Batch | Indexer: 0 (deleted), Prover: 4KB |
 | Cleanup Frequency | Every 5 minutes |
 

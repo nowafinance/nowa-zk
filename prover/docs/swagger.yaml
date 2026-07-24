@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  internal_api.BatchResponse:
+  api.BatchResponse:
     properties:
       batchHash:
         type: string
@@ -22,7 +22,7 @@ definitions:
           type: string
         type: array
     type: object
-  internal_api.StatusResponse:
+  api.StatusResponse:
     properties:
       batch_number:
         type: integer
@@ -94,7 +94,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.BatchResponse'
+            $ref: '#/definitions/api.BatchResponse'
         "400":
           description: Invalid batch ID
           schema:
@@ -119,7 +119,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.BatchResponse'
+            $ref: '#/definitions/api.BatchResponse'
         "404":
           description: No batches found
           schema:
@@ -131,6 +131,25 @@ paths:
       summary: Get latest verified batch
       tags:
       - Batches
+  /contracts:
+    get:
+      description: Get a list of deployed smart contracts and their addresses
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: No contracts found
+          schema:
+            type: string
+      summary: Get deployed smart contracts
+      tags:
+      - Meta
   /status/{id}:
     get:
       description: Get proof generation status for a batch
@@ -146,7 +165,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.StatusResponse'
+            $ref: '#/definitions/api.StatusResponse'
         "400":
           description: Invalid batch ID
           schema:
