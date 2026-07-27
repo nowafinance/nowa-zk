@@ -369,6 +369,9 @@ const docTemplate = `{
                 },
                 "sigS": {
                     "type": "string"
+                },
+                "signerAddress": {
+                    "type": "string"
                 }
             }
         }

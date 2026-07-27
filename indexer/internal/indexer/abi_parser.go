@@ -207,10 +207,11 @@ func extractTrade(order Order) (*types.ParsedTrade, error) {
 	}
 
 	return &types.ParsedTrade{
-		MessageHash: hex.EncodeToString(messageHash),
-		PubKeyX:     hex.EncodeToString(pubKey.X.Bytes()),
-		PubKeyY:     hex.EncodeToString(pubKey.Y.Bytes()),
-		SigR:        hex.EncodeToString(sig[:32]),
-		SigS:        hex.EncodeToString(sig[32:64]),
+		MessageHash:   hex.EncodeToString(messageHash),
+		PubKeyX:       hex.EncodeToString(pubKey.X.Bytes()),
+		PubKeyY:       hex.EncodeToString(pubKey.Y.Bytes()),
+		SigR:          hex.EncodeToString(sig[:32]),
+		SigS:          hex.EncodeToString(sig[32:64]),
+		SignerAddress: crypto.PubkeyToAddress(*pubKey).Hex(),
 	}, nil
 }

@@ -17,11 +17,12 @@ type Batch struct {
 
 // ParsedTrade contains the signatures and EIP-712 hashes for a trade
 type ParsedTrade struct {
-	MessageHash string `json:"messageHash"`
-	PubKeyX     string `json:"pubKeyX"`
-	PubKeyY     string `json:"pubKeyY"`
-	SigR        string `json:"sigR"`
-	SigS        string `json:"sigS"`
+	MessageHash   string `json:"messageHash"`
+	PubKeyX       string `json:"pubKeyX"`
+	PubKeyY       string `json:"pubKeyY"`
+	SigR          string `json:"sigR"`
+	SigS          string `json:"sigS"`
+	SignerAddress string `json:"signerAddress"`
 }
 
 // ExecutionTrace represents execution trace for a transaction

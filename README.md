@@ -59,6 +59,9 @@ cd nowa-zk
 
 The `setup` command compiles the binaries, runs the Trusted Setup for ZK keys, and generates the `RollupVerifier.sol` contract. All generated files are safely stored in `~/.nowa-zk/`.
 
+<!-- Wipe everything (Data, Keys, and Global Configs) -->
+<!-- make clean-global -->
+
 ```bash
 make setup
 ```

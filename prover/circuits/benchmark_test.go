@@ -1,20 +1,78 @@
 package circuits
 
 import (
-	"math/big"
+	"crypto/rand"
 	"testing"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	secp256k1ecdsa "github.com/consensys/gnark-crypto/ecc/secp256k1/ecdsa"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
+	"github.com/consensys/gnark/std/math/emulated"
+	gomimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"math/big"
 )
 
-// BenchmarkCircuitSetup measures the time to compile the circuit and run the trusted setup.
-func BenchmarkCircuitSetup(b *testing.B) {
-	emptyCircuit := Circuit{}
+// generateBatchTradeWitness builds a fully populated BatchTradeSignatureCircuit witness
+// using freshly generated secp256k1 keypairs and random message hashes.
+func generateBatchTradeWitness() BatchTradeSignatureCircuit {
+	var witness BatchTradeSignatureCircuit
+	var msgs [TradeBatchSize][]byte
+	for i := 0; i < TradeBatchSize; i++ {
+		privKey, err := secp256k1ecdsa.GenerateKey(rand.Reader)
+		if err != nil {
+			panic(err)
+		}
+		msg := make([]byte, 32)
+		if _, err := rand.Read(msg); err != nil {
+			panic(err)
+		}
+		msgs[i] = msg
+		sigBin, err := privKey.Sign(msg, nil)
+		if err != nil {
+			panic(err)
+		}
+		var sig secp256k1ecdsa.Signature
+		if _, err := sig.SetBytes(sigBin); err != nil {
+			panic(err)
+		}
 
+		witness.MessageHashes[i] = emulated.ValueOf[emulated.Secp256k1Fr](msg)
+		xBytes := privKey.PublicKey.A.X.Bytes()
+		yBytes := privKey.PublicKey.A.Y.Bytes()
+		witness.PubKeys[i].X = emulated.ValueOf[emulated.Secp256k1Fp](xBytes[:])
+		witness.PubKeys[i].Y = emulated.ValueOf[emulated.Secp256k1Fp](yBytes[:])
+		witness.Sigs[i].R = emulated.ValueOf[emulated.Secp256k1Fr](sig.R[:])
+		witness.Sigs[i].S = emulated.ValueOf[emulated.Secp256k1Fr](sig.S[:])
+	}
+	
+	// Compute BatchRoot
+	goMiMC := gomimc.NewMiMC()
+	for i := 0; i < TradeBatchSize; i++ {
+		val := new(big.Int).SetBytes(msgs[i])
+		
+		mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+		part1 := new(big.Int).And(val, mask)
+		part2 := new(big.Int).Rsh(val, 128)
+		
+		b1 := make([]byte, 32)
+		part1.FillBytes(b1)
+		goMiMC.Write(b1)
+		
+		b2 := make([]byte, 32)
+		part2.FillBytes(b2)
+		goMiMC.Write(b2)
+	}
+	witness.BatchRoot = goMiMC.Sum(nil)
+	return witness
+}
+
+// BenchmarkCircuitSetup measures the time to compile the BatchTradeSignatureCircuit
+// and run the Groth16 trusted setup.
+func BenchmarkCircuitSetup(b *testing.B) {
+	emptyCircuit := BatchTradeSignatureCircuit{}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
@@ -30,38 +88,14 @@ func BenchmarkCircuitSetup(b *testing.B) {
 	}
 }
 
-// BenchmarkWitnessGeneration measures the time to generate the witness from inputs.
+// BenchmarkWitnessGeneration measures the time to generate the witness from trade inputs.
 func BenchmarkWitnessGeneration(b *testing.B) {
-	// Prepare data outside the loop
-	transactions := make([]Transaction, BatchSize)
-	for i := 0; i < BatchSize; i++ {
-		transactions[i] = Transaction{
-			Nonce:    big.NewInt(int64(i)),
-			From:     big.NewInt(int64(1000 + i)),
-			To:       big.NewInt(int64(2000 + i)),
-			Amount:   big.NewInt(int64(100 + i)),
-			GasPrice: big.NewInt(int64(20 * 1e9)),
-			GasLimit: big.NewInt(int64(21000 + i)),
-			Data:     big.NewInt(int64(3000 + i)),
-		}
-	}
-
-	expectedRoot := computeMerkleRootBench(transactions)
-	expectedStateRoot := computeStateRootBench(big.NewInt(0), transactions)
-
-	var circuit Circuit
-	copy(circuit.Transactions[:], transactions)
-	circuit.BatchRoot = expectedRoot
-	circuit.PrevStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = expectedStateRoot
-	circuit.BatchNumber = big.NewInt(1)
-	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.IndexerAddr = big.NewInt(9999)
+	witness := generateBatchTradeWitness()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
-		_, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
+		_, err := frontend.NewWitness(&witness, ecc.BN254.ScalarField())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -69,44 +103,19 @@ func BenchmarkWitnessGeneration(b *testing.B) {
 	}
 }
 
-// BenchmarkProofGeneration measures ONLY the proof generation time (Groth16 Prove).
+// BenchmarkProofGeneration measures ONLY the Groth16 proof generation time.
 func BenchmarkProofGeneration(b *testing.B) {
-	// Setup Phase
-	transactions := make([]Transaction, BatchSize)
-	for i := 0; i < BatchSize; i++ {
-		transactions[i] = Transaction{
-			Nonce:    big.NewInt(int64(i)),
-			From:     big.NewInt(int64(1000 + i)),
-			To:       big.NewInt(int64(2000 + i)),
-			Amount:   big.NewInt(int64(100 + i)),
-			GasPrice: big.NewInt(int64(20 * 1e9)),
-			GasLimit: big.NewInt(int64(21000 + i)),
-			Data:     big.NewInt(int64(3000 + i)),
-		}
-	}
+	witness := generateBatchTradeWitness()
 
-	expectedRoot := computeMerkleRootBench(transactions)
-	expectedStateRoot := computeStateRootBench(big.NewInt(0), transactions)
-
-	var circuit Circuit
-	copy(circuit.Transactions[:], transactions)
-	circuit.BatchRoot = expectedRoot
-	circuit.PrevStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = expectedStateRoot
-	circuit.BatchNumber = big.NewInt(1)
-	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.IndexerAddr = big.NewInt(9999)
-
-	// Compile & Setup
-	emptyCircuit := Circuit{}
+	emptyCircuit := BatchTradeSignatureCircuit{}
 	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
 	pk, _, _ := groth16.Setup(ccs)
-	witness, _ := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
+	w, _ := frontend.NewWitness(&witness, ecc.BN254.ScalarField())
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		start := time.Now()
-		_, err := groth16.Prove(ccs, pk, witness)
+		_, err := groth16.Prove(ccs, pk, w)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -114,41 +123,16 @@ func BenchmarkProofGeneration(b *testing.B) {
 	}
 }
 
-// BenchmarkVerification measures the time to verify a proof.
+// BenchmarkVerification measures the time to verify a Groth16 proof.
 func BenchmarkVerification(b *testing.B) {
-	// Setup Phase
-	transactions := make([]Transaction, BatchSize)
-	for i := 0; i < BatchSize; i++ {
-		transactions[i] = Transaction{
-			Nonce:    big.NewInt(int64(i)),
-			From:     big.NewInt(int64(1000 + i)),
-			To:       big.NewInt(int64(2000 + i)),
-			Amount:   big.NewInt(int64(100 + i)),
-			GasPrice: big.NewInt(int64(20 * 1e9)),
-			GasLimit: big.NewInt(int64(21000 + i)),
-			Data:     big.NewInt(int64(3000 + i)),
-		}
-	}
+	witness := generateBatchTradeWitness()
 
-	expectedRoot := computeMerkleRootBench(transactions)
-	expectedStateRoot := computeStateRootBench(big.NewInt(0), transactions)
-
-	var circuit Circuit
-	copy(circuit.Transactions[:], transactions)
-	circuit.BatchRoot = expectedRoot
-	circuit.PrevStateRoot = big.NewInt(0)
-	circuit.NewStateRoot = expectedStateRoot
-	circuit.BatchNumber = big.NewInt(1)
-	circuit.Timestamp = big.NewInt(1700000000)
-	circuit.IndexerAddr = big.NewInt(9999)
-
-	// Compile, Setup, Prove
-	emptyCircuit := Circuit{}
+	emptyCircuit := BatchTradeSignatureCircuit{}
 	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &emptyCircuit)
 	pk, vk, _ := groth16.Setup(ccs)
-	witness, _ := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
-	proof, _ := groth16.Prove(ccs, pk, witness)
-	publicWitness, _ := witness.Public()
+	w, _ := frontend.NewWitness(&witness, ecc.BN254.ScalarField())
+	proof, _ := groth16.Prove(ccs, pk, w)
+	publicWitness, _ := w.Public()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

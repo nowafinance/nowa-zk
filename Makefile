@@ -135,7 +135,7 @@ run-indexer: build-indexer
 #   If CONTRACT/KEY are omitted, they are auto-loaded from .nowa-zk/deployments.json and .nowa-zk/secrets.env
 run-prover: build-prover
 	@echo "🔐 Starting Prover..."
-	@./build/prover-bin start --keys-dir ~/.nowa-zk/keys $(if $(CONTRACT),--contract $(CONTRACT),) $(if $(KEY),--private-key $(KEY),)
+	@./build/prover-bin start --keys-dir ~/.nowa-zk/keys $(if $(CONTRACT),--contract $(CONTRACT),) $(if $(KEY),--private-key $(KEY),) $(if $(CLEAR_HALT),--clear-halt,)
 
 # --- Help ---
 
@@ -151,6 +151,23 @@ help:
 	@echo "Run Workflow:"
 	@echo "  make anvil           - 5. Start chain (Term 1)"
 	@echo "  make deploy          - 6. Deploy contracts (Term 2)"
+	@echo "  make verify-contracts - 6b. Verify contracts on Etherscan"
 	@echo "  make run-indexer   - 7. Start indexer (Term 3)"
 	@echo "  make run-prover      - 8. Start prover (Term 4)"
 	@echo "  make check-batch     - 9. Check latest batch info"
+
+# Verify contracts on Etherscan (Sepolia)
+verify-contracts:
+	@echo "🔍 Starting Contract Verification..."
+	@if [ -f .env ]; then export $$(grep -v '^[[:space:]]*#' .env | xargs); fi; \
+	if [ -z "$$ETHERSCAN_API_KEY" ]; then \
+		echo "❌ Error: ETHERSCAN_API_KEY is not set in .env"; \
+		exit 1; \
+	fi; \
+	VERIFIER_ADDR=$$(jq -r '.TradeVerifier' ~/.nowa-zk/deployments.json); \
+	REGISTRY_ADDR=$$(jq -r '.TradeRegistry' ~/.nowa-zk/deployments.json); \
+	echo "🔍 Verifying TradeVerifier at $$VERIFIER_ADDR..."; \
+	cd contracts && forge verify-contract --chain-id 11155111 --watch --etherscan-api-key $$ETHERSCAN_API_KEY $$VERIFIER_ADDR src/generated/TradeVerifier.sol:Verifier; \
+	echo "🔍 Verifying TradeRegistry at $$REGISTRY_ADDR..."; \
+	forge verify-contract --chain-id 11155111 --watch --constructor-args $$(cast abi-encode "constructor(address)" $$VERIFIER_ADDR) --etherscan-api-key $$ETHERSCAN_API_KEY $$REGISTRY_ADDR src/TradeRegistry.sol:TradeRegistry
+	@echo "✅ Verification complete!"

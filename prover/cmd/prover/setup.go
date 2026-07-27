@@ -16,7 +16,7 @@ import (
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Generate proving/verifying keys and Solidity verifier contract",
-	Long:  `Compiles the rollup circuit, generates Groth16 keys, and exports Solidity verifier.`,
+	Long:  `Compiles the BatchTradeSignatureCircuit, generates Groth16 keys, and exports the Solidity verifier.`,
 	Run:   setup,
 }
 
@@ -35,9 +35,9 @@ func init() {
 
 func setup(cmd *cobra.Command, args []string) {
 	log.Println("========================================")
-	log.Println("  ZK Rollup Circuit Setup")
+	log.Println("  ZK Trade Circuit Setup")
 	log.Println("========================================")
-	log.Printf("Batch size: %d transactions\n", circuits.BatchSize)
+	log.Printf("Trade batch size: %d signatures per proof\n", circuits.TradeBatchSize)
 	log.Println()
 
 	// Step 1: Compile circuit

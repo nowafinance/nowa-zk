@@ -13,12 +13,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"golang.org/x/crypto/sha3"
 	"strings"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	gomimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/witness"
@@ -105,11 +107,12 @@ type Batch struct {
 }
 
 type ParsedTrade struct {
-	MessageHash string `json:"messageHash"`
-	PubKeyX     string `json:"pubKeyX"`
-	PubKeyY     string `json:"pubKeyY"`
-	SigR        string `json:"sigR"`
-	SigS        string `json:"sigS"`
+	MessageHash   string `json:"messageHash"`
+	PubKeyX       string `json:"pubKeyX"`
+	PubKeyY       string `json:"pubKeyY"`
+	SigR          string `json:"sigR"`
+	SigS          string `json:"sigS"`
+	SignerAddress string `json:"signerAddress"`
 }
 
 // Transaction from indexer
@@ -337,9 +340,9 @@ func start(cmd *cobra.Command, args []string) {
 		// 2. Determine the next batch we want to process
 		nextBatchNum := lastProcessedBatch + 1
 
-		// 3. Check if we are strictly behind the latest batch (Process up to N-1)
-		if nextBatchNum >= latestBatch.Number {
-			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d, Target: < %d)\n", latestBatch.Number, lastProcessedBatch, latestBatch.Number)
+		// 3. Check if we are strictly behind the latest batch (Process up to N)
+		if nextBatchNum > latestBatch.Number {
+			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d, Target: <= %d)\n", latestBatch.Number, lastProcessedBatch, latestBatch.Number)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
@@ -360,7 +363,7 @@ func start(cmd *cobra.Command, args []string) {
 		totalTrades := len(batch.Trades)
 		if totalTrades == 0 {
 			log.Printf("   ℹ️  No trades in batch #%d, skipping...\n", batch.Number)
-			if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
+if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 				log.Printf("⚠️  Failed to save last processed batch: %v", err)
 			}
 			lastProcessedBatch = batch.Number
@@ -368,8 +371,9 @@ func start(cmd *cobra.Command, args []string) {
 		}
 
 		numChunks := (totalTrades + circuits.TradeBatchSize - 1) / circuits.TradeBatchSize
-		
+
 		var finalErr error
+		var lastTx *types.Transaction
 
 		for chunkIdx := 0; chunkIdx < numChunks; chunkIdx++ {
 			startIdx := chunkIdx * circuits.TradeBatchSize
@@ -391,7 +395,7 @@ func start(cmd *cobra.Command, args []string) {
 				break
 			}
 			if tx != nil {
-				
+				lastTx = tx
 			}
 		}
 
@@ -402,7 +406,7 @@ func start(cmd *cobra.Command, args []string) {
 				return
 			}
 			log.Printf("   ❌ Failed to process batch #%d: %v\n", batch.Number, finalErr)
-			
+
 			if failingBatch == batch.Number {
 				consecutiveFailures++
 			} else {
@@ -431,8 +435,6 @@ func start(cmd *cobra.Command, args []string) {
 
 		log.Printf("   ✅ Batch #%d successfully processed!\n", batch.Number)
 		log.Println()
-		tx := &types.Transaction{} // Dummy for downstream code
-		_ = tx
 
 		// Save state to store
 		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
@@ -441,8 +443,8 @@ func start(cmd *cobra.Command, args []string) {
 
 		// Save proof data with tx hash (no witness needed, too large)
 		txHash := ""
-		if tx != nil {
-			txHash = tx.Hash().Hex()
+		if lastTx != nil {
+			txHash = lastTx.Hash().Hex()
 		}
 
 		// Extract L2 transaction hashes
@@ -458,13 +460,12 @@ func start(cmd *cobra.Command, args []string) {
 			log.Printf("⚠️  Failed to save batch metadata: %v", err)
 		}
 
-
 		lastProcessedBatch = batch.Number
 	}
 }
 
 func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness witness.Witness) error {
-	return groth16.Verify(proof, vk, publicWitness)
+	return groth16.Verify(proof, vk, publicWitness, backend.WithVerifierHashToFieldFunction(sha3.NewLegacyKeccak256()))
 }
 
 func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
@@ -617,6 +618,30 @@ func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk gro
 		circuit.Sigs[i].S = emulated.ValueOf[emulated.Secp256k1Fr](sHex)
 	}
 
+	goMiMC := gomimc.NewMiMC()
+	for i := 0; i < circuits.TradeBatchSize; i++ {
+		var hashHex []byte
+		if i < len(trades) {
+			hashHex, _ = hex.DecodeString(trades[i].MessageHash)
+		} else {
+			hashHex, _ = hex.DecodeString(trades[0].MessageHash)
+		}
+
+		val := new(big.Int).SetBytes(hashHex)
+		mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+		part1 := new(big.Int).And(val, mask)
+		part2 := new(big.Int).Rsh(val, 128)
+
+		b1 := make([]byte, 32)
+		part1.FillBytes(b1)
+		goMiMC.Write(b1)
+
+		b2 := make([]byte, 32)
+		part2.FillBytes(b2)
+		goMiMC.Write(b2)
+	}
+	circuit.BatchRoot = goMiMC.Sum(nil)
+
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {
 		return nil, nil, err
@@ -627,7 +652,7 @@ func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk gro
 		return nil, nil, err
 	}
 
-	proof, err := groth16.Prove(ccs, pk, witness)
+	proof, err := groth16.Prove(ccs, pk, witness, backend.WithProverHashToFieldFunction(sha3.NewLegacyKeccak256()))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -635,7 +660,7 @@ func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk gro
 	return proof, publicWitness, nil
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, error) {
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkTrades []ParsedTrade, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, error) {
 	bn254Proof, ok := proof.(*bn254.Proof)
 	if !ok {
 		return nil, fmt.Errorf("invalid proof type")
@@ -672,13 +697,13 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	}
 
 	nbPublic := binary.BigEndian.Uint32(data[0:4])
-	if nbPublic != 120 {
-		return nil, fmt.Errorf("expected 120 public inputs, got %d", nbPublic)
+	if nbPublic != 121 {
+		return nil, fmt.Errorf("expected 121 public inputs, got %d", nbPublic)
 	}
 
-	var publicInputs [120]*big.Int
+	var publicInputs [121]*big.Int
 	offset := 12
-	for i := 0; i < 120; i++ {
+	for i := 0; i < 121; i++ {
 		if offset+32 > len(data) {
 			return nil, fmt.Errorf("unexpected end of witness data")
 		}
@@ -686,7 +711,22 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		offset += 32
 	}
 
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[120]","name":"publicInputs","type":"uint256[120]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	var messageHashes [10][32]byte
+	var signers [10]common.Address
+
+	for i := 0; i < 10; i++ {
+		if i < len(chunkTrades) {
+			hashBytes, _ := hex.DecodeString(chunkTrades[i].MessageHash)
+			copy(messageHashes[i][:], hashBytes)
+			signers[i] = common.HexToAddress(chunkTrades[i].SignerAddress)
+		} else {
+			hashBytes, _ := hex.DecodeString(chunkTrades[0].MessageHash)
+			copy(messageHashes[i][:], hashBytes)
+			signers[i] = common.HexToAddress(chunkTrades[0].SignerAddress)
+		}
+	}
+
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[121]","name":"publicInputs","type":"uint256[121]"},{"internalType":"bytes32[10]","name":"messageHashes","type":"bytes32[10]"},{"internalType":"address[10]","name":"signers","type":"address[10]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)
@@ -695,22 +735,20 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 
 	// Dump calldata
-	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs)
+	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, signers)
 	os.WriteFile("calldata.hex", []byte(hex.EncodeToString(calldata)), 0644)
 
 	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
 	// This will let the transaction hit the chain and revert, allowing us to debug it via txhash.
 	auth.GasLimit = 15000000
-	
-	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs)
+
+	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, signers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send transaction: %w", err)
 	}
 
 	return tx, nil
 }
-
-
 
 // Helper functions with proper field reduction
 
@@ -756,111 +794,6 @@ func hashData(data string) *big.Int {
 	var frVal fr.Element
 	frVal.SetBigInt(val)
 	return frVal.BigInt(new(big.Int))
-}
-
-// BigIntTo32Bytes converts field element to 32-byte array for MiMC
-func BigIntTo32Bytes(i *big.Int) []byte {
-	b := i.Bytes()
-	if len(b) == 32 {
-		return b
-	}
-	if len(b) > 32 {
-		return b[len(b)-32:]
-	}
-	padded := make([]byte, 32)
-	copy(padded[32-len(b):], b)
-	return padded
-}
-
-// computeMerkleRoot - Fixed version with proper field arithmetic
-func computeMerkleRoot(transactions []circuits.Transaction) *big.Int {
-	h := mimc.NewMiMC()
-
-	// Compute leaf hashes - must match circuit's hash order
-	leaves := make([]*big.Int, circuits.BatchSize)
-	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
-	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
-
-	for i := 0; i < circuits.BatchSize; i++ {
-		h.Reset()
-
-		// Pack fields
-		nonce := transactions[i].Nonce.(*big.Int)
-		gasLimit := transactions[i].GasLimit.(*big.Int)
-		gasPrice := transactions[i].GasPrice.(*big.Int)
-
-		packed := new(big.Int).Set(nonce)
-		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
-		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
-
-		h.Write(BigIntTo32Bytes(packed))
-		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
-
-		leaves[i] = new(big.Int).SetBytes(h.Sum(nil))
-
-		if i == 0 {
-			log.Printf("DEBUG: Go Leaf 0: %s", leaves[i].String())
-			log.Printf("DEBUG: Go Tx 0 Data: %s", transactions[i].Data.(*big.Int).String())
-		}
-	}
-
-	// Build Merkle tree
-	currentLayer := leaves
-	for len(currentLayer) > 1 {
-		nextLayer := make([]*big.Int, len(currentLayer)/2)
-		for i := 0; i < len(currentLayer); i += 2 {
-			h.Reset()
-			h.Write(BigIntTo32Bytes(currentLayer[i]))
-			h.Write(BigIntTo32Bytes(currentLayer[i+1]))
-
-			nextLayer[i/2] = new(big.Int).SetBytes(h.Sum(nil))
-		}
-		currentLayer = nextLayer
-	}
-
-	return currentLayer[0]
-}
-
-// computeRollingHash computes the state root transition using rolling hash logic
-// This matches the circuit's computeStateTransition function
-// computeRollingHash computes the state root transition using rolling hash logic
-// This matches the circuit's computeStateTransition function
-func computeRollingHash(prevStateRoot *big.Int, transactions []circuits.Transaction) *big.Int {
-	h := mimc.NewMiMC()
-	currentStateRoot := prevStateRoot
-
-	shift64 := new(big.Int).Lsh(big.NewInt(1), 64)
-	shift128 := new(big.Int).Lsh(big.NewInt(1), 128)
-
-	for i := 0; i < circuits.BatchSize; i++ {
-		// 1. Compute TxHash (Leaf)
-		h.Reset()
-
-		nonce := transactions[i].Nonce.(*big.Int)
-		gasLimit := transactions[i].GasLimit.(*big.Int)
-		gasPrice := transactions[i].GasPrice.(*big.Int)
-
-		packed := new(big.Int).Set(nonce)
-		packed.Add(packed, new(big.Int).Mul(gasLimit, shift64))
-		packed.Add(packed, new(big.Int).Mul(gasPrice, shift128))
-
-		h.Write(BigIntTo32Bytes(packed))
-		h.Write(BigIntTo32Bytes(transactions[i].From.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].To.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Amount.(*big.Int)))
-		h.Write(BigIntTo32Bytes(transactions[i].Data.(*big.Int)))
-		txHash := h.Sum(nil)
-
-		// 2. Update State Root: Hash(StateRoot, TxHash)
-		h.Reset()
-		h.Write(BigIntTo32Bytes(currentStateRoot))
-		h.Write(txHash)
-		currentStateRoot = new(big.Int).SetBytes(h.Sum(nil))
-	}
-	return currentStateRoot
 }
 
 // ErrorType represents the type of error encountered
@@ -1025,7 +958,7 @@ func submitProofWithParanoidMode(
 	log.Println("   ✅ Proof verified locally")
 
 	// Attempt submission with retries
-	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, proof, publicWitness, 3, testMode)
+	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, trades, proof, publicWitness, 3, testMode)
 	if err == nil {
 		return tx, receipt, nil
 	}
@@ -1063,7 +996,7 @@ func submitProofWithParanoidMode(
 		}
 		log.Println("   ✅ Proof verified locally")
 
-		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, proof, publicWitness, 2, testMode)
+		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, trades, proof, publicWitness, 3, testMode)
 		if err == nil {
 			log.Println("   ✅ Proof accepted after rebuild!")
 			return tx, receipt, nil
@@ -1092,6 +1025,7 @@ func attemptSubmission(
 	contractAddr string,
 	batchNumber uint64,
 	chunkIndex int,
+	chunkTrades []ParsedTrade,
 	proof groth16.Proof,
 	publicWitness witness.Witness,
 	maxAttempts int,
@@ -1113,7 +1047,7 @@ func attemptSubmission(
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		tx, err = submitProof(client, auth, contractAddr, batchNumber, chunkIndex, proofToSubmit, publicWitness)
+		tx, err = submitProof(client, auth, contractAddr, batchNumber, chunkIndex, chunkTrades, proofToSubmit, publicWitness)
 		if err != nil {
 			if attempt < maxAttempts {
 				log.Printf("   ⚠️  Submission attempt %d/%d failed: %v. Retrying in 5s...\n", attempt, maxAttempts, err)

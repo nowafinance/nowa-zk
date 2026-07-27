@@ -79,13 +79,17 @@ var trafficGenCmd = &cobra.Command{
 		for i := 0; i < genTxCount; i++ {
 			// Send to fixed address as requested
 			// toAddress := common.HexToAddress("0x25691469d348161ea4d4bf6409c34c5a084decb4")
-			toAddress := common.HexToAddress("0xBa2dF2424b6AC806C16Ebba254fc93b468102274")
+			targetContract := os.Getenv("TARGET_CONTRACT")
+			if targetContract == "" {
+				targetContract = "0xBa2dF2424b6AC806C16Ebba254fc93b468102274"
+			}
+			toAddress := common.HexToAddress(targetContract)
 
 			// Amount: 0.0001 ETH (10^14 wei)
 			value := big.NewInt(100000000000000)
 
 			// Gas Limit
-			gasLimit := uint64(21000)
+			gasLimit := uint64(50000)
 
 			// Gas Price
 			gasPrice, err := client.SuggestGasPrice(context.Background())
@@ -95,7 +99,8 @@ var trafficGenCmd = &cobra.Command{
 			}
 
 			// Create Transaction
-			tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, nil)
+			data := common.FromHex("0x7864fe7a")
+			tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, data)
 
 			// Sign Transaction
 			signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), key)

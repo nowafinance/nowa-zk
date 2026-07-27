@@ -6,15 +6,23 @@ interface ITradeVerifier {
         uint256[8] calldata proof,
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
-        uint256[120] calldata input
+        uint256[121] calldata input
     ) external view;
 }
 
 contract TradeRegistry {
     ITradeVerifier public verifier;
 
-    // Optional tracking of submitted proofs
     mapping(uint256 => mapping(uint256 => bool)) public isChunkVerified;
+    mapping(uint256 => mapping(uint256 => bytes32)) public chunkBatchRoot;
+
+    event TradesSettled(
+        uint256 indexed batchNumber,
+        uint256 indexed chunkIndex,
+        bytes32 batchRoot,
+        bytes32[10] messageHashes,
+        address[10] signers
+    );
 
     event TradesVerified(uint256 indexed batchNumber, uint256 indexed chunkIndex);
 
@@ -28,7 +36,9 @@ contract TradeRegistry {
         uint256[8] calldata proof,
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
-        uint256[120] calldata publicInputs
+        uint256[121] calldata publicInputs,
+        bytes32[10] calldata messageHashes,
+        address[10] calldata signers
     ) external {
         require(!isChunkVerified[batchNumber][chunkIndex], "Chunk already verified");
 
@@ -36,6 +46,11 @@ contract TradeRegistry {
         verifier.verifyProof(proof, commitments, commitmentPok, publicInputs);
 
         isChunkVerified[batchNumber][chunkIndex] = true;
+        
+        bytes32 batchRoot = bytes32(publicInputs[0]);
+        chunkBatchRoot[batchNumber][chunkIndex] = batchRoot;
+
         emit TradesVerified(batchNumber, chunkIndex);
+        emit TradesSettled(batchNumber, chunkIndex, batchRoot, messageHashes, signers);
     }
 }

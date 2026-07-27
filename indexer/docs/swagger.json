@@ -362,6 +362,9 @@
                 },
                 "sigS": {
                     "type": "string"
+                },
+                "signerAddress": {
+                    "type": "string"
                 }
             }
         }

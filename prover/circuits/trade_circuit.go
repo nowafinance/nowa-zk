@@ -3,6 +3,7 @@ package circuits
 import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
+	"github.com/consensys/gnark/std/hash/mimc"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/signature/ecdsa"
 )
@@ -34,6 +35,7 @@ const TradeBatchSize = 10
 
 // BatchTradeSignatureCircuit verifies multiple ECDSA signatures
 type BatchTradeSignatureCircuit struct {
+	BatchRoot     frontend.Variable `gnark:",public"`
 	MessageHashes [TradeBatchSize]emulated.Element[emulated.Secp256k1Fr] `gnark:",public"`
 	Sigs          [TradeBatchSize]ecdsa.Signature[emulated.Secp256k1Fr]
 	PubKeys       [TradeBatchSize]ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr] `gnark:",public"`
@@ -42,8 +44,32 @@ type BatchTradeSignatureCircuit struct {
 // Define declares the circuit constraints for batch
 func (c *BatchTradeSignatureCircuit) Define(api frontend.API) error {
 	params := sw_emulated.GetSecp256k1Params()
-	for i := 0; i < TradeBatchSize; i++ {
-		c.PubKeys[i].Verify(api, params, &c.MessageHashes[i], &c.Sigs[i])
+	
+	f, err := emulated.NewField[emulated.Secp256k1Fr](api)
+	if err != nil {
+		return err
 	}
+	h, err := mimc.NewMiMC(api)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < TradeBatchSize; i++ {
+		// Verify signature
+		c.PubKeys[i].Verify(api, params, &c.MessageHashes[i], &c.Sigs[i])
+		
+		// Hash the message hash for BatchRoot
+		bits := f.ToBitsCanonical(&c.MessageHashes[i])
+		// Pack 256 bits into two BN254 variables
+		part1 := api.FromBinary(bits[:128]...)
+		part2 := api.FromBinary(bits[128:]...)
+		h.Write(part1)
+		h.Write(part2)
+	}
+	
+	// Enforce BatchRoot
+	computedRoot := h.Sum()
+	api.AssertIsEqual(computedRoot, c.BatchRoot)
+	
 	return nil
 }
