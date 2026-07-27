@@ -150,7 +150,7 @@ cp ~/nowa-zk/contracts/deployments/CHAIN_ID.json ~/nowa-zk/.nowa-zk/deployments.
 
 # 4. Verify it updated
 cat ~/nowa-zk/.nowa-zk/deployments.json
-# Should show your NEW BatchRegistry address
+# Should show your NEW TradeRegistry address
 
 # 5. Delete prover database to start from batch 0
 find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
@@ -268,7 +268,7 @@ sudo journalctl -u nowa-zk-prover -n 50
 ```
 ❌ HALTING PROVER - MANUAL INTERVENTION REQUIRED
 Batch Number: 38
-Error: submission failed: execution reverted: BatchRegistry: batch hash already exists
+Error: submission failed: execution reverted: TradeRegistry: batch hash already exists
 ```
 
 **Cause:**

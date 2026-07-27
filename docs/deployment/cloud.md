@@ -213,7 +213,7 @@ cat ~/nowa-zk/contracts/deployments/deployments.json
 sample output 
 ```
 {
-  "BatchRegistry": "0xbcCF1fbBD099524f4d57986B80E8A2130e5371fB",
+  "TradeRegistry": "0xbcCF1fbBD099524f4d57986B80E8A2130e5371fB",
   "GnarkVerifier": "0xF46f6ecd13F5D2ffAd6d91F134F3A49b6fc48A28",
   "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001",
   "Indexer": "0x8AA96ceA21f85b3b83E9FC5dE7e9Cc53223634D9",
@@ -259,8 +259,8 @@ forge verify-contract <GNARK_VERIFIER_ADDRESS> src/generated/RollupVerifier.sol:
 forge verify-contract <VERIFIER_ADAPTER_ADDRESS> src/VerifierAdapter.sol:VerifierAdapter \
   --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
 
-# 4. Verify BatchRegistry
-forge verify-contract <BATCH_REGISTRY_ADDRESS> src/BatchRegistry.sol:BatchRegistry \
+# 4. Verify TradeRegistry
+forge verify-contract <TRADE_REGISTRY_ADDRESS> src/TradeRegistry.sol:TradeRegistry \
   --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
 ```
 
@@ -269,7 +269,7 @@ forge verify-contract <BATCH_REGISTRY_ADDRESS> src/BatchRegistry.sol:BatchRegist
 If the explorer requires a single flattened file, generate it using:
 ```bash
 cd ~/nowa-zk/contracts
-forge flatten src/BatchRegistry.sol > BatchRegistry_flattened.sol
+forge flatten src/TradeRegistry.sol > TradeRegistry_flattened.sol
 ```
 *(You can repeat this for `src/StateManager.sol` and the others if needed).*
 
@@ -291,7 +291,7 @@ cat ~/.nowa-zk/deployments.json
 ```
 
 > [!IMPORTANT]
-> The prover auto-loads the `BatchRegistry` contract address from this file. If you redeploy contracts, you must update this file with the new addresses.
+> The prover auto-loads the `TradeRegistry` contract address from this file. If you redeploy contracts, you must update this file with the new addresses.
 
 ---
 

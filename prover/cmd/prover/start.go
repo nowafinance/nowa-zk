@@ -711,10 +711,10 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		offset += 32
 	}
 
-	var messageHashes [10][32]byte
-	var signers [10]common.Address
+	var messageHashes [25][32]byte
+	var signers [25]common.Address
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 25; i++ {
 		if i < len(chunkTrades) {
 			hashBytes, _ := hex.DecodeString(chunkTrades[i].MessageHash)
 			copy(messageHashes[i][:], hashBytes)
@@ -726,7 +726,7 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		}
 	}
 
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[121]","name":"publicInputs","type":"uint256[121]"},{"internalType":"bytes32[10]","name":"messageHashes","type":"bytes32[10]"},{"internalType":"address[10]","name":"signers","type":"address[10]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[301]","name":"publicInputs","type":"uint256[301]"},{"internalType":"bytes32[25]","name":"messageHashes","type":"bytes32[25]"},{"internalType":"address[25]","name":"signers","type":"address[25]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)

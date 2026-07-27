@@ -1,6 +1,6 @@
 # Nowa-ZK Architecture Documentation
 
-This directory contains comprehensive architecture documentation for the Nowa-ZK rollup system.
+This directory contains comprehensive architecture documentation for the Nowa-ZK App-Specific ZK Validium.
 
 ## Documents
 

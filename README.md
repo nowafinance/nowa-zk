@@ -19,7 +19,7 @@ This repository contains the official implementation of the **Indexer** (formerl
 
 ## 🌟 Key Features
 
-- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches trades (e.g. 128 trades/batch) for efficient proof generation.
+- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches trades (e.g. 25 trades/batch) for efficient proof generation.
 - **Succinct ZK Proofs:** Utilizes Groth16 to compress and verify EIP-712 trade signatures with minimal L1 footprint (~4KB per batch).
 - **EVM Compatibility:** Built alongside a Cosmos EVM L2, allowing seamless deployment of Ethereum smart contracts.
 - **Fast Finality:** Achieves ~1 second block times on L2 while maintaining Ethereum-grade security.
@@ -108,6 +108,7 @@ make run-prover
 
 Dive deeper into the Nowa-ZK ecosystem:
 
+- ❓ **[Architecture FAQ](FAQ-ZK.md)** - Answers on ZK Rollups, Validiums, DA, and Public Input Hashing.
 - 📄 **[Litepaper](litepaper.md)** - Full architectural and technical overview.
 - 🗺️ **[Roadmap](ROADMAP.md)** - Development milestones and future phases.
 - 🔌 **[API Documentation](docs/api.md)** - Detailed endpoints for Indexer and Prover interaction.

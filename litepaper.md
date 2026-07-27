@@ -1,63 +1,47 @@
 # Nowa-ZK Litepaper
 
 ## Abstract
-Nowa-ZK is a cutting-edge Layer 2 scaling solution leveraging Zero-Knowledge (ZK) proofs to ensure security, scalability, and fast finality. Built on a modular architecture involving Ethereum as Layer 1 and a Cosmos SDK-based EVM as Layer 2, Nowa-ZK offers a high-performance execution environment for decentralized applications. This litepaper outlines the core components, architectural flow, and technical specifications of the network.
+Nowa-ZK is a cutting-edge App-Specific Zero-Knowledge (ZK) Rollup (Validium architecture) designed specifically for a high-frequency trading Decentralized Exchange (DEX). Built on a modular architecture involving a Cosmos SDK-based chain as the Execution & Data Availability Layer and Ethereum Sepolia as the L1 Settlement Layer, Nowa-ZK offers a high-performance execution environment without compromising cryptographic security.
 
 ---
 
 ## 1. Introduction
-The demand for scalable blockchain solutions has never been higher. High gas fees and network congestion on Ethereum have driven the adoption of Layer 2 rollups. Nowa-ZK introduces a hybrid approach, combining the robust security of Ethereum with the interoperability and speed of the Cosmos ecosystem. By utilizing Groth16 ZK proofs, Nowa-ZK ensures that state transitions are mathematically verifiable on-chain without exposing transaction data, maintaining both privacy and efficiency.
+The demand for scalable blockchain solutions has never been higher, especially for orderbook-based trading platforms where users require lightning-fast execution and zero gas fees. General Purpose Rollups address some scalability issues but often require users to pay network gas fees and inherit bulky L1 DA costs.
+
+Nowa-ZK introduces an **App-Specific ZK Validium** approach. By executing trades on a fast, specialized Cosmos chain and submitting only ZK proofs of validity to Ethereum, Nowa-ZK ensures that all state transitions are mathematically verifiable on-chain while keeping transaction costs essentially at zero for end users.
 
 ## 2. Architecture Overview
-![Nowa-ZK Architecture Diagram](docs/assets/tanzk_architecture_diagram.png)
 
 The Nowa-ZK architecture consists of four primary layers that interact seamlessly to provide a secure and fast transaction experience.
 
-### 2.1 L1 (Ethereum)
-The foundation of nowa-zk's security model lies on the Ethereum mainnet.
-*   **BatchRegistry Smart Contract**: This constitutes the source of truth for the L2 state on L1. It serves three critical functions:
-    *   **Storage**: Maintains batch commitments and state roots.
-    *   **Verification**: Verifies ZK proofs submitted by the Prover.
-    *   **State Management**: Updates and finalizes the L2 state based on valid proofs.
+### 2.1 The Execution Layer (Cosmos Chain)
+Users submit trades and EIP-712 signatures directly to the Nowa Cosmos-Ethereum blockchain. This chain acts as a highly specialized, fast-finality orderbook matching engine. Because trades happen here, users do not pay Ethereum gas fees.
 
-### 2.2 Prover (Centralized at Launch)
-The Prover is the computational engine responsible for generating validity proofs. At launch, this operates as a single centralized service off-chain, with future plans for decentralization.
-*   **Workflow**:
-    1.  Fetches transaction batches from the Indexer.
-    2.  Computes Groth16 Zero-Knowledge proofs, compressing 128 transactions into a succinct proof.
-    3.  Submits these proofs along with minimal metadata (transaction hashes, approx. 4KB per batch) to the BatchRegistry on L1.
-*   **Efficiency**: By off-loading computation from L1 and submitting only proofs and essential data, the Prover significantly reduces gas costs.
+### 2.2 The Data Availability (DA) Layer
+In a traditional ZK Rollup, all trades are posted as `calldata` to Ethereum, which is prohibitively expensive for a high-frequency DEX. 
+In Nowa-ZK, the **Cosmos chain itself acts as the Data Availability layer**. The history of all trades and balances is secured by the decentralized validator set of the Cosmos chain, drastically reducing L1 costs while maintaining transparency.
 
-### 2.3 Indexer (Formerly Indexer)
-The Indexer acts as the bridge coordinator between the execution layer (the actual L2 Indexer) and the Prover. It runs alongside the Prover to fetch data.
-*   **Roles**:
-    *   **Indexing**: Continuously indexes block and transaction data from the decentralized Cosmos L2 Blockchain.
-    *   **Batching**: Groups transactions into efficient batches (fixed at 128 txs per batch) for the Prover.
-    *   **Data Availability**: Provides an API for the Prover to retrieve necessary data.
-    *   **Maintenance**: Performs automated cleanup, removing proven batches every 5 minutes to optimize storage.
+### 2.3 The Prover & Sequencer (Off-Chain Engine)
+The Indexer and Prover (the core of this repository) act as the bridge between Cosmos and Ethereum.
+*   **Indexer**: Continuously reads the Cosmos RPC, parsing new blocks and batching executed trades (e.g., 25 trades per batch).
+*   **Prover**: A computational daemon that takes these batched trades and generates a succinct Groth16 Zero-Knowledge Proof (zk-SNARK). This proof mathematically guarantees that the trades were executed correctly and signatures are valid.
 
-### 2.4 L2 Blockchain (Cosmos EVM) - The True Indexer
-The user-facing execution layer is built using the Cosmos SDK with EVM compatibility. **This layer acts as the actual decentralized Indexer**, operating from Day 1 on a decentralized set of validators running CometBFT consensus.
-*   **Features**:
-    *   **EVM Compatibility**: Developers can deploy existing Ethereum smart contracts without modification.
-    *   **Performance**: Achieves fast soft finality with a block time of approximately 3-4 seconds.
-    *   **Interoperability**: Being part of the Cosmos ecosystem opens doors for IBC (Inter-Blockchain Communication) integrations.
+### 2.4 The Settlement Layer (Ethereum L1)
+The Prover submits the final ZK Proof to the `TradeRegistry.sol` smart contract on Ethereum Sepolia.
+*   **Trustless ZK-Bridge**: Ethereum acts as the ultimate anchor. The `TradeVerifier.sol` mathematically verifies the proof. Once verified, Ethereum updates its view of the Cosmos chain's state root.
+*   **Vaults (Planned)**: Because Ethereum securely tracks the state of the Cosmos chain via ZK proofs, users can deposit real assets (like USDC) into a Smart Contract Vault on Ethereum, trade on the Cosmos chain, and withdraw back to Ethereum completely trustlessly.
 
 ---
 
-## 3. Data Flow Cycle
+## 3. Cryptographic Implementation (gnark)
 
-1.  **Execution**: Users submit transactions to the L2 Blockchain. Blocks are produced rapidly by the decentralized validators (~3-4s).
-2.  **Indexing**: The Indexer queries these new blocks, extracts transactions, and accumulates them into batches.
-3.  **Proving**: The Prover requests a batch from the Indexer, generates a ZK proof confirming the validity of the state transition.
-4.  **Finalization**: The Prover submits the proof to the BatchRegistry on Ethereum. The contract verifies the proof, and upon success, the L2 state is finalized on L1.
+Nowa-ZK leverages `gnark`, a highly optimized ZK-SNARK library written in Go.
 
-## 4. Technical Specifications
-*   **Proof System**: Groth16 (favored for small proof sizes and fast verification).
-*   **Batch Size**: 128 Transactions.
-*   **L1 Storage footprint**: ~4KB per batch (Tx hashes only).
-*   **L2 Consensus**: CometBFT (Decentralized Validators).
-*   **Block Time**: ~3-4 Seconds.
+### 3.1 ECDSA Signature Verification
+To maintain full compatibility with Ethereum wallets (like MetaMask), the Cosmos chain uses standard ECDSA Secp256k1 signatures (EIP-712). The ZK circuit natively verifies these signatures inside the mathematical proof, ensuring that the Prover cannot fake trades.
 
-## 5. Conclusion
-Nowa-ZK represents a significant step forward in modular blockchain architectures. By decoupling data availability, execution, and proving, it achieves a balanced optimization of cost, speed, and security. As the network matures, further optimizations in prover performance and batch sizes are anticipated to drive even greater scalability.
+### 3.2 Public Input Hashing (Scaling)
+To circumvent Ethereum's EIP-170 smart contract size limit (24 KB), the circuit will utilize **Public Input Hashing**. Instead of exposing hundreds of trade hashes directly to the L1 Verifier, the circuit hashes all trades internally and outputs a single 32-byte hash. The Ethereum contract reconstructs this hash, allowing the system to verify thousands of trades per batch with minimal gas footprint.
+
+## 4. Conclusion
+By separating Execution (Cosmos), Data Availability (Cosmos), and Settlement (Ethereum), Nowa-ZK achieves the holy grail of decentralized trading: the speed and zero-fee experience of a centralized exchange, backed by the immutable, cryptographic security of Ethereum.

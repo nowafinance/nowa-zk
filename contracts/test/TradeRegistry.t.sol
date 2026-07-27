@@ -22,11 +22,11 @@ contract TradeRegistryTest is Test {
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
         
-        uint256[121] memory publicInputs;
+        uint256[301] memory publicInputs;
         publicInputs[0] = uint256(keccak256("batchRoot"));
         
-        bytes32[10] memory messageHashes;
-        address[10] memory signers;
+        bytes32[25] memory messageHashes;
+        address[25] memory signers;
         
         // This should succeed as mockVerifier doesn't revert
         registry.registerTrades(
@@ -52,9 +52,9 @@ contract TradeRegistryTest is Test {
         uint256[8] memory proof;
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
-        uint256[121] memory publicInputs;
-        bytes32[10] memory messageHashes;
-        address[10] memory signers;
+        uint256[301] memory publicInputs;
+        bytes32[25] memory messageHashes;
+        address[25] memory signers;
         
         // First call should succeed
         registry.registerTrades(
@@ -89,9 +89,9 @@ contract TradeRegistryTest is Test {
         uint256[8] memory proof;
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
-        uint256[121] memory publicInputs;
-        bytes32[10] memory messageHashes;
-        address[10] memory signers;
+        uint256[301] memory publicInputs;
+        bytes32[25] memory messageHashes;
+        address[25] memory signers;
         
         // Configure mock verifier to revert
         mockVerifier.setShouldRevert(true);

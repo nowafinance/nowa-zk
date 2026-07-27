@@ -1,4 +1,4 @@
-# Testing Guide: Nowa-ZK Rollup System
+# Testing Guide: Nowa-ZK App-Specific ZK Validium
 
 Quick reference for testing all components of the Nowa-ZK system with terminal commands.
 

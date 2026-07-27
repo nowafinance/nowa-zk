@@ -35,8 +35,8 @@ contract E2EVerifierTest is Test {
         }
 
         string[] memory pubInputsStr = vm.parseJsonStringArray(json, ".publicInputs");
-        uint256[121] memory publicInputs;
-        for (uint i = 0; i < 121; i++) {
+        uint256[301] memory publicInputs;
+        for (uint i = 0; i < 301; i++) {
             publicInputs[i] = vm.parseUint(pubInputsStr[i]);
         }
 

@@ -239,7 +239,7 @@ chmod +x ~/reset-nowa-zk.sh
 ### 2. Contract Redeployment
 - Deploys new StateManager
 - Deploys new Verifier (from the new verification key)
-- Deploys new BatchRegistry
+- Deploys new TradeRegistry
 - **All previous on-chain state is lost**
 
 ### 3. Service Configuration

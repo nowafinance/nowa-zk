@@ -6,7 +6,7 @@ interface ITradeVerifier {
         uint256[8] calldata proof,
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
-        uint256[121] calldata input
+        uint256[301] calldata input
     ) external view;
 }
 
@@ -20,8 +20,8 @@ contract TradeRegistry {
         uint256 indexed batchNumber,
         uint256 indexed chunkIndex,
         bytes32 batchRoot,
-        bytes32[10] messageHashes,
-        address[10] signers
+        bytes32[25] messageHashes,
+        address[25] signers
     );
 
     event TradesVerified(uint256 indexed batchNumber, uint256 indexed chunkIndex);
@@ -36,9 +36,9 @@ contract TradeRegistry {
         uint256[8] calldata proof,
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
-        uint256[121] calldata publicInputs,
-        bytes32[10] calldata messageHashes,
-        address[10] calldata signers
+        uint256[301] calldata publicInputs,
+        bytes32[25] calldata messageHashes,
+        address[25] calldata signers
     ) external {
         require(!isChunkVerified[batchNumber][chunkIndex], "Chunk already verified");
 

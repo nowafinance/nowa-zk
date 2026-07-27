@@ -616,7 +616,7 @@ contract Verifier {
     /// @return x The X coordinate of the resulting G1 point.
     /// @return y The Y coordinate of the resulting G1 point.
     function publicInputMSM(
-        uint256[121] calldata input,
+        uint256[301] calldata input,
         uint256[1] memory publicCommitments,
         uint256[2] memory commitments
     )
@@ -1547,7 +1547,7 @@ contract Verifier {
         uint256[4] calldata compressedProof,
         uint256[1] calldata compressedCommitments,
         uint256 compressedCommitmentPok,
-        uint256[121] calldata input
+        uint256[301] calldata input
     ) public view {
         uint256[1] memory publicCommitments;
         uint256[2] memory commitments;
@@ -1670,7 +1670,7 @@ contract Verifier {
         uint256[8] calldata proof,
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
-        uint256[121] calldata input
+        uint256[301] calldata input
     ) public view {
         // HashToField
         uint256[1] memory publicCommitments;

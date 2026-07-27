@@ -1,6 +1,6 @@
 # Nowa-ZK Documentation
 
-Complete documentation for setting up, deploying, and operating the Nowa-ZK rollup system.
+Complete documentation for setting up, deploying, and operating the Nowa-ZK App-Specific ZK Validium (App-Chain).
 
 ---
 

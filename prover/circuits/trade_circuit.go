@@ -31,7 +31,7 @@ func (c *TradeSignatureCircuit) Define(api frontend.API) error {
 }
 
 // TradeBatchSize defines the number of trades in a batch
-const TradeBatchSize = 10
+const TradeBatchSize = 25
 
 // BatchTradeSignatureCircuit verifies multiple ECDSA signatures
 type BatchTradeSignatureCircuit struct {

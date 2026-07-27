@@ -21,7 +21,7 @@
 - **Description**: Core contracts with tests and local deploy.
 - **Scope**:
   - Initialize Foundry project (forge init)
-  - Implement BatchRegistry, StateManager, IVerifier interface
+  - Implement TradeRegistry, StateManager, IVerifier interface
   - Unit tests (Forge tests with fuzzing)
   - script/Deploy.s.sol for localhost
 - **Acceptance**:
