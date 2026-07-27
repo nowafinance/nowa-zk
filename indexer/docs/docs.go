@@ -43,7 +43,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch"
                         }
                     },
                     "404": {
@@ -78,7 +78,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch"
                         }
                     },
                     "400": {
@@ -133,7 +133,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch"
                         }
                     },
                     "404": {
@@ -168,7 +168,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/types.Batch"
+                            "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch"
                         }
                     },
                     "400": {
@@ -212,7 +212,107 @@ const docTemplate = `{
         "big.Int": {
             "type": "object"
         },
-        "rpc.Transaction": {
+        "github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.Batch": {
+            "type": "object",
+            "properties": {
+                "hash": {
+                    "type": "string"
+                },
+                "newStateRoot": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "oldStateRoot": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "\"pending\", \"proving\", \"ready\", \"submitted\"",
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "integer"
+                },
+                "traces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ExecutionTrace"
+                    }
+                },
+                "trades": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ParsedTrade"
+                    }
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_nowafinance_nowa-zk_indexer_pkg_rpc.Transaction"
+                    }
+                }
+            }
+        },
+        "github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ExecutionTrace": {
+            "type": "object",
+            "properties": {
+                "contractAddress": {
+                    "description": "Set for contract deployments",
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "isContractDeployment": {
+                    "description": "True if this is a contract deployment",
+                    "type": "boolean"
+                },
+                "newBalance": {
+                    "type": "string"
+                },
+                "nonce": {
+                    "type": "integer"
+                },
+                "oldBalance": {
+                    "type": "string"
+                },
+                "to": {
+                    "description": "Empty for contract deployments",
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_nowafinance_nowa-zk_indexer_internal_indexer_types.ParsedTrade": {
+            "type": "object",
+            "properties": {
+                "messageHash": {
+                    "type": "string"
+                },
+                "pubKeyX": {
+                    "type": "string"
+                },
+                "pubKeyY": {
+                    "type": "string"
+                },
+                "sigR": {
+                    "type": "string"
+                },
+                "sigS": {
+                    "type": "string"
+                },
+                "signerAddress": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_nowafinance_nowa-zk_indexer_pkg_rpc.Transaction": {
             "type": "object",
             "properties": {
                 "blockHash": {
@@ -272,106 +372,6 @@ const docTemplate = `{
                 },
                 "value": {
                     "$ref": "#/definitions/big.Int"
-                }
-            }
-        },
-        "types.Batch": {
-            "type": "object",
-            "properties": {
-                "hash": {
-                    "type": "string"
-                },
-                "newStateRoot": {
-                    "type": "string"
-                },
-                "number": {
-                    "type": "integer"
-                },
-                "oldStateRoot": {
-                    "type": "string"
-                },
-                "status": {
-                    "description": "\"pending\", \"proving\", \"ready\", \"submitted\"",
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "integer"
-                },
-                "traces": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.ExecutionTrace"
-                    }
-                },
-                "trades": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.ParsedTrade"
-                    }
-                },
-                "transactions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/rpc.Transaction"
-                    }
-                }
-            }
-        },
-        "types.ExecutionTrace": {
-            "type": "object",
-            "properties": {
-                "contractAddress": {
-                    "description": "Set for contract deployments",
-                    "type": "string"
-                },
-                "from": {
-                    "type": "string"
-                },
-                "isContractDeployment": {
-                    "description": "True if this is a contract deployment",
-                    "type": "boolean"
-                },
-                "newBalance": {
-                    "type": "string"
-                },
-                "nonce": {
-                    "type": "integer"
-                },
-                "oldBalance": {
-                    "type": "string"
-                },
-                "to": {
-                    "description": "Empty for contract deployments",
-                    "type": "string"
-                },
-                "txHash": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.ParsedTrade": {
-            "type": "object",
-            "properties": {
-                "messageHash": {
-                    "type": "string"
-                },
-                "pubKeyX": {
-                    "type": "string"
-                },
-                "pubKeyY": {
-                    "type": "string"
-                },
-                "sigR": {
-                    "type": "string"
-                },
-                "sigS": {
-                    "type": "string"
-                },
-                "signerAddress": {
-                    "type": "string"
                 }
             }
         }

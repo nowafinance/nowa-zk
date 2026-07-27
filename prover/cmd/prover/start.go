@@ -620,25 +620,48 @@ func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk gro
 
 	goMiMC := gomimc.NewMiMC()
 	for i := 0; i < circuits.TradeBatchSize; i++ {
-		var hashHex []byte
+		var hashHex, pxHex, pyHex []byte
 		if i < len(trades) {
 			hashHex, _ = hex.DecodeString(trades[i].MessageHash)
+			pxHex, _ = hex.DecodeString(trades[i].PubKeyX)
+			pyHex, _ = hex.DecodeString(trades[i].PubKeyY)
 		} else {
 			hashHex, _ = hex.DecodeString(trades[0].MessageHash)
+			pxHex, _ = hex.DecodeString(trades[0].PubKeyX)
+			pyHex, _ = hex.DecodeString(trades[0].PubKeyY)
 		}
 
 		val := new(big.Int).SetBytes(hashHex)
 		mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+		
 		part1 := new(big.Int).And(val, mask)
 		part2 := new(big.Int).Rsh(val, 128)
-
 		b1 := make([]byte, 32)
-		part1.FillBytes(b1)
-		goMiMC.Write(b1)
-
 		b2 := make([]byte, 32)
+		part1.FillBytes(b1)
 		part2.FillBytes(b2)
+		goMiMC.Write(b1)
 		goMiMC.Write(b2)
+
+		valX := new(big.Int).SetBytes(pxHex)
+		xPart1 := new(big.Int).And(valX, mask)
+		xPart2 := new(big.Int).Rsh(valX, 128)
+		bx1 := make([]byte, 32)
+		bx2 := make([]byte, 32)
+		xPart1.FillBytes(bx1)
+		xPart2.FillBytes(bx2)
+		goMiMC.Write(bx1)
+		goMiMC.Write(bx2)
+
+		valY := new(big.Int).SetBytes(pyHex)
+		yPart1 := new(big.Int).And(valY, mask)
+		yPart2 := new(big.Int).Rsh(valY, 128)
+		by1 := make([]byte, 32)
+		by2 := make([]byte, 32)
+		yPart1.FillBytes(by1)
+		yPart2.FillBytes(by2)
+		goMiMC.Write(by1)
+		goMiMC.Write(by2)
 	}
 	circuit.BatchRoot = goMiMC.Sum(nil)
 
@@ -697,13 +720,13 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	}
 
 	nbPublic := binary.BigEndian.Uint32(data[0:4])
-	if nbPublic != 121 {
-		return nil, fmt.Errorf("expected 121 public inputs, got %d", nbPublic)
+	if nbPublic != 1 {
+		return nil, fmt.Errorf("expected 1 public input, got %d", nbPublic)
 	}
 
-	var publicInputs [121]*big.Int
+	var publicInputs [1]*big.Int
 	offset := 12
-	for i := 0; i < 121; i++ {
+	for i := 0; i < 1; i++ {
 		if offset+32 > len(data) {
 			return nil, fmt.Errorf("unexpected end of witness data")
 		}
@@ -712,21 +735,32 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	}
 
 	var messageHashes [25][32]byte
-	var signers [25]common.Address
+	var pubKeyX [25]*big.Int
+	var pubKeyY [25]*big.Int
 
 	for i := 0; i < 25; i++ {
 		if i < len(chunkTrades) {
 			hashBytes, _ := hex.DecodeString(chunkTrades[i].MessageHash)
 			copy(messageHashes[i][:], hashBytes)
-			signers[i] = common.HexToAddress(chunkTrades[i].SignerAddress)
+			
+			pxBytes, _ := hex.DecodeString(chunkTrades[i].PubKeyX)
+			pubKeyX[i] = new(big.Int).SetBytes(pxBytes)
+			
+			pyBytes, _ := hex.DecodeString(chunkTrades[i].PubKeyY)
+			pubKeyY[i] = new(big.Int).SetBytes(pyBytes)
 		} else {
 			hashBytes, _ := hex.DecodeString(chunkTrades[0].MessageHash)
 			copy(messageHashes[i][:], hashBytes)
-			signers[i] = common.HexToAddress(chunkTrades[0].SignerAddress)
+			
+			pxBytes, _ := hex.DecodeString(chunkTrades[0].PubKeyX)
+			pubKeyX[i] = new(big.Int).SetBytes(pxBytes)
+			
+			pyBytes, _ := hex.DecodeString(chunkTrades[0].PubKeyY)
+			pubKeyY[i] = new(big.Int).SetBytes(pyBytes)
 		}
 	}
 
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[301]","name":"publicInputs","type":"uint256[301]"},{"internalType":"bytes32[25]","name":"messageHashes","type":"bytes32[25]"},{"internalType":"address[25]","name":"signers","type":"address[25]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[1]","name":"publicInputs","type":"uint256[1]"},{"internalType":"bytes32[25]","name":"messageHashes","type":"bytes32[25]"},{"internalType":"uint256[25]","name":"pubKeyX","type":"uint256[25]"},{"internalType":"uint256[25]","name":"pubKeyY","type":"uint256[25]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)
@@ -735,14 +769,15 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 
 	// Dump calldata
-	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, signers)
+	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, pubKeyX, pubKeyY)
 	os.WriteFile("calldata.hex", []byte(hex.EncodeToString(calldata)), 0644)
 
 	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
 	// This will let the transaction hit the chain and revert, allowing us to debug it via txhash.
 	auth.GasLimit = 15000000
 
-	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, signers)
+	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, pubKeyX, pubKeyY)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to send transaction: %w", err)
 	}

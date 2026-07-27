@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../src/TradeRegistry.sol";
 import "./mocks/MockTradeVerifier.sol";
+import "../src/MiMC.sol";
 
 contract TradeRegistryTest is Test {
     TradeRegistry public registry;
@@ -14,6 +15,34 @@ contract TradeRegistryTest is Test {
         registry = new TradeRegistry(address(mockVerifier));
     }
 
+    function createValidInputs() internal pure returns (
+        uint256[1] memory publicInputs,
+        bytes32[25] memory messageHashes,
+        uint256[25] memory pubKeyX,
+        uint256[25] memory pubKeyY
+    ) {
+        // Fill arrays with dummy data
+        for (uint i = 0; i < 25; i++) {
+            messageHashes[i] = bytes32(uint256(i + 1));
+            pubKeyX[i] = i + 100;
+            pubKeyY[i] = i + 200;
+        }
+
+        // Compute Expected Hash
+        uint256[] memory hashData = new uint256[](150);
+        for (uint i = 0; i < 25; i++) {
+            uint256 hashInt = uint256(messageHashes[i]);
+            hashData[i*6] = hashInt & ((1 << 128) - 1);
+            hashData[i*6 + 1] = hashInt >> 128;
+            hashData[i*6 + 2] = pubKeyX[i] & ((1 << 128) - 1);
+            hashData[i*6 + 3] = pubKeyX[i] >> 128;
+            hashData[i*6 + 4] = pubKeyY[i] & ((1 << 128) - 1);
+            hashData[i*6 + 5] = pubKeyY[i] >> 128;
+        }
+        
+        publicInputs[0] = MiMC.hash(hashData);
+    }
+
     function test_registerTrades_Success() public {
         uint256 batchNumber = 1;
         uint256 chunkIndex = 0;
@@ -22,11 +51,10 @@ contract TradeRegistryTest is Test {
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
         
-        uint256[301] memory publicInputs;
-        publicInputs[0] = uint256(keccak256("batchRoot"));
-        
-        bytes32[25] memory messageHashes;
-        address[25] memory signers;
+        (uint256[1] memory publicInputs,
+         bytes32[25] memory messageHashes,
+         uint256[25] memory pubKeyX,
+         uint256[25] memory pubKeyY) = createValidInputs();
         
         // This should succeed as mockVerifier doesn't revert
         registry.registerTrades(
@@ -37,7 +65,8 @@ contract TradeRegistryTest is Test {
             commitmentPok,
             publicInputs,
             messageHashes,
-            signers
+            pubKeyX,
+            pubKeyY
         );
 
         // Verify state changes
@@ -52,9 +81,11 @@ contract TradeRegistryTest is Test {
         uint256[8] memory proof;
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
-        uint256[301] memory publicInputs;
-        bytes32[25] memory messageHashes;
-        address[25] memory signers;
+        
+        (uint256[1] memory publicInputs,
+         bytes32[25] memory messageHashes,
+         uint256[25] memory pubKeyX,
+         uint256[25] memory pubKeyY) = createValidInputs();
         
         // First call should succeed
         registry.registerTrades(
@@ -65,7 +96,8 @@ contract TradeRegistryTest is Test {
             commitmentPok,
             publicInputs,
             messageHashes,
-            signers
+            pubKeyX,
+            pubKeyY
         );
 
         // Second call should revert
@@ -78,7 +110,8 @@ contract TradeRegistryTest is Test {
             commitmentPok,
             publicInputs,
             messageHashes,
-            signers
+            pubKeyX,
+            pubKeyY
         );
     }
 
@@ -89,9 +122,11 @@ contract TradeRegistryTest is Test {
         uint256[8] memory proof;
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
-        uint256[301] memory publicInputs;
-        bytes32[25] memory messageHashes;
-        address[25] memory signers;
+        
+        (uint256[1] memory publicInputs,
+         bytes32[25] memory messageHashes,
+         uint256[25] memory pubKeyX,
+         uint256[25] memory pubKeyY) = createValidInputs();
         
         // Configure mock verifier to revert
         mockVerifier.setShouldRevert(true);
@@ -106,7 +141,8 @@ contract TradeRegistryTest is Test {
             commitmentPok,
             publicInputs,
             messageHashes,
-            signers
+            pubKeyX,
+            pubKeyY
         );
 
         // Ensure state wasn't changed

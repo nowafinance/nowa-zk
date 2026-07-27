@@ -14,7 +14,7 @@ contract MockTradeVerifier is ITradeVerifier {
         uint256[8] calldata /* proof */,
         uint256[2] calldata /* commitments */,
         uint256[2] calldata /* commitmentPok */,
-        uint256[301] calldata /* input */
+        uint256[1] calldata /* input */
     ) external view override {
         if (shouldRevert) {
             revert("MockTradeVerifier: proof invalid");

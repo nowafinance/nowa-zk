@@ -36,9 +36,9 @@ const TradeBatchSize = 25
 // BatchTradeSignatureCircuit verifies multiple ECDSA signatures
 type BatchTradeSignatureCircuit struct {
 	BatchRoot     frontend.Variable `gnark:",public"`
-	MessageHashes [TradeBatchSize]emulated.Element[emulated.Secp256k1Fr] `gnark:",public"`
+	MessageHashes [TradeBatchSize]emulated.Element[emulated.Secp256k1Fr]
 	Sigs          [TradeBatchSize]ecdsa.Signature[emulated.Secp256k1Fr]
-	PubKeys       [TradeBatchSize]ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr] `gnark:",public"`
+	PubKeys       [TradeBatchSize]ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
 }
 
 // Define declares the circuit constraints for batch
@@ -46,6 +46,10 @@ func (c *BatchTradeSignatureCircuit) Define(api frontend.API) error {
 	params := sw_emulated.GetSecp256k1Params()
 	
 	f, err := emulated.NewField[emulated.Secp256k1Fr](api)
+	if err != nil {
+		return err
+	}
+	fp, err := emulated.NewField[emulated.Secp256k1Fp](api)
 	if err != nil {
 		return err
 	}
@@ -60,11 +64,18 @@ func (c *BatchTradeSignatureCircuit) Define(api frontend.API) error {
 		
 		// Hash the message hash for BatchRoot
 		bits := f.ToBitsCanonical(&c.MessageHashes[i])
-		// Pack 256 bits into two BN254 variables
 		part1 := api.FromBinary(bits[:128]...)
 		part2 := api.FromBinary(bits[128:]...)
 		h.Write(part1)
 		h.Write(part2)
+
+		// Hash the PubKey (X and Y coordinates)
+		pubXBits := fp.ToBitsCanonical(&c.PubKeys[i].X)
+		pubYBits := fp.ToBitsCanonical(&c.PubKeys[i].Y)
+		h.Write(api.FromBinary(pubXBits[:128]...))
+		h.Write(api.FromBinary(pubXBits[128:]...))
+		h.Write(api.FromBinary(pubYBits[:128]...))
+		h.Write(api.FromBinary(pubYBits[128:]...))
 	}
 	
 	// Enforce BatchRoot
