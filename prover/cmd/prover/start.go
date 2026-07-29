@@ -383,6 +383,12 @@ if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 			}
 			chunkTrades := batch.Trades[startIdx:endIdx]
 
+			verified, err := isChunkVerified(client, contractAddr, batch.Number, chunkIdx)
+			if err == nil && verified {
+				log.Printf("   ⏭️  Chunk %d/%d is already verified on L1, skipping...\n", chunkIdx+1, numChunks)
+				continue
+			}
+
 			log.Printf("   🧩 Processing chunk %d/%d (%d trades)\n", chunkIdx+1, numChunks, len(chunkTrades))
 
 			tx, _, err := submitProofWithParanoidMode(
@@ -734,33 +740,38 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		offset += 32
 	}
 
-	var messageHashes [25][32]byte
-	var pubKeyX [25]*big.Int
-	var pubKeyY [25]*big.Int
+	type Trade struct {
+		MessageHash [32]byte
+		PubKeyX     *big.Int
+		PubKeyY     *big.Int
+	}
 
+	trades := make([]Trade, 25)
 	for i := 0; i < 25; i++ {
+		var hashBytes []byte
+		var pxBytes []byte
+		var pyBytes []byte
+		
 		if i < len(chunkTrades) {
-			hashBytes, _ := hex.DecodeString(chunkTrades[i].MessageHash)
-			copy(messageHashes[i][:], hashBytes)
-			
-			pxBytes, _ := hex.DecodeString(chunkTrades[i].PubKeyX)
-			pubKeyX[i] = new(big.Int).SetBytes(pxBytes)
-			
-			pyBytes, _ := hex.DecodeString(chunkTrades[i].PubKeyY)
-			pubKeyY[i] = new(big.Int).SetBytes(pyBytes)
+			hashBytes, _ = hex.DecodeString(chunkTrades[i].MessageHash)
+			pxBytes, _ = hex.DecodeString(chunkTrades[i].PubKeyX)
+			pyBytes, _ = hex.DecodeString(chunkTrades[i].PubKeyY)
 		} else {
-			hashBytes, _ := hex.DecodeString(chunkTrades[0].MessageHash)
-			copy(messageHashes[i][:], hashBytes)
-			
-			pxBytes, _ := hex.DecodeString(chunkTrades[0].PubKeyX)
-			pubKeyX[i] = new(big.Int).SetBytes(pxBytes)
-			
-			pyBytes, _ := hex.DecodeString(chunkTrades[0].PubKeyY)
-			pubKeyY[i] = new(big.Int).SetBytes(pyBytes)
+			hashBytes, _ = hex.DecodeString(chunkTrades[0].MessageHash)
+			pxBytes, _ = hex.DecodeString(chunkTrades[0].PubKeyX)
+			pyBytes, _ = hex.DecodeString(chunkTrades[0].PubKeyY)
+		}
+		
+		var messageHash [32]byte
+		copy(messageHash[:], hashBytes)
+		trades[i] = Trade{
+			MessageHash: messageHash,
+			PubKeyX:     new(big.Int).SetBytes(pxBytes),
+			PubKeyY:     new(big.Int).SetBytes(pyBytes),
 		}
 	}
 
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[1]","name":"publicInputs","type":"uint256[1]"},{"internalType":"bytes32[25]","name":"messageHashes","type":"bytes32[25]"},{"internalType":"uint256[25]","name":"pubKeyX","type":"uint256[25]"},{"internalType":"uint256[25]","name":"pubKeyY","type":"uint256[25]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[1]","name":"publicInputs","type":"uint256[1]"},{"components":[{"internalType":"bytes32","name":"messageHash","type":"bytes32"},{"internalType":"uint256","name":"pubKeyX","type":"uint256"},{"internalType":"uint256","name":"pubKeyY","type":"uint256"}],"internalType":"struct TradeRegistry.Trade[]","name":"trades","type":"tuple[]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse ABI: %w", err)
@@ -769,14 +780,14 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 
 	// Dump calldata
-	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, pubKeyX, pubKeyY)
+	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, trades)
 	os.WriteFile("calldata.hex", []byte(hex.EncodeToString(calldata)), 0644)
 
 	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
 	// This will let the transaction hit the chain and revert, allowing us to debug it via txhash.
 	auth.GasLimit = 15000000
 
-	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, messageHashes, pubKeyX, pubKeyY)
+	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, trades)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to send transaction: %w", err)
@@ -786,6 +797,29 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 }
 
 // Helper functions with proper field reduction
+
+// isChunkVerified queries the smart contract to see if a chunk has already been settled
+func isChunkVerified(client *ethclient.Client, contractAddr string, batchNumber uint64, chunkIndex int) (bool, error) {
+	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"isChunkVerified","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"}]`
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return false, err
+	}
+
+	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
+	
+	var out []interface{}
+	err = contract.Call(&bind.CallOpts{}, &out, "isChunkVerified", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)))
+	if err != nil {
+		return false, err
+	}
+	if len(out) > 0 {
+		if verified, ok := out[0].(bool); ok {
+			return verified, nil
+		}
+	}
+	return false, nil
+}
 
 // hashAddress converts Ethereum address to BN254 field element
 func hashAddress(addr string) *big.Int {

@@ -17,27 +17,28 @@ contract TradeRegistryTest is Test {
 
     function createValidInputs() internal pure returns (
         uint256[1] memory publicInputs,
-        bytes32[25] memory messageHashes,
-        uint256[25] memory pubKeyX,
-        uint256[25] memory pubKeyY
+        TradeRegistry.Trade[] memory trades
     ) {
+        trades = new TradeRegistry.Trade[](25);
         // Fill arrays with dummy data
         for (uint i = 0; i < 25; i++) {
-            messageHashes[i] = bytes32(uint256(i + 1));
-            pubKeyX[i] = i + 100;
-            pubKeyY[i] = i + 200;
+            trades[i] = TradeRegistry.Trade({
+                messageHash: bytes32(uint256(i + 1)),
+                pubKeyX: i + 100,
+                pubKeyY: i + 200
+            });
         }
 
         // Compute Expected Hash
         uint256[] memory hashData = new uint256[](150);
         for (uint i = 0; i < 25; i++) {
-            uint256 hashInt = uint256(messageHashes[i]);
+            uint256 hashInt = uint256(trades[i].messageHash);
             hashData[i*6] = hashInt & ((1 << 128) - 1);
             hashData[i*6 + 1] = hashInt >> 128;
-            hashData[i*6 + 2] = pubKeyX[i] & ((1 << 128) - 1);
-            hashData[i*6 + 3] = pubKeyX[i] >> 128;
-            hashData[i*6 + 4] = pubKeyY[i] & ((1 << 128) - 1);
-            hashData[i*6 + 5] = pubKeyY[i] >> 128;
+            hashData[i*6 + 2] = trades[i].pubKeyX & ((1 << 128) - 1);
+            hashData[i*6 + 3] = trades[i].pubKeyX >> 128;
+            hashData[i*6 + 4] = trades[i].pubKeyY & ((1 << 128) - 1);
+            hashData[i*6 + 5] = trades[i].pubKeyY >> 128;
         }
         
         publicInputs[0] = MiMC.hash(hashData);
@@ -51,10 +52,7 @@ contract TradeRegistryTest is Test {
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
         
-        (uint256[1] memory publicInputs,
-         bytes32[25] memory messageHashes,
-         uint256[25] memory pubKeyX,
-         uint256[25] memory pubKeyY) = createValidInputs();
+        (uint256[1] memory publicInputs, TradeRegistry.Trade[] memory trades) = createValidInputs();
         
         // This should succeed as mockVerifier doesn't revert
         registry.registerTrades(
@@ -64,9 +62,7 @@ contract TradeRegistryTest is Test {
             commitments,
             commitmentPok,
             publicInputs,
-            messageHashes,
-            pubKeyX,
-            pubKeyY
+            trades
         );
 
         // Verify state changes
@@ -82,10 +78,7 @@ contract TradeRegistryTest is Test {
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
         
-        (uint256[1] memory publicInputs,
-         bytes32[25] memory messageHashes,
-         uint256[25] memory pubKeyX,
-         uint256[25] memory pubKeyY) = createValidInputs();
+        (uint256[1] memory publicInputs, TradeRegistry.Trade[] memory trades) = createValidInputs();
         
         // First call should succeed
         registry.registerTrades(
@@ -95,9 +88,7 @@ contract TradeRegistryTest is Test {
             commitments,
             commitmentPok,
             publicInputs,
-            messageHashes,
-            pubKeyX,
-            pubKeyY
+            trades
         );
 
         // Second call should revert
@@ -109,9 +100,7 @@ contract TradeRegistryTest is Test {
             commitments,
             commitmentPok,
             publicInputs,
-            messageHashes,
-            pubKeyX,
-            pubKeyY
+            trades
         );
     }
 
@@ -123,10 +112,7 @@ contract TradeRegistryTest is Test {
         uint256[2] memory commitments;
         uint256[2] memory commitmentPok;
         
-        (uint256[1] memory publicInputs,
-         bytes32[25] memory messageHashes,
-         uint256[25] memory pubKeyX,
-         uint256[25] memory pubKeyY) = createValidInputs();
+        (uint256[1] memory publicInputs, TradeRegistry.Trade[] memory trades) = createValidInputs();
         
         // Configure mock verifier to revert
         mockVerifier.setShouldRevert(true);
@@ -140,9 +126,7 @@ contract TradeRegistryTest is Test {
             commitments,
             commitmentPok,
             publicInputs,
-            messageHashes,
-            pubKeyX,
-            pubKeyY
+            trades
         );
 
         // Ensure state wasn't changed

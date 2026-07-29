@@ -15,6 +15,12 @@ interface ITradeVerifier {
 contract TradeRegistry {
     ITradeVerifier public verifier;
 
+    struct Trade {
+        bytes32 messageHash;
+        uint256 pubKeyX;
+        uint256 pubKeyY;
+    }
+
     mapping(uint256 => mapping(uint256 => bool)) public isChunkVerified;
     mapping(uint256 => mapping(uint256 => bytes32)) public chunkBatchRoot;
 
@@ -22,9 +28,7 @@ contract TradeRegistry {
         uint256 indexed batchNumber,
         uint256 indexed chunkIndex,
         bytes32 batchRoot,
-        bytes32[25] messageHashes,
-        uint256[25] pubKeyX,
-        uint256[25] pubKeyY
+        Trade[] trades
     );
 
     event TradesVerified(uint256 indexed batchNumber, uint256 indexed chunkIndex);
@@ -40,28 +44,27 @@ contract TradeRegistry {
         uint256[2] calldata commitments,
         uint256[2] calldata commitmentPok,
         uint256[1] calldata publicInputs,
-        bytes32[25] calldata messageHashes,
-        uint256[25] calldata pubKeyX,
-        uint256[25] calldata pubKeyY
+        Trade[] calldata trades
     ) external {
         require(!isChunkVerified[batchNumber][chunkIndex], "Chunk already verified");
+        require(trades.length == 25, "Invalid trades length");
 
         // Compute the Expected Batch Root using MiMC on L1
         uint256[] memory hashData = new uint256[](150);
         for(uint i = 0; i < 25; i++) {
-            uint256 hashInt = uint256(messageHashes[i]);
+            uint256 hashInt = uint256(trades[i].messageHash);
             
             // Hash: part 1 and 2
             hashData[i*6] = hashInt & ((1 << 128) - 1);
             hashData[i*6 + 1] = hashInt >> 128;
             
             // PubKeyX: part 1 and 2
-            hashData[i*6 + 2] = pubKeyX[i] & ((1 << 128) - 1);
-            hashData[i*6 + 3] = pubKeyX[i] >> 128;
+            hashData[i*6 + 2] = trades[i].pubKeyX & ((1 << 128) - 1);
+            hashData[i*6 + 3] = trades[i].pubKeyX >> 128;
             
             // PubKeyY: part 1 and 2
-            hashData[i*6 + 4] = pubKeyY[i] & ((1 << 128) - 1);
-            hashData[i*6 + 5] = pubKeyY[i] >> 128;
+            hashData[i*6 + 4] = trades[i].pubKeyY & ((1 << 128) - 1);
+            hashData[i*6 + 5] = trades[i].pubKeyY >> 128;
         }
 
 
@@ -77,7 +80,7 @@ contract TradeRegistry {
         chunkBatchRoot[batchNumber][chunkIndex] = batchRoot;
 
         emit TradesVerified(batchNumber, chunkIndex);
-        emit TradesSettled(batchNumber, chunkIndex, batchRoot, messageHashes, pubKeyX, pubKeyY);
+        emit TradesSettled(batchNumber, chunkIndex, batchRoot, trades);
     }
 }
 

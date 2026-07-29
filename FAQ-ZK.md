@@ -4,10 +4,27 @@ This document outlines the high-level architecture decisions, cryptographic tech
 
 ---
 
-## 1. Is this a ZK Rollup?
-Yes! This project is an **App-Specific ZK Rollup** (often referred to as an App-Chain or a ZK Validium, depending on Data Availability). Famous examples of App-Specific ZK Rollups include **dYdX (v3)**, **Loopring**, and **Immutable X**.
+## 1. Is this a ZK Rollup or a Validium?
+This project is currently operating as a **ZK Validium**, but is actively transitioning into a **True ZK-Rollup**. 
 
-Unlike "General Purpose" Rollups (like **Arbitrum** or **zkSync**) where anyone can deploy random smart contracts, an App-Specific Rollup is built for one specific purpose—in this case, a high-frequency trading DEX/Orderbook.
+To understand the difference, look at how the industry classifies the largest DEXs in the world based on **Data Availability (DA)**:
+
+### ⚡ Validium DEXs (Data is Off-Chain)
+These DEXs use ZK Proofs for security, but keep their massive arrays of trade data off-chain (often managed by Data Availability Committees) to save money on Ethereum gas fees and achieve extreme scalability. While often broadly grouped under the "ZK-Rollup" umbrella in general industry terminology, technical researchers classify them as Validiums.
+*   **dYdX (v3):** One of the largest perpetual DEXs in the world. Built on StarkEx, it operated as a pure Validium.
+*   **Rhino.fi (formerly DeversiFi):** A major spot-trading DEX built on StarkEx using the Validium model.
+*   **ApeX Pro:** A derivatives DEX utilizing the StarkEx Validium engine.
+*   **Immutable X:** An NFT exchange that uses the exact same Validium matching engine logic.
+
+### ✅ True ZK-Rollup DEXs (Data is On-Chain)
+These DEXs post their raw trade data directly to Ethereum (`calldata` or `blobs`). Even if their servers crash and burn, anyone in the world can download the Ethereum history and mathematically reconstruct the database to rescue their funds.
+*   **Loopring:** One of the oldest and most famous order-book DEXs on Ethereum. They are a **Pure ZK-Rollup** and put every single trade into `calldata`.
+*   **SyncSwap / Mute.io:** DEXs built on **zkSync Era**. Because zkSync is a pure ZK-Rollup, the DEXs inherit that on-chain data security.
+*   **JediSwap / Ekubo:** Built on **Starknet**, which is a pure ZK-Rollup.
+*   **QuickSwap:** Built on **Polygon zkEVM** (pure ZK-Rollup).
+
+**Where does Nowa-ZK fit?**
+Currently, Nowa-ZK is in the **dYdX (v3)** category (Validium). Once Data Availability (Phase 2) is implemented to post trade data to L1 `calldata`, Nowa-ZK will instantly graduate into the **Loopring** category (True ZK-Rollup).
 
 ## 2. Tokenomics and Gas: If users pay gas on the Nowa Blockchain, is this still a ZK Rollup?
 Yes, absolutely! To understand why, we need to clarify what a **"Native Token"** is and how gas works in different Rollup models.
@@ -166,3 +183,30 @@ However, Nowa-ZK uses **Groth16**, which requires a strict, circuit-specific Tru
 1. **Cheapest L1 Gas Costs:** Groth16 is mathematically the absolute cheapest zero-knowledge proof to verify on Ethereum (costing only ~200,000 gas). STARKs and PLONK proofs are larger and much more expensive to verify. Since our primary goal is to drive trading fees to zero, minimizing L1 gas consumption is the ultimate priority.
 2. **Circuit Stability:** Unlike a general-purpose network where anyone can deploy random smart contracts, Nowa-ZK is an App-Specific DEX. Our trading math (verify signature, adjust balance, update Merkle tree) is highly static. Since we won't be changing the core trading rules every week, the inconvenience of a one-time "Circuit-Specific Setup" before Mainnet is a non-issue.
 3. **Battle-Tested Security:** Groth16 is the oldest, most battle-tested, and heavily audited proving system in the industry (securing networks like Zcash).
+
+## 16. App-Specific vs General Purpose (Cost & Architecture)
+Building a General Purpose zkEVM (like zkSync or Scroll) is one of the most notoriously expensive and difficult engineering feats in the world. By choosing to build an **App-Specific ZK Validium/Rollup**, the protocol strips away 99% of the unnecessary bloat required to prove random smart contracts.
+
+| Metric | App-Specific Validium (Nowa-ZK) | General Purpose zkEVM (e.g. zkSync / Scroll) |
+| :--- | :--- | :--- |
+| **Primary Goal** | Hyper-optimized for exactly one thing (Trading). | Turing Complete (Anyone can deploy any smart contract). |
+| **Engineering Team** | 1-3 standard Go/Solidity Developers. | 30-50+ Cryptographers, Compiler Engineers, and Rust Developers. |
+| **Time to Market** | A few months. | 2 to 4 years of intense R&D. |
+| **Prover Hardware Requirements** | Standard CPU Servers (8GB to 64GB RAM). | Massive GPU Farms or Supercomputers (1TB+ RAM). |
+| **Estimated Monthly Server Costs** | **~$50 - $500 / month** | **$50,000 - $250,000+ / month** |
+| **Circuit Complexity** | Very Low (~2M constraints per batch). | Incredibly High (Hundreds of Millions of constraints to prove Ethereum Opcodes). |
+| **Ethereum L1 Gas Cost** | **~250,000 to 300,000 Gas per batch** (Pure Groth16 Verification, 0 calldata costs). | **~500,000 to 1,500,000+ Gas per batch** (Massive Data Availability blob/calldata costs). |
+| **Security Risk** | **Low:** The math is static and hardcoded. Users can only trade. | **High:** Users can deploy malicious smart contracts or exploit the EVM engine. |
+
+## 17. Are we submitting the user's trade signatures to Ethereum L1?
+No! And that is exactly how a ZK-Rollup is supposed to work.
+
+If this were an **Optimistic Rollup**, we would have to submit the raw signatures (`v, r, s` values) to the Ethereum `calldata` so that validators could verify the trades later if there was a dispute. Signatures take up a huge amount of bytes, which makes Optimistic Rollups expensive.
+
+Because Nowa-ZK is a **ZK-Rollup**, we only submit two things to L1:
+1. The **Trade Data** (`messageHash`, `pubKeyX`, `pubKeyY`) so that the state can be reconstructed (Data Availability).
+2. The **ZK Proof**.
+
+The ZK Prover (the Go codebase) takes the user's signature as a **private input** inside the Groth16 circuit. It mathematically verifies the ECDSA signature inside the circuit, but it *never* reveals the signature to Ethereum. The Ethereum smart contract just verifies the tiny 8-element ZK Proof. Because the proof is mathematically valid, Ethereum knows with 100% certainty that valid signatures existed for every single trade in that batch.
+
+By *not* sending the signatures to L1, the protocol saves massive amounts of gas and keeps the L1 footprint incredibly small.

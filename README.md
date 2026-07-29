@@ -43,6 +43,8 @@ For an in-depth architectural dive, please read our **[Litepaper](./litepaper.md
 This guide provides immediate, functional commands to get the complete Nowa-ZK stack running locally using our `Makefile`. For a production or cloud server setup, please refer to the **[Cloud Deployment Guide](docs/deployment/cloud.md)**.
 
 ### Prerequisites
+- **Operating System**: Ubuntu 22.04 LTS (or compatible Linux distribution)
+- **Hardware**: Minimum 16GB RAM, 4 CPU Cores, 50GB SSD Storage (Prover is computationally intensive)
 - **Go**: 1.24.10 or higher
 - **Foundry**: Latest version (for compiling/deploying contracts)
 - **Make**: For running automated setup commands
@@ -86,6 +88,8 @@ Save the file, then deploy the contracts:
 ```bash
 make deploy
 ```
+<!-- make  verify-contracts -->
+
 *Note: This command automatically saves your contract deployment addresses to `~/.nowa-zk/deployments.json` so the Prover can find them.*
 
 ### 4. Start the System
