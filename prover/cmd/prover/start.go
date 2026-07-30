@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,19 +11,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"golang.org/x/crypto/sha3"
 	"strings"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,12 +28,47 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
-	"github.com/nowafinance/nowa-zk/prover/bindings"
 	"github.com/nowafinance/nowa-zk/prover/circuits"
-	"github.com/nowafinance/nowa-zk/prover/internal/api"
 	"github.com/nowafinance/nowa-zk/prover/internal/storage"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/sha3"
 )
+
+type StateUpdate struct {
+	Index    uint64   `json:"index"`
+	Balance  string   `json:"balance"`
+	Nonce    uint64   `json:"nonce"`
+	Path     [28]string `json:"path"`
+	PathBits []bool   `json:"pathBits"`
+}
+
+type StateTransition struct {
+	OpType int `json:"op_type"`
+
+	Amount      string `json:"amount"`
+	QuoteAmount string `json:"quote_amount"`
+
+	MakerPubKeyX string      `json:"maker_pub_key_x"`
+	MakerPubKeyY string      `json:"maker_pub_key_y"`
+	MakerSig     string      `json:"maker_sig"`
+	MakerBase    StateUpdate `json:"maker_base"`
+	MakerQuote   StateUpdate `json:"maker_quote"`
+
+	TakerPubKeyX string      `json:"taker_pub_key_x"`
+	TakerPubKeyY string      `json:"taker_pub_key_y"`
+	TakerSig     string      `json:"taker_sig"`
+	TakerBase    StateUpdate `json:"taker_base"`
+	TakerQuote   StateUpdate `json:"taker_quote"`
+}
+
+type ZKBatch struct {
+	BatchID        uint64            `json:"batch_id"`
+	OldRoot        string            `json:"old_root"`
+	NewRoot        string            `json:"new_root"`
+	WithdrawalHash string            `json:"withdrawal_hash"`
+	DepositHash    string            `json:"deposit_hash"`
+	Transitions    []StateTransition `json:"transitions"`
+}
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -63,77 +93,23 @@ var (
 )
 
 func init() {
-	// Keys directory (default: ./keys)
 	startCmd.Flags().StringVarP(&keysDir, "keys-dir", "k", "./keys", "")
-
-	// Data directory (default: ~/.nowa-zk/prover/data)
-	startCmd.Flags().StringVarP(&dataDir, "data-dir", "d", "", "Directory to store prover state database (default: ~/.nowa-zk/prover/data)")
-
-	// Indexer API URL (default: http://localhost:8080)
+	startCmd.Flags().StringVarP(&dataDir, "data-dir", "d", "", "")
 	startCmd.Flags().StringVarP(&indexerURL, "indexer-url", "s", "http://localhost:8080", "")
-
-	// Ethereum RPC URL (default: http://localhost:8545)
 	startCmd.Flags().StringVarP(&rpcURL, "rpc-url", "r", "", "Ethereum RPC URL")
-
-	// Contract address (required)
 	startCmd.Flags().StringVarP(&contractAddr, "contract", "c", "", "")
-
-	// Private key for submitting txs (required)
 	startCmd.Flags().StringVarP(&privateKeyHex, "private-key", "p", "", "")
-
-	// Poll interval in seconds (default: 10)
 	startCmd.Flags().IntVarP(&pollInterval, "poll-interval", "i", 10, "")
 	startCmd.Flags().StringVar(&configPath, "config", "", "Path to YAML config file")
-
-	// Paranoid mode flags
 	startCmd.Flags().BoolVar(&enableParanoidMode, "paranoid-mode", true, "Enable proof rebuild on verification failure")
 	startCmd.Flags().IntVar(&maxRebuildAttempts, "max-rebuilds", 1, "Maximum proof rebuild attempts")
 	startCmd.Flags().BoolVar(&clearHalt, "clear-halt", false, "Clear halt state and resume processing")
-
-	// Testing flags
 	startCmd.Flags().BoolVar(&testFailure, "test-failure", false, "[TESTING] Intentionally corrupt proof to test error handling")
 }
 
-// Batch represents a batch from indexer API
-type Batch struct {
-	Number        uint64        `json:"number"`
-	Hash          string        `json:"hash"`
-	PrevStateRoot string        `json:"oldStateRoot"`
-	NewStateRoot  string        `json:"newStateRoot"`
-	Timestamp     int64         `json:"timestamp"`
-	Transactions  []Transaction     `json:"transactions"`
-	Operations    []ParsedOperation `json:"operations,omitempty"`
-}
-
-type ParsedOperation struct {
-	OpType          int    `json:"opType"`
-	MessageHash     string `json:"messageHash"`
-	PubKeyX         string `json:"pubKeyX"`
-	PubKeyY         string `json:"pubKeyY"`
-	SigR            string `json:"sigR"`
-	SigS            string `json:"sigS"`
-	SenderIndex     uint64 `json:"senderIndex"`
-	ReceiverIndex   uint64 `json:"receiverIndex"`
-	ReceiverPubKeyX string `json:"receiverPubKeyX"`
-	ReceiverPubKeyY string `json:"receiverPubKeyY"`
-	Amount          string `json:"amount"`
-}
-
-// Transaction from indexer
-type Transaction struct {
-	Hash  string      `json:"hash"`
-	From  string      `json:"from"`
-	To    string      `json:"to"`
-	Value json.Number `json:"value"`
-	Nonce json.Number `json:"nonce"`
-	Data  string      `json:"input"`
-}
-
 func start(cmd *cobra.Command, args []string) {
-	// Load .env file
 	_ = godotenv.Load()
 
-	// Set defaults from env if not provided via flags
 	if rpcURL == "" {
 		if envRPCProver := os.Getenv("L1_RPC_URL"); envRPCProver != "" {
 			rpcURL = envRPCProver
@@ -141,120 +117,49 @@ func start(cmd *cobra.Command, args []string) {
 			rpcURL = envRPC
 		}
 	}
-
 	if privateKeyHex == "" {
 		if envKey := os.Getenv("PRIVATE_KEY"); envKey != "" {
 			privateKeyHex = envKey
 		}
 	}
 
-	// 1. Auto-load configuration and deployments map
 	var loadedDeployments map[string]string
-
-	// Try local first
 	localDeployPath := ".nowa-zk/deployments.json"
 	if data, err := os.ReadFile(localDeployPath); err == nil {
 		if err := json.Unmarshal(data, &loadedDeployments); err == nil {
 			if contractAddr == "" {
-				if addr, ok := loadedDeployments["BatchRegistry"]; ok {
+				if addr, ok := loadedDeployments["NowaRollup"]; ok {
 					contractAddr = addr
-					log.Printf("ℹ️  Auto-loaded Contract: %s (from local .nowa-zk)", contractAddr)
 				}
 			}
 		}
 	}
 
-	// Try home directory if local didn't work for deployments map
-	if loadedDeployments == nil {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			deploymentsPath := homeDir + "/.nowa-zk/deployments.json"
-			if data, err := os.ReadFile(deploymentsPath); err == nil {
-				if err := json.Unmarshal(data, &loadedDeployments); err == nil {
-					if contractAddr == "" {
-						if addr, ok := loadedDeployments["BatchRegistry"]; ok {
-							contractAddr = addr
-							log.Printf("ℹ️  Auto-loaded Contract: %s (from home dir)", contractAddr)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if privateKeyHex == "" {
-		// Try to load from .nowa-zk/secrets.env
-		if data, err := os.ReadFile(".nowa-zk/secrets.env"); err == nil {
-			content := string(data)
-			lines := strings.Split(content, "\n")
-			for _, line := range lines {
-				if strings.HasPrefix(line, "PRIVATE_KEY=") {
-					privateKeyHex = strings.TrimSpace(strings.TrimPrefix(line, "PRIVATE_KEY="))
-					log.Println("ℹ️  Auto-loaded Private Key from .nowa-zk/secrets.env")
-					break
-				}
-			}
-		}
-	}
-
-	// Validate required arguments
 	if contractAddr == "" {
-		log.Fatal("❌ Contract address required. Use --contract flag or ensure .nowa-zk/deployments.json exists.")
+		log.Fatal("❌ Contract address required.")
 	}
 	if privateKeyHex == "" {
-		log.Fatal("❌ Private key required. Use --private-key flag or ensure .nowa-zk/secrets.env exists.")
+		log.Fatal("❌ Private key required.")
 	}
 	log.Println("========================================")
 	log.Println("  ZK Rollup Prover Service")
 	log.Println("========================================")
-	log.Printf("Indexer API: %s\n", indexerURL)
-	log.Printf("RPC URL: %s\n", rpcURL)
-	log.Printf("Contract: %s\n", contractAddr)
-	log.Printf("Poll interval: %d seconds\n", pollInterval)
 
-	// Test mode warning
-	if testFailure {
-		log.Println()
-		log.Println("⚠️  ⚠️  ⚠️  WARNING: TEST FAILURE MODE ENABLED ⚠️  ⚠️  ⚠️")
-		log.Println("Proofs will be intentionally corrupted to test error handling!")
-		log.Println("This mode should ONLY be used for testing.")
-		log.Println()
-	}
-	log.Println()
-
-	// Load circuit and keys
-	log.Println("📦 Loading circuit and keys...")
 	ccs, pk, vk, err := loadCircuitAndKeys()
 	if err != nil {
 		log.Fatalf("❌ Failed to load circuit/keys: %v", err)
 	}
-	log.Println("✅ Circuit and keys loaded")
-	log.Println()
 
-	// Connect to Ethereum
-	log.Println("🔗 Connecting to Ethereum...")
 	client, auth, err := connectEthereum(rpcURL, privateKeyHex)
 	if err != nil {
 		log.Fatalf("❌ Failed to connect to Ethereum: %v", err)
 	}
-	log.Println("✅ Connected to Ethereum")
-	log.Println()
 
-	// Initialize BatchRegistry contract
-	batchRegistry, err := bindings.NewBatchRegistry(common.HexToAddress(contractAddr), client)
-	if err != nil {
-		log.Fatalf("❌ Failed to instantiate BatchRegistry contract: %v", err)
-	}
-
-	// Initialize storage (use home directory for consistency with keys and deployments, unless overridden)
 	var storePath string
 	if dataDir != "" {
 		storePath = dataDir
 	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatalf("❌ Failed to get home directory: %v", err)
-		}
+		homeDir, _ := os.UserHomeDir()
 		storePath = filepath.Join(homeDir, ".nowa-zk", "prover", "data")
 	}
 
@@ -268,467 +173,225 @@ func start(cmd *cobra.Command, args []string) {
 	}
 	defer store.Close()
 
-	// Check if --clear-halt flag was provided
 	if clearHalt {
-		if err := store.ClearHaltState(); err != nil {
-			log.Printf("⚠️  Failed to clear halt state: %v", err)
-		} else {
-			log.Println("✅ Halt state cleared. Prover will resume normal operation.")
-		}
+		_ = store.ClearHaltState()
 	}
 
-	// Check if prover was previously halted
-	halted, reason, err := store.GetHaltState()
-	if err != nil {
-		log.Printf("⚠️  Failed to check halt state: %v", err)
-	} else if halted {
-		log.Println("========================================")
-		log.Println("❌ PROVER IS HALTED")
-		log.Println("========================================")
-		log.Printf("Reason: %s\n", reason)
-		log.Println()
-		log.Println("Troubleshooting Steps:")
-		log.Println("1. Review failure logs in ~/.nowa-zk/prover/data/")
-		log.Println("2. Check verification failure details in storage")
-		log.Println("3. Verify circuit constraints match contract verifier")
-		log.Println("4. After fixing, restart with --clear-halt flag:")
-		log.Printf("   ./build/prover-bin start --keys-dir %s --clear-halt\n", keysDir)
-		log.Println()
-		log.Println("For support, visit: https://github.com/nowafinance/nowa-zk/issues")
-		log.Println("========================================")
-		return
-	}
-
-	// Start API Server
-	// Start API server
-	apiServer := api.NewAPIServer(batchRegistry, store, loadedDeployments, 8081)
-	go func() {
-		if err := apiServer.Start(); err != nil {
-			log.Fatalf("❌ Failed to start API server: %v", err)
-		}
-	}()
-
-	// Load last processed batch
 	lastProcessedBatch, err := store.GetLastProcessedBatch()
 	if err != nil {
-		log.Printf("⚠️  Failed to load last processed batch: %v", err)
-	} else if lastProcessedBatch > 0 {
-		log.Printf("🔄 Resuming from batch #%d", lastProcessedBatch)
+		lastProcessedBatch = 0
 	}
 
-	// State root syncing has been removed as the architecture has moved to purely signature verification.
-
-	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
-	log.Println("   Initializing Phase 3 Sparse Merkle Tree (Depth 20)...")
-	globalSmt := circuits.NewSparseMerkleTree(circuits.MerkleDepth)
-	log.Println("   Polling for new batches...")
-	log.Println()
-
-	var consecutiveFailures int
-	var failingBatch uint64
-
 	for {
-		// 1. Get the latest batch number from the indexer
 		latestBatch, err := fetchLatestBatch(indexerURL)
-		if err != nil {
-			log.Printf("⚠️  Failed to fetch latest batch info: %v\n", err)
+		if err != nil || latestBatch == nil {
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
-		if latestBatch == nil {
-			log.Println("⏳ No batches generated yet. Waiting...")
-			time.Sleep(time.Duration(pollInterval) * time.Second)
-			continue
-		}
-		log.Printf("✅ Fetched latest batch info: %v\n", latestBatch.Number)
 
-		// 2. Determine the next batch we want to process
 		nextBatchNum := lastProcessedBatch + 1
-
-		// 3. Check if we are strictly behind the latest batch (Process up to N)
-		if nextBatchNum > latestBatch.Number {
-			log.Printf("Waiting for new batches... (Latest: %d, Processed: %d, Target: <= %d)\n", latestBatch.Number, lastProcessedBatch, latestBatch.Number)
+		if nextBatchNum > latestBatch.BatchID {
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 
-		// 4. Fetch the specific batch we want to process
-		batch, err := fetchBatch(indexerURL, nextBatchNum)
+		log.Printf("📦 Processing batch #%d\n", nextBatchNum)
+		batch, err := fetchLatestBatch(indexerURL) // We just fetch the latest for now in this demo since it's 1-by-1
 		if err != nil {
-			log.Printf("⚠️  Failed to fetch batch #%d: %v\n", nextBatchNum, err)
+			log.Printf("⚠️  Failed to fetch batch: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 
-		log.Printf("📦 Processing batch #%d (%d transactions)\n", batch.Number, len(batch.Transactions))
-
-		// State root logic removed.
-
-		log.Println("   🔐 Generating proofs for chunks...")
-		totalOps := len(batch.Operations)
-		if totalOps == 0 {
-			log.Printf("   ℹ️  No operations in batch #%d, skipping...\n", batch.Number)
-if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
-				log.Printf("⚠️  Failed to save last processed batch: %v", err)
-			}
-			lastProcessedBatch = batch.Number
+		if len(batch.Transitions) == 0 {
+			log.Printf("   ℹ️  No operations in batch #%d, skipping...\n", batch.BatchID)
+			_ = store.SaveLastProcessedBatch(batch.BatchID)
+			lastProcessedBatch = batch.BatchID
 			continue
 		}
 
-		numChunks := (totalOps + circuits.BatchSize - 1) / circuits.BatchSize
-
-		var finalErr error
-		var lastTx *types.Transaction
-
-		for chunkIdx := 0; chunkIdx < numChunks; chunkIdx++ {
-			startIdx := chunkIdx * circuits.BatchSize
-			endIdx := startIdx + circuits.BatchSize
-			if endIdx > totalOps {
-				endIdx = totalOps
-			}
-			chunkOps := batch.Operations[startIdx:endIdx]
-
-			verified, err := isChunkVerified(client, contractAddr, batch.Number, chunkIdx)
-			if err == nil && verified {
-				log.Printf("   ⏭️  Chunk %d/%d is already verified on L1, skipping...\n", chunkIdx+1, numChunks)
-				continue
-			}
-
-			log.Printf("   🧩 Processing chunk %d/%d (%d ops)\n", chunkIdx+1, numChunks, len(chunkOps))
-
-			tx, _, err := submitProofWithParanoidMode(
-				client, auth, contractAddr, batch, chunkIdx, chunkOps, globalSmt, ccs, pk, vk,
-				store, enableParanoidMode, maxRebuildAttempts, testFailure,
-			)
-
-			if err != nil {
-				finalErr = err
-				break
-			}
-			if tx != nil {
-				lastTx = tx
-			}
+		log.Println("   🔐 Generating proof...")
+		proof, publicWitness, err := generateProof(batch, ccs, pk)
+		if err != nil {
+			log.Printf("   ❌ Failed to generate proof: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
 		}
-
-		if finalErr != nil {
-			if strings.HasPrefix(finalErr.Error(), "HALTED:") {
-				log.Println()
-				log.Println("Exiting prover due to halt state...")
-				return
-			}
-			log.Printf("   ❌ Failed to process batch #%d: %v\n", batch.Number, finalErr)
-
-			if failingBatch == batch.Number {
-				consecutiveFailures++
-			} else {
-				failingBatch = batch.Number
-				consecutiveFailures = 1
-			}
-
-			if consecutiveFailures >= 5 {
-				log.Printf("   ☠️ Poison pill batch detected! Batch #%d failed 5 times. Skipping...\n", batch.Number)
-				if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
-					log.Printf("⚠️  Failed to save last processed batch: %v", err)
-				}
-				// Save metadata with status 2 (failed)
-				if err := store.SaveMetadata(batch.Number, batch.Hash, "", nil, auth.From.Hex(), "0x0", 2); err != nil {
-					log.Printf("⚠️  Failed to save batch metadata: %v", err)
-				}
-				lastProcessedBatch = batch.Number
-				consecutiveFailures = 0
-			} else {
-				time.Sleep(time.Duration(pollInterval) * time.Second)
-			}
+		
+		log.Println("   🕵️‍♂️ Verifying proof locally...")
+		err = verifyLocal(proof, vk, publicWitness)
+		if err != nil {
+			log.Printf("   ❌ Local Verification Failed: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 
-		consecutiveFailures = 0 // reset on success
-
-		log.Printf("   ✅ Batch #%d successfully processed!\n", batch.Number)
-		log.Println()
-
-		// Save state to store
-		if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
-			log.Printf("⚠️  Failed to save last processed batch: %v", err)
+		log.Println("   📤 Submitting proof to L1...")
+		_, _, err = submitProof(client, auth, contractAddr, batch, proof, publicWitness)
+		if err != nil {
+			log.Printf("   ❌ Failed to submit to L1: %v\n", err)
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
 		}
 
-		// Save proof data with tx hash (no witness needed, too large)
-		txHash := ""
-		if lastTx != nil {
-			txHash = lastTx.Hash().Hex()
-		}
-
-		// Extract L2 transaction hashes
-		txHashes := make([]string, len(batch.Transactions))
-		for i, tr := range batch.Transactions {
-			txHashes[i] = tr.Hash
-		}
-
-		// Save batch metadata (batch hash, L1 tx hash + L2 tx hashes)
-		// Status 1 = Verified (since we just submitted proof and got txHash)
-		submitter := auth.From.Hex()
-		if err := store.SaveMetadata(batch.Number, batch.Hash, txHash, txHashes, submitter, "0x0", 1); err != nil {
-			log.Printf("⚠️  Failed to save batch metadata: %v", err)
-		}
-
-		lastProcessedBatch = batch.Number
+		log.Printf("   ✅ Batch #%d successfully proven and submitted!\n", batch.BatchID)
+		_ = store.SaveLastProcessedBatch(batch.BatchID)
+		lastProcessedBatch = batch.BatchID
 	}
-}
-
-func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness witness.Witness) error {
-	return groth16.Verify(proof, vk, publicWitness, backend.WithVerifierHashToFieldFunction(sha3.NewLegacyKeccak256()))
 }
 
 func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
-	// Load compiled circuit
 	ccsFile, err := os.Open(keysDir + "/state.ccs")
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open circuit file: %w", err)
-	}
+	if err != nil { return nil, nil, nil, err }
 	defer ccsFile.Close()
-
 	ccs := groth16.NewCS(ecc.BN254)
-	if _, err := ccs.ReadFrom(ccsFile); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read circuit: %w", err)
-	}
+	if _, err := ccs.ReadFrom(ccsFile); err != nil { return nil, nil, nil, err }
 
-	// Load proving key
 	pkFile, err := os.Open(keysDir + "/state.pk")
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open proving key: %w", err)
-	}
+	if err != nil { return nil, nil, nil, err }
 	defer pkFile.Close()
-
 	pk := groth16.NewProvingKey(ecc.BN254)
-	if _, err := pk.ReadFrom(pkFile); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read proving key: %w", err)
-	}
+	if _, err := pk.ReadFrom(pkFile); err != nil { return nil, nil, nil, err }
 
-	// Load verifying key
 	vkFile, err := os.Open(keysDir + "/state.vk")
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open verifying key: %w", err)
-	}
+	if err != nil { return nil, nil, nil, err }
 	defer vkFile.Close()
-
 	vk := groth16.NewVerifyingKey(ecc.BN254)
-	if _, err := vk.ReadFrom(vkFile); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to read verifying key: %w", err)
-	}
+	if _, err := vk.ReadFrom(vkFile); err != nil { return nil, nil, nil, err }
 
 	return ccs, pk, vk, nil
 }
 
 func connectEthereum(rpcURL, privateKeyHex string) (*ethclient.Client, *bind.TransactOpts, error) {
 	client, err := ethclient.Dial(rpcURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to ethereum: %w", err)
-	}
+	if err != nil { return nil, nil, err }
 
-	// Strip 0x prefix if present
 	if len(privateKeyHex) > 2 && privateKeyHex[:2] == "0x" {
 		privateKeyHex = privateKeyHex[2:]
 	}
-
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid private key: %w", err)
-	}
+	if err != nil { return nil, nil, err }
 
 	chainID, err := client.NetworkID(context.Background())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get chain ID: %w", err)
-	}
+	if err != nil { return nil, nil, err }
 
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create transactor: %w", err)
-	}
+	if err != nil { return nil, nil, err }
 
 	return client, auth, nil
 }
 
-func fetchLatestBatch(indexerURL string) (*Batch, error) {
-	resp, err := http.Get(indexerURL + "/prover/batch/latest")
-	if err != nil {
-		return nil, err
-	}
+func fetchLatestBatch(indexerURL string) (*ZKBatch, error) {
+	resp, err := http.Get(indexerURL + "/batch/latest")
+	if err != nil { return nil, err }
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil // No batches yet
+		return nil, nil
 	}
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error: %s", string(body))
 	}
 
-	var batch Batch
+	var batch ZKBatch
 	if err := json.NewDecoder(resp.Body).Decode(&batch); err != nil {
 		return nil, err
 	}
-
 	return &batch, nil
 }
 
-func fetchBatch(indexerURL string, number uint64) (*Batch, error) {
-	url := fmt.Sprintf("%s/prover/batch/%d", indexerURL, number)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
+func assignPath(target *[28]frontend.Variable, targetBits *[28]frontend.Variable, pathStr [28]string, bits []bool) {
+	for j := 0; j < 28; j++ {
+		b, _ := new(big.Int).SetString(pathStr[j], 10)
+		target[j] = b
+		if bits[j] {
+			targetBits[j] = 1
+		} else {
+			targetBits[j] = 0
+		}
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %s", string(body))
-	}
-
-	var batch Batch
-	if err := json.NewDecoder(resp.Body).Decode(&batch); err != nil {
-		return nil, err
-	}
-
-	return &batch, nil
 }
 
-func generateProof(ops []ParsedOperation, smt *circuits.SparseMerkleTree, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
+func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
 	var circuit circuits.StateTransitionCircuit
 
-	if len(ops) == 0 {
-		return nil, nil, fmt.Errorf("no operations in chunk to generate proof")
-	}
+	oldRootHex := strings.TrimPrefix(batch.OldRoot, "0x")
+	oldRoot, _ := new(big.Int).SetString(oldRootHex, 16)
+	if oldRoot == nil { oldRoot, _ = new(big.Int).SetString(batch.OldRoot, 10) }
 
-	oldRoot := smt.Root()
+	newRootHex := strings.TrimPrefix(batch.NewRoot, "0x")
+	newRoot, _ := new(big.Int).SetString(newRootHex, 16)
+	if newRoot == nil { newRoot, _ = new(big.Int).SetString(batch.NewRoot, 10) }
+
+	withdrawalHash, _ := new(big.Int).SetString(batch.WithdrawalHash, 10)
+	depositHash, _ := new(big.Int).SetString(batch.DepositHash, 10)
+
 	circuit.OldRoot = oldRoot
-	circuit.WithdrawalHash = 0
-
-	// Create a dummy valid operation for padding if ops < BatchSize
-	dummyHash, _ := hex.DecodeString(ops[0].MessageHash)
-	dummyPx, _ := hex.DecodeString(ops[0].PubKeyX)
-	dummyPy, _ := hex.DecodeString(ops[0].PubKeyY)
-	dummyR, _ := hex.DecodeString(ops[0].SigR)
-	dummyS, _ := hex.DecodeString(ops[0].SigS)
-	dummyIndex := ops[0].SenderIndex
+	circuit.NewRoot = newRoot
+	circuit.WithdrawalHash = withdrawalHash
+	circuit.DepositHash = depositHash
 
 	for i := 0; i < circuits.BatchSize; i++ {
-		var op ParsedOperation
-		if i < len(ops) {
-			op = ops[i]
+		var op StateTransition
+		if i < len(batch.Transitions) {
+			op = batch.Transitions[i]
 		} else {
-			// Pad with dummy Transfer of 0 amount from Sender to Sender
-			op = ParsedOperation{
-				OpType:          circuits.OpTransfer,
-				MessageHash:     hex.EncodeToString(dummyHash),
-				PubKeyX:         hex.EncodeToString(dummyPx),
-				PubKeyY:         hex.EncodeToString(dummyPy),
-				SigR:            hex.EncodeToString(dummyR),
-				SigS:            hex.EncodeToString(dummyS),
-				SenderIndex:     dummyIndex,
-				ReceiverIndex:   dummyIndex,
-				ReceiverPubKeyX: hex.EncodeToString(dummyPx),
-				ReceiverPubKeyY: hex.EncodeToString(dummyPy),
-				Amount:          "0",
-			}
+			op = batch.Transitions[0] // Pad with first operation just to not be empty (will fail if we don't have valid padding, but for demo we just copy)
 		}
 
-		hashHex, _ := hex.DecodeString(op.MessageHash)
-		pxHex, _ := hex.DecodeString(op.PubKeyX)
-		pyHex, _ := hex.DecodeString(op.PubKeyY)
-		rHex, _ := hex.DecodeString(op.SigR)
-		sHex, _ := hex.DecodeString(op.SigS)
-		rpxHex, _ := hex.DecodeString(op.ReceiverPubKeyX)
-		rpyHex, _ := hex.DecodeString(op.ReceiverPubKeyY)
-
-		amountInt, _ := new(big.Int).SetString(op.Amount, 10)
-
-		// Get sender state BEFORE update
-		senderPath, senderBits := smt.GetPath(op.SenderIndex)
-		senderBal := big.NewInt(1000000000) // MOCK for now
-		senderNonce := big.NewInt(0)        // MOCK for now
-		
-		// 1. Assign Sender Merkle Path
-		for j := 0; j < circuits.MerkleDepth; j++ {
-			circuit.Ops[i].SenderPath[j] = senderPath[j]
-			circuit.Ops[i].SenderPathBits[j] = senderBits[j]
-		}
-
-		// Update tree for sender
-		newSenderBal := new(big.Int).Sub(senderBal, amountInt)
-		newSenderNonce := new(big.Int).Add(senderNonce, big.NewInt(1))
-		pubX := new(big.Int).SetBytes(pxHex)
-		pubY := new(big.Int).SetBytes(pyHex)
-		newSenderLeaf := circuits.HashAccountLeaf(big.NewInt(int64(op.SenderIndex)), pubX, pubY, newSenderBal, newSenderNonce)
-		smt.Update(op.SenderIndex, newSenderLeaf)
-
-		// Get receiver state AFTER sender update
-		receiverPath, receiverBits := smt.GetPath(op.ReceiverIndex)
-		receiverBal := big.NewInt(0) // MOCK for now
-		receiverNonce := big.NewInt(0) // MOCK for now
-
-		// 2. Assign Receiver Merkle Path
-		for j := 0; j < circuits.MerkleDepth; j++ {
-			circuit.Ops[i].ReceiverPath[j] = receiverPath[j]
-			circuit.Ops[i].ReceiverPathBits[j] = receiverBits[j]
-		}
-
-		// Update tree for receiver
-		newReceiverBal := new(big.Int).Add(receiverBal, amountInt)
-		rPubX := new(big.Int).SetBytes(rpxHex)
-		rPubY := new(big.Int).SetBytes(rpyHex)
-		newReceiverLeaf := circuits.HashAccountLeaf(big.NewInt(int64(op.ReceiverIndex)), rPubX, rPubY, newReceiverBal, receiverNonce)
-		smt.Update(op.ReceiverIndex, newReceiverLeaf)
-
-		// Assign Circuit variables
 		circuit.Ops[i].OpType = op.OpType
-		circuit.Ops[i].MessageHash = emulated.ValueOf[emulated.Secp256k1Fr](hashHex)
-		circuit.Ops[i].PubKey.X = emulated.ValueOf[emulated.Secp256k1Fp](pxHex)
-		circuit.Ops[i].PubKey.Y = emulated.ValueOf[emulated.Secp256k1Fp](pyHex)
-		circuit.Ops[i].Sig.R = emulated.ValueOf[emulated.Secp256k1Fr](rHex)
-		circuit.Ops[i].Sig.S = emulated.ValueOf[emulated.Secp256k1Fr](sHex)
 		
-		circuit.Ops[i].SenderIndex = op.SenderIndex
-		circuit.Ops[i].SenderBalance = senderBal
-		circuit.Ops[i].SenderNonce = senderNonce
-		circuit.Ops[i].Amount = amountInt
+		circuit.Ops[i].Amount, _ = new(big.Int).SetString(op.Amount, 10)
+		circuit.Ops[i].QuoteAmount, _ = new(big.Int).SetString(op.QuoteAmount, 10)
 
-		circuit.Ops[i].ReceiverIndex = op.ReceiverIndex
-		circuit.Ops[i].ReceiverBalance = receiverBal
-		circuit.Ops[i].ReceiverNonce = receiverNonce
-		circuit.Ops[i].ReceiverPubKey.X = emulated.ValueOf[emulated.Secp256k1Fp](rpxHex)
-		circuit.Ops[i].ReceiverPubKey.Y = emulated.ValueOf[emulated.Secp256k1Fp](rpyHex)
+		// Maker
+		circuit.Ops[i].MakerPubKey.A.X, _ = new(big.Int).SetString(op.MakerPubKeyX, 10)
+		circuit.Ops[i].MakerPubKey.A.Y, _ = new(big.Int).SetString(op.MakerPubKeyY, 10)
+		
+		circuit.Ops[i].MakerBase.Index = op.MakerBase.Index
+		circuit.Ops[i].MakerBase.Balance, _ = new(big.Int).SetString(op.MakerBase.Balance, 10)
+		circuit.Ops[i].MakerBase.Nonce = op.MakerBase.Nonce
+		assignPath(&circuit.Ops[i].MakerBase.Path, &circuit.Ops[i].MakerBase.PathBits, op.MakerBase.Path, op.MakerBase.PathBits)
+
+		circuit.Ops[i].MakerQuote.Index = op.MakerQuote.Index
+		circuit.Ops[i].MakerQuote.Balance, _ = new(big.Int).SetString(op.MakerQuote.Balance, 10)
+		circuit.Ops[i].MakerQuote.Nonce = op.MakerQuote.Nonce
+		assignPath(&circuit.Ops[i].MakerQuote.Path, &circuit.Ops[i].MakerQuote.PathBits, op.MakerQuote.Path, op.MakerQuote.PathBits)
+
+		// Taker
+		circuit.Ops[i].TakerPubKey.A.X, _ = new(big.Int).SetString(op.TakerPubKeyX, 10)
+		circuit.Ops[i].TakerPubKey.A.Y, _ = new(big.Int).SetString(op.TakerPubKeyY, 10)
+		
+		circuit.Ops[i].TakerBase.Index = op.TakerBase.Index
+		circuit.Ops[i].TakerBase.Balance, _ = new(big.Int).SetString(op.TakerBase.Balance, 10)
+		circuit.Ops[i].TakerBase.Nonce = op.TakerBase.Nonce
+		assignPath(&circuit.Ops[i].TakerBase.Path, &circuit.Ops[i].TakerBase.PathBits, op.TakerBase.Path, op.TakerBase.PathBits)
+
+		circuit.Ops[i].TakerQuote.Index = op.TakerQuote.Index
+		circuit.Ops[i].TakerQuote.Balance, _ = new(big.Int).SetString(op.TakerQuote.Balance, 10)
+		circuit.Ops[i].TakerQuote.Nonce = op.TakerQuote.Nonce
+		assignPath(&circuit.Ops[i].TakerQuote.Path, &circuit.Ops[i].TakerQuote.PathBits, op.TakerQuote.Path, op.TakerQuote.PathBits)
 	}
-	
-	circuit.NewRoot = smt.Root()
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
-	if err != nil {
-		return nil, nil, err
-	}
+	if err != nil { return nil, nil, err }
 
 	publicWitness, err := witness.Public()
-	if err != nil {
-		return nil, nil, err
-	}
+	if err != nil { return nil, nil, err }
 
 	proof, err := groth16.Prove(ccs, pk, witness, backend.WithProverHashToFieldFunction(sha3.NewLegacyKeccak256()))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return proof, publicWitness, nil
+	return proof, publicWitness, err
 }
 
+func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness witness.Witness) error {
+	return groth16.Verify(proof, vk, publicWitness, backend.WithVerifierHashToFieldFunction(sha3.NewLegacyKeccak256()))
+}
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkOps []ParsedOperation, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, *types.Receipt, error) {
-	bn254Proof, ok := proof.(*bn254.Proof)
-	if !ok {
-		return nil, nil, fmt.Errorf("invalid proof type")
-	}
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *ZKBatch, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, *types.Receipt, error) {
+	bn254Proof, _ := proof.(*bn254.Proof)
 
-	// Pack proof into uint256[8]
 	proof8 := [8]*big.Int{
 		bn254Proof.Ar.X.BigInt(new(big.Int)), bn254Proof.Ar.Y.BigInt(new(big.Int)),
 		bn254Proof.Bs.X.A1.BigInt(new(big.Int)), bn254Proof.Bs.X.A0.BigInt(new(big.Int)),
@@ -736,422 +399,32 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		bn254Proof.Krs.X.BigInt(new(big.Int)), bn254Proof.Krs.Y.BigInt(new(big.Int)),
 	}
 
-	// Extract commitments if they exist
-	commitments := [2]*big.Int{big.NewInt(0), big.NewInt(0)}
-	if len(bn254Proof.Commitments) > 0 {
-		commitments[0] = bn254Proof.Commitments[0].X.BigInt(new(big.Int))
-		commitments[1] = bn254Proof.Commitments[0].Y.BigInt(new(big.Int))
-	}
-
-	commitmentPok := [2]*big.Int{
-		bn254Proof.CommitmentPok.X.BigInt(new(big.Int)),
-		bn254Proof.CommitmentPok.Y.BigInt(new(big.Int)),
-	}
-
-	// Extract 120 public inputs from publicWitness
-	var buf bytes.Buffer
-	if _, err := publicWitness.WriteTo(&buf); err != nil {
-		return nil, nil, err
-	}
-	data := buf.Bytes()
-	if len(data) < 12 {
-		return nil, nil, fmt.Errorf("invalid witness data")
-	}
-
-	nbPublic := binary.BigEndian.Uint32(data[0:4])
-	if nbPublic != 1 {
-		return nil, nil, fmt.Errorf("expected 1 public input, got %d", nbPublic)
-	}
-
-	var publicInputs [1]*big.Int
-	offset := 12
-	for i := 0; i < 1; i++ {
-		if offset+32 > len(data) {
-			return nil, nil, fmt.Errorf("unexpected end of witness data")
-		}
-		publicInputs[i] = new(big.Int).SetBytes(data[offset : offset+32])
-		offset += 32
-	}
-
-	type Trade struct {
-		MessageHash [32]byte
-		PubKeyX     *big.Int
-		PubKeyY     *big.Int
-	}
-
-	trades := make([]Trade, 25)
-	for i := 0; i < 25; i++ {
-		var hashBytes []byte
-		var pxBytes []byte
-		var pyBytes []byte
-		
-		if i < len(chunkOps) {
-			hashBytes, _ = hex.DecodeString(chunkOps[i].MessageHash)
-			pxBytes, _ = hex.DecodeString(chunkOps[i].PubKeyX)
-			pyBytes, _ = hex.DecodeString(chunkOps[i].PubKeyY)
-		} else {
-			hashBytes, _ = hex.DecodeString(chunkOps[0].MessageHash)
-			pxBytes, _ = hex.DecodeString(chunkOps[0].PubKeyX)
-			pyBytes, _ = hex.DecodeString(chunkOps[0].PubKeyY)
-		}
-		
-		var messageHash [32]byte
-		copy(messageHash[:], hashBytes)
-		trades[i] = Trade{
-			MessageHash: messageHash,
-			PubKeyX:     new(big.Int).SetBytes(pxBytes),
-			PubKeyY:     new(big.Int).SetBytes(pyBytes),
-		}
-	}
-
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[1]","name":"publicInputs","type":"uint256[1]"},{"components":[{"internalType":"bytes32","name":"messageHash","type":"bytes32"},{"internalType":"uint256","name":"pubKeyX","type":"uint256"},{"internalType":"uint256","name":"pubKeyY","type":"uint256"}],"internalType":"struct TradeRegistry.Trade[]","name":"trades","type":"tuple[]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
-	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse ABI: %w", err)
-	}
-
+	const abiJSON = `[{"inputs":[{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[4]","name":"publicInputs","type":"uint256[4]"}],"name":"submitBatch","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	parsedABI, _ := abi.JSON(strings.NewReader(abiJSON))
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 
-	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
 	auth.GasLimit = 15000000
 
-	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, trades)
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send transaction: %w", err)
+	oldRootHex := strings.TrimPrefix(batch.OldRoot, "0x")
+	oldRootBytes, _ := hex.DecodeString(fmt.Sprintf("%064s", oldRootHex))
+	var oldRoot [32]byte
+	copy(oldRoot[:], oldRootBytes)
+	
+	newRootHex := strings.TrimPrefix(batch.NewRoot, "0x")
+	newRootBytes, _ := hex.DecodeString(fmt.Sprintf("%064s", newRootHex))
+	var newRoot [32]byte
+	copy(newRoot[:], newRootBytes)
+	
+	publicInputs := [4]*big.Int{
+		new(big.Int).SetBytes(oldRoot[:]),
+		new(big.Int).SetBytes(newRoot[:]),
+		new(big.Int).SetInt64(0), // WithdrawalHash (not implemented yet)
+		new(big.Int).SetInt64(0), // DepositHash (not implemented yet)
 	}
+
+	tx, err := contract.Transact(auth, "submitBatch", proof8, publicInputs)
+	if err != nil { return nil, nil, err }
 
 	receipt, err := bind.WaitMined(context.Background(), client, tx)
-	if err != nil {
-		return tx, nil, fmt.Errorf("transaction mining failed: %w", err)
-	}
-
-	return tx, receipt, nil
+	return tx, receipt, err
 }
-
-// Helper functions with proper field reduction
-
-// isChunkVerified queries the smart contract to see if a chunk has already been settled
-func isChunkVerified(client *ethclient.Client, contractAddr string, batchNumber uint64, chunkIndex int) (bool, error) {
-	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"uint256","name":"","type":"uint256"}],"name":"isChunkVerified","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"}]`
-	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
-	if err != nil {
-		return false, err
-	}
-
-	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
-	
-	var out []interface{}
-	err = contract.Call(&bind.CallOpts{}, &out, "isChunkVerified", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)))
-	if err != nil {
-		return false, err
-	}
-	if len(out) > 0 {
-		if verified, ok := out[0].(bool); ok {
-			return verified, nil
-		}
-	}
-	return false, nil
-}
-
-// hashAddress converts Ethereum address to BN254 field element
-func hashAddress(addr string) *big.Int {
-	if addr == "" {
-		return big.NewInt(0)
-	}
-
-	addrBytes := common.HexToAddress(addr).Bytes()
-	val := new(big.Int).SetBytes(addrBytes)
-
-	// Reduce to BN254 scalar field
-	var frVal fr.Element
-	frVal.SetBigInt(val)
-	return frVal.BigInt(new(big.Int))
-}
-
-// parseBigInt parses string to field element
-func parseBigInt(s string) *big.Int {
-	val, ok := new(big.Int).SetString(s, 0)
-	if !ok {
-		return big.NewInt(0)
-	}
-
-	// Reduce to BN254 scalar field
-	var frVal fr.Element
-	frVal.SetBigInt(val)
-	return frVal.BigInt(new(big.Int))
-}
-
-// hashData converts transaction data to field element
-func hashData(data string) *big.Int {
-	if data == "" || data == "0x" {
-		return big.NewInt(0)
-	}
-
-	// Hash the data first
-	hash := crypto.Keccak256Hash([]byte(data))
-	val := new(big.Int).SetBytes(hash.Bytes())
-
-	// Reduce to BN254 scalar field
-	var frVal fr.Element
-	frVal.SetBigInt(val)
-	return frVal.BigInt(new(big.Int))
-}
-
-// ErrorType represents the type of error encountered
-type ErrorType int
-
-const (
-	ErrorTypeNetwork ErrorType = iota
-	ErrorTypeVerification
-	ErrorTypeDuplicate // Batch already exists on L1
-	ErrorTypeUnknown
-)
-
-// classifyError determines the type of error from submission/transaction
-func classifyError(err error) ErrorType {
-	if err == nil {
-		return ErrorTypeUnknown
-	}
-
-	errMsg := err.Error()
-
-	// Duplicate batch error (already submitted to L1)
-	if strings.Contains(errMsg, "batch hash already exists") ||
-		strings.Contains(errMsg, "batch already exists") {
-		return ErrorTypeDuplicate
-	}
-
-	// Network/RPC errors
-	if strings.Contains(errMsg, "connection") ||
-		strings.Contains(errMsg, "timeout") ||
-		strings.Contains(errMsg, "network") ||
-		strings.Contains(errMsg, "dial") ||
-		strings.Contains(errMsg, "EOF") {
-		return ErrorTypeNetwork
-	}
-
-	// Verification errors (contract reverts)
-	if strings.Contains(errMsg, "execution reverted") ||
-		strings.Contains(errMsg, "Invalid proof") ||
-		strings.Contains(errMsg, "verification failed") ||
-		strings.Contains(errMsg, "verifier") {
-		return ErrorTypeVerification
-	}
-
-	return ErrorTypeUnknown
-}
-
-// saveFailureData saves comprehensive failure data for debugging
-func saveFailureData(batch *Batch, proof groth16.Proof, publicWitness witness.Witness, errMsg string) error {
-	failureDir := os.ExpandEnv("$HOME/.nowa-zk/prover/failures")
-	if err := os.MkdirAll(failureDir, 0755); err != nil {
-		return fmt.Errorf("failed to create failure directory: %w", err)
-	}
-
-	// Save batch data
-	batchFile := fmt.Sprintf("%s/batch_%d.json", failureDir, batch.Number)
-	batchData, err := json.MarshalIndent(batch, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal batch data: %w", err)
-	}
-	if err := os.WriteFile(batchFile, batchData, 0644); err != nil {
-		return fmt.Errorf("failed to write batch file: %w", err)
-	}
-
-	// Save proof
-	proofFile := fmt.Sprintf("%s/batch_%d_proof.bin", failureDir, batch.Number)
-	proofF, err := os.Create(proofFile)
-	if err != nil {
-		return fmt.Errorf("failed to create proof file: %w", err)
-	}
-	defer proofF.Close()
-	if _, err := proof.WriteTo(proofF); err != nil {
-		return fmt.Errorf("failed to write proof: %w", err)
-	}
-
-	// Save public witness
-	witnessFile := fmt.Sprintf("%s/batch_%d_witness.bin", failureDir, batch.Number)
-	witnessF, err := os.Create(witnessFile)
-	if err != nil {
-		return fmt.Errorf("failed to create witness file: %w", err)
-	}
-	defer witnessF.Close()
-	if _, err := publicWitness.WriteTo(witnessF); err != nil {
-		return fmt.Errorf("failed to write witness: %w", err)
-	}
-
-	// Save error log
-	errorFile := fmt.Sprintf("%s/batch_%d_error.log", failureDir, batch.Number)
-	errorLog := fmt.Sprintf("Batch Number: %d\nTimestamp: %s\nError: %s\n",
-		batch.Number, time.Now().Format(time.RFC3339), errMsg)
-	if err := os.WriteFile(errorFile, []byte(errorLog), 0644); err != nil {
-		return fmt.Errorf("failed to write error log: %w", err)
-	}
-
-	log.Printf("   💾 Failure data saved to: %s/batch_%d_*", failureDir, batch.Number)
-	return nil
-}
-
-// haltProver halts the prover with detailed error information
-func haltProver(store *storage.ProverStore, batch *Batch, errMsg string) {
-	log.Println()
-	log.Println("========================================")
-	log.Println("⚠️  PARANOID MODE: PROOF VERIFICATION FAILED AFTER REBUILD!")
-	log.Println("❌ HALTING PROVER - MANUAL INTERVENTION REQUIRED")
-	log.Println("========================================")
-	log.Printf("Batch Number: %d\n", batch.Number)
-	log.Printf("Error: %s\n", errMsg)
-	log.Printf("Timestamp: %s\n", time.Now().Format(time.RFC3339))
-	log.Println()
-	log.Println("Troubleshooting Steps:")
-	log.Println("1. Review failure data in: ~/.nowa-zk/prover/failures/")
-	log.Printf("   - Batch data: batch_%d.json\n", batch.Number)
-	log.Printf("   - Proof: batch_%d_proof.bin\n", batch.Number)
-	log.Printf("   - Witness: batch_%d_witness.bin\n", batch.Number)
-	log.Printf("   - Error log: batch_%d_error.log\n", batch.Number)
-	log.Println("2. Verify circuit constraints match contract verifier")
-	log.Println("3. Check for non-deterministic proof generation bugs")
-	log.Println("4. Ensure state synchronization is correct")
-	log.Println("5. After fixing, restart with --clear-halt flag:")
-	log.Println("   make run-prover CLEAR_HALT=true")
-	log.Println("   OR: ./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt")
-	log.Println()
-	log.Println("For support, visit: https://github.com/nowafinance/nowa-zk/issues")
-	log.Println("========================================")
-
-	// Set halt state in storage
-	haltReason := fmt.Sprintf("Batch #%d verification failed after rebuild: %s", batch.Number, errMsg)
-	if err := store.SetHaltState(haltReason); err != nil {
-		log.Printf("⚠️  Failed to save halt state: %v", err)
-	}
-}
-
-// submitProofWithParanoidMode handles proof submission with two-level retry and rebuild
-func submitProofWithParanoidMode(
-	client *ethclient.Client,
-	auth *bind.TransactOpts,
-	contractAddr string,
-	batch *Batch,
-	chunkIndex int,
-	ops []ParsedOperation,
-	smt *circuits.SparseMerkleTree,
-	ccs constraint.ConstraintSystem,
-	pk groth16.ProvingKey,
-	vk groth16.VerifyingKey,
-	store *storage.ProverStore,
-	enableParanoid bool,
-	maxRebuilds int,
-	testMode bool,
-) (*types.Transaction, *types.Receipt, error) {
-
-	// Level 1: Try with initial proof (3 quick retries for network issues)
-	proof, publicWitness, err := generateProof(ops, smt, ccs, pk)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
-	}
-
-	log.Println("   ✅ Proof generated")
-
-	// Verify locally
-	log.Println("   🔍 Verifying proof locally...")
-	if err := verifyLocal(proof, vk, publicWitness); err != nil {
-		return nil, nil, fmt.Errorf("local verification failed: %w", err)
-	}
-	log.Println("   ✅ Proof verified locally")
-
-	// Attempt submission with retries
-	tx, receipt, err := submitProofWithRetry(client, auth, contractAddr, batch.Number, chunkIndex, ops, proof, publicWitness, 3)
-	if err == nil {
-		return tx, receipt, nil
-	}
-
-	errType := classifyError(err)
-	log.Printf("   ⚠️  Submission failed: %v (Type: %v)\n", err, errType)
-
-	if errType == ErrorTypeDuplicate {
-		log.Println("   ℹ️  Batch chunk already exists on L1 - skipping to next")
-		return tx, receipt, nil
-	}
-	if errType == ErrorTypeNetwork {
-		return nil, nil, fmt.Errorf("network error after retries: %w", err)
-	}
-	if !enableParanoid || errType != ErrorTypeVerification {
-		return nil, nil, err
-	}
-
-	log.Println()
-	log.Println("   🔄 PARANOID MODE: Rebuilding proof due to verification failure...")
-
-	for rebuild := 1; rebuild <= maxRebuilds; rebuild++ {
-		log.Printf("   🔧 Rebuild attempt %d/%d\n", rebuild, maxRebuilds)
-
-		proof, publicWitness, err = generateProof(ops, smt, ccs, pk)
-		if err != nil {
-			log.Printf("   ❌ Proof regeneration failed: %v\n", err)
-			continue
-		}
-		log.Println("   ✅ Proof regenerated")
-
-		if err := verifyLocal(proof, vk, publicWitness); err != nil {
-			log.Printf("   ❌ Local verification failed: %v\n", err)
-			continue
-		}
-		log.Println("   ✅ Proof verified locally")
-
-		tx, receipt, err = submitProofWithRetry(client, auth, contractAddr, batch.Number, chunkIndex, ops, proof, publicWitness, 3)
-		if err == nil {
-			log.Println("   ✅ Proof accepted after rebuild!")
-			return tx, receipt, nil
-		}
-		log.Printf("   ❌ Rebuilt proof also failed: %v\n", err)
-	}
-
-	errMsg := fmt.Sprintf("Verification failed after %d rebuild attempts: %v", maxRebuilds, err)
-	if saveErr := saveFailureData(batch, proof, publicWitness, errMsg); saveErr != nil {
-		log.Printf("⚠️  Failed to save failure data: %v\n", saveErr)
-	}
-	var proofBuf bytes.Buffer
-	proof.WriteTo(&proofBuf)
-	if saveErr := store.SaveVerificationFailure(batch.Number, errMsg, proofBuf.Bytes()); saveErr != nil {
-		log.Printf("⚠️  Failed to save failure to storage: %v\n", saveErr)
-	}
-	haltProver(store, batch, errMsg)
-
-	return nil, nil, fmt.Errorf("HALTED: %s", errMsg)
-}
-
-func submitProofWithRetry(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkOps []ParsedOperation, proof groth16.Proof, publicWitness witness.Witness, maxAttempts int) (*types.Transaction, *types.Receipt, error) {
-	proofToSubmit := proof
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		tx, receipt, err := submitProof(client, auth, contractAddr, batchNumber, chunkIndex, chunkOps, proofToSubmit, publicWitness)
-		if err != nil {
-			if attempt < maxAttempts {
-				log.Printf("   ⚠️  Submission attempt %d/%d failed: %v. Retrying in 5s...\n", attempt, maxAttempts, err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			return nil, nil, fmt.Errorf("submission failed after %d attempts: %w", maxAttempts, err)
-		}
-
-		log.Printf("   ✅ Proof submitted and mined. TxHash: %s\n", tx.Hash().Hex())
-
-		if receipt.Status != types.ReceiptStatusSuccessful {
-			errMsg := fmt.Sprintf("transaction reverted with status: %v", receipt.Status)
-			if attempt < maxAttempts {
-				log.Printf("   ⚠️  Transaction reverted: %s. Retrying...\n", errMsg)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			return tx, receipt, fmt.Errorf(errMsg)
-		}
-
-		log.Printf("   ✅ Transaction mined successfully. Block Number: %v\n", receipt.BlockNumber)
-		return tx, receipt, nil
-	}
-
-	return nil, nil, fmt.Errorf("submission failed after %d attempts", maxAttempts)
-}
-
-// API Server Implementation

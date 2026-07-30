@@ -6,24 +6,28 @@ import (
 	"math/big"
 	"net/http"
 
+	"github.com/nowafinance/nowa-zk/sequencer/internal/batcher"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/engine"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/types"
 )
 
 type Server struct {
-	engine *engine.Engine
+	engine  *engine.Engine
+	batcher *batcher.Batcher
 }
 
-func NewServer(eng *engine.Engine) *Server {
+func NewServer(eng *engine.Engine, batch *batcher.Batcher) *Server {
 	return &Server{
-		engine: eng,
+		engine:  eng,
+		batcher: batch,
 	}
 }
 
 // Start runs the HTTP server for the Sequencer.
 func (s *Server) Start(port string) error {
 	http.HandleFunc("/order", s.handleOrder)
-	
+	http.HandleFunc("/batch/latest", s.handleBatchLatest)
+
 	fmt.Printf("Sequencer API listening on %s...\n", port)
 	return http.ListenAndServe(port, nil)
 }
@@ -39,6 +43,17 @@ type OrderRequest struct {
 }
 
 func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request) {
+	// CORS Headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight OPTIONS request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Only POST is allowed", http.StatusMethodNotAllowed)
 		return
@@ -80,4 +95,33 @@ func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
+}
+
+func (s *Server) handleBatchLatest(w http.ResponseWriter, r *http.Request) {
+	// CORS Headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Only GET is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	b := s.batcher.GetLatestBatch()
+	if b == nil {
+		http.Error(w, "No batches available yet", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(b); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
