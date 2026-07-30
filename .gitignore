@@ -65,3 +65,5 @@ contracts/lib/*
 contracts/broadcast/*
 contracts/deployments/*
 contracts/src/generated/*
+
+ignore/

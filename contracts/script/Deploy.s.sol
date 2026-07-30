@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {TradeRegistry} from "../src/TradeRegistry.sol";
-import {Verifier} from "../src/generated/TradeVerifier.sol";
+import {Verifier} from "../src/generated/StateVerifier.sol";
 
 contract Deploy is Script {
     TradeRegistry public tradeRegistry;
@@ -25,9 +25,9 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Step 1: Deploy Verifier
-        console.log("1. Deploying TradeVerifier...");
+        console.log("1. Deploying StateVerifier...");
         tradeVerifier = new Verifier();
-        console.log("   TradeVerifier deployed at:", address(tradeVerifier));
+        console.log("   StateVerifier deployed at:", address(tradeVerifier));
         console.log("");
 
         // Step 2: Deploy TradeRegistry
@@ -45,7 +45,7 @@ contract Deploy is Script {
     function saveDeploymentAddresses() internal {
         string memory json = "deployment";
 
-        vm.serializeAddress(json, "TradeVerifier", address(tradeVerifier));
+        vm.serializeAddress(json, "StateVerifier", address(tradeVerifier));
         vm.serializeAddress(json, "TradeRegistry", address(tradeRegistry));
         // We still serialize BatchRegistry key just in case older tooling expects it, but map to TradeRegistry
         vm.serializeAddress(json, "BatchRegistry", address(tradeRegistry));

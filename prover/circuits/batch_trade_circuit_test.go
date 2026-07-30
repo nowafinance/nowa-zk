@@ -32,6 +32,7 @@ func generateValidTestWitness(assert *test.Assert) *BatchTradeSignatureCircuit {
 		msg := make([]byte, 32)
 		_, err = rand.Read(msg)
 		assert.NoError(err)
+		msg[0] = 0 // Ensure < curve order
 
 		sigBin, err := privKey.Sign(msg, nil)
 		assert.NoError(err)

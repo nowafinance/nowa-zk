@@ -16,7 +16,7 @@ import (
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Generate proving/verifying keys and Solidity verifier contract",
-	Long:  `Compiles the BatchTradeSignatureCircuit, generates Groth16 keys, and exports the Solidity verifier.`,
+	Long:  `Compiles the StateTransitionCircuit, generates Groth16 keys, and exports the Solidity verifier.`,
 	Run:   setup,
 }
 
@@ -35,14 +35,14 @@ func init() {
 
 func setup(cmd *cobra.Command, args []string) {
 	log.Println("========================================")
-	log.Println("  ZK Trade Circuit Setup")
+	log.Println("  ZK Phase 3 Unified State Circuit Setup")
 	log.Println("========================================")
-	log.Printf("Trade batch size: %d signatures per proof\n", circuits.TradeBatchSize)
+	log.Printf("Batch size: %d operations per proof\n", circuits.BatchSize)
 	log.Println()
 
 	// Step 1: Compile circuit
 	log.Println("📦 Compiling circuit...")
-	var circuit circuits.BatchTradeSignatureCircuit
+	var circuit circuits.StateTransitionCircuit
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
 		log.Fatalf("❌ Failed to compile circuit: %v", err)
@@ -70,7 +70,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 4: Save proving key
 	log.Println("💾 Saving proving key...")
-	pkPath := filepath.Join(outputDir, "trade.pk")
+	pkPath := filepath.Join(outputDir, "state.pk")
 	pkFile, err := os.Create(pkPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create proving key file: %v", err)
@@ -85,7 +85,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 5: Save verifying key
 	log.Println("💾 Saving verifying key...")
-	vkPath := filepath.Join(outputDir, "trade.vk")
+	vkPath := filepath.Join(outputDir, "state.vk")
 	vkFile, err := os.Create(vkPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create verifying key file: %v", err)
@@ -100,7 +100,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 6: Save compiled circuit
 	log.Println("💾 Saving compiled circuit...")
-	ccsPath := filepath.Join(outputDir, "trade.r1cs")
+	ccsPath := filepath.Join(outputDir, "state.ccs")
 	ccsFile, err := os.Create(ccsPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create compiled circuit file: %v", err)
@@ -116,7 +116,7 @@ func setup(cmd *cobra.Command, args []string) {
 
 	// Step 7: Export Solidity verifier contract
 	log.Println("📝 Generating Solidity verifier contract...")
-	solidityPath := filepath.Join(contractOutput, "TradeVerifier.sol")
+	solidityPath := filepath.Join(contractOutput, "StateVerifier.sol")
 	solidityFile, err := os.Create(solidityPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create Solidity file: %v", err)
@@ -135,15 +135,15 @@ func setup(cmd *cobra.Command, args []string) {
 	log.Println("========================================")
 	log.Println("Generated files:")
 	log.Printf("  📁 Keys directory: %s\n", outputDir)
-	log.Println("     - trade.pk (proving key)")
-	log.Println("     - trade.vk (verifying key)")
-	log.Println("     - trade.r1cs (compiled circuit)")
+	log.Println("     - state.pk (proving key)")
+	log.Println("     - state.vk (verifying key)")
+	log.Println("     - state.ccs (compiled circuit)")
 	log.Println()
 	log.Printf("  📁 Contract directory: %s\n", contractOutput)
-	log.Println("     - TradeVerifier.sol (Solidity verifier)")
+	log.Println("     - StateVerifier.sol (Solidity verifier)")
 	log.Println()
 	log.Println("Next steps:")
-	log.Println("  1. Deploy TradeVerifier.sol to your chain")
+	log.Println("  1. Deploy StateVerifier.sol to your chain")
 	log.Println("  2. Start prover with: ./prover-bin start")
 	log.Println("========================================")
 }

@@ -19,7 +19,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-377/fr"
-	gomimc "github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	bn254 "github.com/consensys/gnark/backend/groth16/bn254"
@@ -102,17 +101,22 @@ type Batch struct {
 	PrevStateRoot string        `json:"oldStateRoot"`
 	NewStateRoot  string        `json:"newStateRoot"`
 	Timestamp     int64         `json:"timestamp"`
-	Transactions  []Transaction `json:"transactions"`
-	Trades        []ParsedTrade `json:"trades,omitempty"`
+	Transactions  []Transaction     `json:"transactions"`
+	Operations    []ParsedOperation `json:"operations,omitempty"`
 }
 
-type ParsedTrade struct {
-	MessageHash   string `json:"messageHash"`
-	PubKeyX       string `json:"pubKeyX"`
-	PubKeyY       string `json:"pubKeyY"`
-	SigR          string `json:"sigR"`
-	SigS          string `json:"sigS"`
-	SignerAddress string `json:"signerAddress"`
+type ParsedOperation struct {
+	OpType          int    `json:"opType"`
+	MessageHash     string `json:"messageHash"`
+	PubKeyX         string `json:"pubKeyX"`
+	PubKeyY         string `json:"pubKeyY"`
+	SigR            string `json:"sigR"`
+	SigS            string `json:"sigS"`
+	SenderIndex     uint64 `json:"senderIndex"`
+	ReceiverIndex   uint64 `json:"receiverIndex"`
+	ReceiverPubKeyX string `json:"receiverPubKeyX"`
+	ReceiverPubKeyY string `json:"receiverPubKeyY"`
+	Amount          string `json:"amount"`
 }
 
 // Transaction from indexer
@@ -316,6 +320,8 @@ func start(cmd *cobra.Command, args []string) {
 
 	// Main prover loop
 	log.Println("🚀 Starting prover loop...")
+	log.Println("   Initializing Phase 3 Sparse Merkle Tree (Depth 20)...")
+	globalSmt := circuits.NewSparseMerkleTree(circuits.MerkleDepth)
 	log.Println("   Polling for new batches...")
 	log.Println()
 
@@ -360,9 +366,9 @@ func start(cmd *cobra.Command, args []string) {
 		// State root logic removed.
 
 		log.Println("   🔐 Generating proofs for chunks...")
-		totalTrades := len(batch.Trades)
-		if totalTrades == 0 {
-			log.Printf("   ℹ️  No trades in batch #%d, skipping...\n", batch.Number)
+		totalOps := len(batch.Operations)
+		if totalOps == 0 {
+			log.Printf("   ℹ️  No operations in batch #%d, skipping...\n", batch.Number)
 if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 				log.Printf("⚠️  Failed to save last processed batch: %v", err)
 			}
@@ -370,18 +376,18 @@ if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 			continue
 		}
 
-		numChunks := (totalTrades + circuits.TradeBatchSize - 1) / circuits.TradeBatchSize
+		numChunks := (totalOps + circuits.BatchSize - 1) / circuits.BatchSize
 
 		var finalErr error
 		var lastTx *types.Transaction
 
 		for chunkIdx := 0; chunkIdx < numChunks; chunkIdx++ {
-			startIdx := chunkIdx * circuits.TradeBatchSize
-			endIdx := startIdx + circuits.TradeBatchSize
-			if endIdx > totalTrades {
-				endIdx = totalTrades
+			startIdx := chunkIdx * circuits.BatchSize
+			endIdx := startIdx + circuits.BatchSize
+			if endIdx > totalOps {
+				endIdx = totalOps
 			}
-			chunkTrades := batch.Trades[startIdx:endIdx]
+			chunkOps := batch.Operations[startIdx:endIdx]
 
 			verified, err := isChunkVerified(client, contractAddr, batch.Number, chunkIdx)
 			if err == nil && verified {
@@ -389,10 +395,10 @@ if err := store.SaveLastProcessedBatch(batch.Number); err != nil {
 				continue
 			}
 
-			log.Printf("   🧩 Processing chunk %d/%d (%d trades)\n", chunkIdx+1, numChunks, len(chunkTrades))
+			log.Printf("   🧩 Processing chunk %d/%d (%d ops)\n", chunkIdx+1, numChunks, len(chunkOps))
 
 			tx, _, err := submitProofWithParanoidMode(
-				client, auth, contractAddr, batch, chunkIdx, chunkTrades, ccs, pk, vk,
+				client, auth, contractAddr, batch, chunkIdx, chunkOps, globalSmt, ccs, pk, vk,
 				store, enableParanoidMode, maxRebuildAttempts, testFailure,
 			)
 
@@ -476,7 +482,7 @@ func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness wit
 
 func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
 	// Load compiled circuit
-	ccsFile, err := os.Open(keysDir + "/trade.r1cs")
+	ccsFile, err := os.Open(keysDir + "/state.ccs")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open circuit file: %w", err)
 	}
@@ -488,7 +494,7 @@ func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, grot
 	}
 
 	// Load proving key
-	pkFile, err := os.Open(keysDir + "/trade.pk")
+	pkFile, err := os.Open(keysDir + "/state.pk")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open proving key: %w", err)
 	}
@@ -500,7 +506,7 @@ func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, grot
 	}
 
 	// Load verifying key
-	vkFile, err := os.Open(keysDir + "/trade.vk")
+	vkFile, err := os.Open(keysDir + "/state.vk")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to open verifying key: %w", err)
 	}
@@ -588,88 +594,114 @@ func fetchBatch(indexerURL string, number uint64) (*Batch, error) {
 	return &batch, nil
 }
 
-func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
-	var circuit circuits.BatchTradeSignatureCircuit
+func generateProof(ops []ParsedOperation, smt *circuits.SparseMerkleTree, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
+	var circuit circuits.StateTransitionCircuit
 
-	if len(trades) == 0 {
-		return nil, nil, fmt.Errorf("no trades in chunk to generate proof")
+	if len(ops) == 0 {
+		return nil, nil, fmt.Errorf("no operations in chunk to generate proof")
 	}
 
-	validHash, _ := hex.DecodeString(trades[0].MessageHash)
-	validPx, _ := hex.DecodeString(trades[0].PubKeyX)
-	validPy, _ := hex.DecodeString(trades[0].PubKeyY)
-	validR, _ := hex.DecodeString(trades[0].SigR)
-	validS, _ := hex.DecodeString(trades[0].SigS)
+	oldRoot := smt.Root()
+	circuit.OldRoot = oldRoot
+	circuit.WithdrawalHash = 0
 
-	for i := 0; i < circuits.TradeBatchSize; i++ {
-		var hashHex, pxHex, pyHex, rHex, sHex []byte
-		if i < len(trades) {
-			hashHex, _ = hex.DecodeString(trades[i].MessageHash)
-			pxHex, _ = hex.DecodeString(trades[i].PubKeyX)
-			pyHex, _ = hex.DecodeString(trades[i].PubKeyY)
-			rHex, _ = hex.DecodeString(trades[i].SigR)
-			sHex, _ = hex.DecodeString(trades[i].SigS)
+	// Create a dummy valid operation for padding if ops < BatchSize
+	dummyHash, _ := hex.DecodeString(ops[0].MessageHash)
+	dummyPx, _ := hex.DecodeString(ops[0].PubKeyX)
+	dummyPy, _ := hex.DecodeString(ops[0].PubKeyY)
+	dummyR, _ := hex.DecodeString(ops[0].SigR)
+	dummyS, _ := hex.DecodeString(ops[0].SigS)
+	dummyIndex := ops[0].SenderIndex
+
+	for i := 0; i < circuits.BatchSize; i++ {
+		var op ParsedOperation
+		if i < len(ops) {
+			op = ops[i]
 		} else {
-			hashHex = validHash
-			pxHex = validPx
-			pyHex = validPy
-			rHex = validR
-			sHex = validS
+			// Pad with dummy Transfer of 0 amount from Sender to Sender
+			op = ParsedOperation{
+				OpType:          circuits.OpTransfer,
+				MessageHash:     hex.EncodeToString(dummyHash),
+				PubKeyX:         hex.EncodeToString(dummyPx),
+				PubKeyY:         hex.EncodeToString(dummyPy),
+				SigR:            hex.EncodeToString(dummyR),
+				SigS:            hex.EncodeToString(dummyS),
+				SenderIndex:     dummyIndex,
+				ReceiverIndex:   dummyIndex,
+				ReceiverPubKeyX: hex.EncodeToString(dummyPx),
+				ReceiverPubKeyY: hex.EncodeToString(dummyPy),
+				Amount:          "0",
+			}
 		}
 
-		circuit.MessageHashes[i] = emulated.ValueOf[emulated.Secp256k1Fr](hashHex)
-		circuit.PubKeys[i].X = emulated.ValueOf[emulated.Secp256k1Fp](pxHex)
-		circuit.PubKeys[i].Y = emulated.ValueOf[emulated.Secp256k1Fp](pyHex)
-		circuit.Sigs[i].R = emulated.ValueOf[emulated.Secp256k1Fr](rHex)
-		circuit.Sigs[i].S = emulated.ValueOf[emulated.Secp256k1Fr](sHex)
-	}
+		hashHex, _ := hex.DecodeString(op.MessageHash)
+		pxHex, _ := hex.DecodeString(op.PubKeyX)
+		pyHex, _ := hex.DecodeString(op.PubKeyY)
+		rHex, _ := hex.DecodeString(op.SigR)
+		sHex, _ := hex.DecodeString(op.SigS)
+		rpxHex, _ := hex.DecodeString(op.ReceiverPubKeyX)
+		rpyHex, _ := hex.DecodeString(op.ReceiverPubKeyY)
 
-	goMiMC := gomimc.NewMiMC()
-	for i := 0; i < circuits.TradeBatchSize; i++ {
-		var hashHex, pxHex, pyHex []byte
-		if i < len(trades) {
-			hashHex, _ = hex.DecodeString(trades[i].MessageHash)
-			pxHex, _ = hex.DecodeString(trades[i].PubKeyX)
-			pyHex, _ = hex.DecodeString(trades[i].PubKeyY)
-		} else {
-			hashHex, _ = hex.DecodeString(trades[0].MessageHash)
-			pxHex, _ = hex.DecodeString(trades[0].PubKeyX)
-			pyHex, _ = hex.DecodeString(trades[0].PubKeyY)
-		}
+		amountInt, _ := new(big.Int).SetString(op.Amount, 10)
 
-		val := new(big.Int).SetBytes(hashHex)
-		mask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+		// Get sender state BEFORE update
+		senderPath, senderBits := smt.GetPath(op.SenderIndex)
+		senderBal := big.NewInt(1000000000) // MOCK for now
+		senderNonce := big.NewInt(0)        // MOCK for now
 		
-		part1 := new(big.Int).And(val, mask)
-		part2 := new(big.Int).Rsh(val, 128)
-		b1 := make([]byte, 32)
-		b2 := make([]byte, 32)
-		part1.FillBytes(b1)
-		part2.FillBytes(b2)
-		goMiMC.Write(b1)
-		goMiMC.Write(b2)
+		// 1. Assign Sender Merkle Path
+		for j := 0; j < circuits.MerkleDepth; j++ {
+			circuit.Ops[i].SenderPath[j] = senderPath[j]
+			circuit.Ops[i].SenderPathBits[j] = senderBits[j]
+		}
 
-		valX := new(big.Int).SetBytes(pxHex)
-		xPart1 := new(big.Int).And(valX, mask)
-		xPart2 := new(big.Int).Rsh(valX, 128)
-		bx1 := make([]byte, 32)
-		bx2 := make([]byte, 32)
-		xPart1.FillBytes(bx1)
-		xPart2.FillBytes(bx2)
-		goMiMC.Write(bx1)
-		goMiMC.Write(bx2)
+		// Update tree for sender
+		newSenderBal := new(big.Int).Sub(senderBal, amountInt)
+		newSenderNonce := new(big.Int).Add(senderNonce, big.NewInt(1))
+		pubX := new(big.Int).SetBytes(pxHex)
+		pubY := new(big.Int).SetBytes(pyHex)
+		newSenderLeaf := circuits.HashAccountLeaf(big.NewInt(int64(op.SenderIndex)), pubX, pubY, newSenderBal, newSenderNonce)
+		smt.Update(op.SenderIndex, newSenderLeaf)
 
-		valY := new(big.Int).SetBytes(pyHex)
-		yPart1 := new(big.Int).And(valY, mask)
-		yPart2 := new(big.Int).Rsh(valY, 128)
-		by1 := make([]byte, 32)
-		by2 := make([]byte, 32)
-		yPart1.FillBytes(by1)
-		yPart2.FillBytes(by2)
-		goMiMC.Write(by1)
-		goMiMC.Write(by2)
+		// Get receiver state AFTER sender update
+		receiverPath, receiverBits := smt.GetPath(op.ReceiverIndex)
+		receiverBal := big.NewInt(0) // MOCK for now
+		receiverNonce := big.NewInt(0) // MOCK for now
+
+		// 2. Assign Receiver Merkle Path
+		for j := 0; j < circuits.MerkleDepth; j++ {
+			circuit.Ops[i].ReceiverPath[j] = receiverPath[j]
+			circuit.Ops[i].ReceiverPathBits[j] = receiverBits[j]
+		}
+
+		// Update tree for receiver
+		newReceiverBal := new(big.Int).Add(receiverBal, amountInt)
+		rPubX := new(big.Int).SetBytes(rpxHex)
+		rPubY := new(big.Int).SetBytes(rpyHex)
+		newReceiverLeaf := circuits.HashAccountLeaf(big.NewInt(int64(op.ReceiverIndex)), rPubX, rPubY, newReceiverBal, receiverNonce)
+		smt.Update(op.ReceiverIndex, newReceiverLeaf)
+
+		// Assign Circuit variables
+		circuit.Ops[i].OpType = op.OpType
+		circuit.Ops[i].MessageHash = emulated.ValueOf[emulated.Secp256k1Fr](hashHex)
+		circuit.Ops[i].PubKey.X = emulated.ValueOf[emulated.Secp256k1Fp](pxHex)
+		circuit.Ops[i].PubKey.Y = emulated.ValueOf[emulated.Secp256k1Fp](pyHex)
+		circuit.Ops[i].Sig.R = emulated.ValueOf[emulated.Secp256k1Fr](rHex)
+		circuit.Ops[i].Sig.S = emulated.ValueOf[emulated.Secp256k1Fr](sHex)
+		
+		circuit.Ops[i].SenderIndex = op.SenderIndex
+		circuit.Ops[i].SenderBalance = senderBal
+		circuit.Ops[i].SenderNonce = senderNonce
+		circuit.Ops[i].Amount = amountInt
+
+		circuit.Ops[i].ReceiverIndex = op.ReceiverIndex
+		circuit.Ops[i].ReceiverBalance = receiverBal
+		circuit.Ops[i].ReceiverNonce = receiverNonce
+		circuit.Ops[i].ReceiverPubKey.X = emulated.ValueOf[emulated.Secp256k1Fp](rpxHex)
+		circuit.Ops[i].ReceiverPubKey.Y = emulated.ValueOf[emulated.Secp256k1Fp](rpyHex)
 	}
-	circuit.BatchRoot = goMiMC.Sum(nil)
+	
+	circuit.NewRoot = smt.Root()
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
 	if err != nil {
@@ -689,10 +721,11 @@ func generateProof(trades []ParsedTrade, ccs constraint.ConstraintSystem, pk gro
 	return proof, publicWitness, nil
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkTrades []ParsedTrade, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, error) {
+
+func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkOps []ParsedOperation, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, *types.Receipt, error) {
 	bn254Proof, ok := proof.(*bn254.Proof)
 	if !ok {
-		return nil, fmt.Errorf("invalid proof type")
+		return nil, nil, fmt.Errorf("invalid proof type")
 	}
 
 	// Pack proof into uint256[8]
@@ -718,23 +751,23 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	// Extract 120 public inputs from publicWitness
 	var buf bytes.Buffer
 	if _, err := publicWitness.WriteTo(&buf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	data := buf.Bytes()
 	if len(data) < 12 {
-		return nil, fmt.Errorf("invalid witness data")
+		return nil, nil, fmt.Errorf("invalid witness data")
 	}
 
 	nbPublic := binary.BigEndian.Uint32(data[0:4])
 	if nbPublic != 1 {
-		return nil, fmt.Errorf("expected 1 public input, got %d", nbPublic)
+		return nil, nil, fmt.Errorf("expected 1 public input, got %d", nbPublic)
 	}
 
 	var publicInputs [1]*big.Int
 	offset := 12
 	for i := 0; i < 1; i++ {
 		if offset+32 > len(data) {
-			return nil, fmt.Errorf("unexpected end of witness data")
+			return nil, nil, fmt.Errorf("unexpected end of witness data")
 		}
 		publicInputs[i] = new(big.Int).SetBytes(data[offset : offset+32])
 		offset += 32
@@ -752,14 +785,14 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		var pxBytes []byte
 		var pyBytes []byte
 		
-		if i < len(chunkTrades) {
-			hashBytes, _ = hex.DecodeString(chunkTrades[i].MessageHash)
-			pxBytes, _ = hex.DecodeString(chunkTrades[i].PubKeyX)
-			pyBytes, _ = hex.DecodeString(chunkTrades[i].PubKeyY)
+		if i < len(chunkOps) {
+			hashBytes, _ = hex.DecodeString(chunkOps[i].MessageHash)
+			pxBytes, _ = hex.DecodeString(chunkOps[i].PubKeyX)
+			pyBytes, _ = hex.DecodeString(chunkOps[i].PubKeyY)
 		} else {
-			hashBytes, _ = hex.DecodeString(chunkTrades[0].MessageHash)
-			pxBytes, _ = hex.DecodeString(chunkTrades[0].PubKeyX)
-			pyBytes, _ = hex.DecodeString(chunkTrades[0].PubKeyY)
+			hashBytes, _ = hex.DecodeString(chunkOps[0].MessageHash)
+			pxBytes, _ = hex.DecodeString(chunkOps[0].PubKeyX)
+			pyBytes, _ = hex.DecodeString(chunkOps[0].PubKeyY)
 		}
 		
 		var messageHash [32]byte
@@ -774,26 +807,26 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 	const abiJSON = `[{"inputs":[{"internalType":"uint256","name":"batchNumber","type":"uint256"},{"internalType":"uint256","name":"chunkIndex","type":"uint256"},{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[2]","name":"commitments","type":"uint256[2]"},{"internalType":"uint256[2]","name":"commitmentPok","type":"uint256[2]"},{"internalType":"uint256[1]","name":"publicInputs","type":"uint256[1]"},{"components":[{"internalType":"bytes32","name":"messageHash","type":"bytes32"},{"internalType":"uint256","name":"pubKeyX","type":"uint256"},{"internalType":"uint256","name":"pubKeyY","type":"uint256"}],"internalType":"struct TradeRegistry.Trade[]","name":"trades","type":"tuple[]"}],"name":"registerTrades","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
 	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse ABI: %w", err)
 	}
 
 	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
 
-	// Dump calldata
-	calldata, _ := parsedABI.Pack("registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, trades)
-	os.WriteFile("calldata.hex", []byte(hex.EncodeToString(calldata)), 0644)
-
 	// Set a high manual gas limit so go-ethereum skips eth_estimateGas
-	// This will let the transaction hit the chain and revert, allowing us to debug it via txhash.
 	auth.GasLimit = 15000000
 
 	tx, err := contract.Transact(auth, "registerTrades", new(big.Int).SetUint64(batchNumber), new(big.Int).SetInt64(int64(chunkIndex)), proof8, commitments, commitmentPok, publicInputs, trades)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to send transaction: %w", err)
+		return nil, nil, fmt.Errorf("failed to send transaction: %w", err)
 	}
 
-	return tx, nil
+	receipt, err := bind.WaitMined(context.Background(), client, tx)
+	if err != nil {
+		return tx, nil, fmt.Errorf("transaction mining failed: %w", err)
+	}
+
+	return tx, receipt, nil
 }
 
 // Helper functions with proper field reduction
@@ -1001,7 +1034,8 @@ func submitProofWithParanoidMode(
 	contractAddr string,
 	batch *Batch,
 	chunkIndex int,
-	trades []ParsedTrade,
+	ops []ParsedOperation,
+	smt *circuits.SparseMerkleTree,
 	ccs constraint.ConstraintSystem,
 	pk groth16.ProvingKey,
 	vk groth16.VerifyingKey,
@@ -1012,7 +1046,7 @@ func submitProofWithParanoidMode(
 ) (*types.Transaction, *types.Receipt, error) {
 
 	// Level 1: Try with initial proof (3 quick retries for network issues)
-	proof, publicWitness, err := generateProof(trades, ccs, pk)
+	proof, publicWitness, err := generateProof(ops, smt, ccs, pk)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate proof: %w", err)
 	}
@@ -1027,7 +1061,7 @@ func submitProofWithParanoidMode(
 	log.Println("   ✅ Proof verified locally")
 
 	// Attempt submission with retries
-	tx, receipt, err := attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, trades, proof, publicWitness, 3, testMode)
+	tx, receipt, err := submitProofWithRetry(client, auth, contractAddr, batch.Number, chunkIndex, ops, proof, publicWitness, 3)
 	if err == nil {
 		return tx, receipt, nil
 	}
@@ -1052,7 +1086,7 @@ func submitProofWithParanoidMode(
 	for rebuild := 1; rebuild <= maxRebuilds; rebuild++ {
 		log.Printf("   🔧 Rebuild attempt %d/%d\n", rebuild, maxRebuilds)
 
-		proof, publicWitness, err = generateProof(trades, ccs, pk)
+		proof, publicWitness, err = generateProof(ops, smt, ccs, pk)
 		if err != nil {
 			log.Printf("   ❌ Proof regeneration failed: %v\n", err)
 			continue
@@ -1065,7 +1099,7 @@ func submitProofWithParanoidMode(
 		}
 		log.Println("   ✅ Proof verified locally")
 
-		tx, receipt, err = attemptSubmission(client, auth, contractAddr, batch.Number, chunkIndex, trades, proof, publicWitness, 3, testMode)
+		tx, receipt, err = submitProofWithRetry(client, auth, contractAddr, batch.Number, chunkIndex, ops, proof, publicWitness, 3)
 		if err == nil {
 			log.Println("   ✅ Proof accepted after rebuild!")
 			return tx, receipt, nil
@@ -1087,36 +1121,11 @@ func submitProofWithParanoidMode(
 	return nil, nil, fmt.Errorf("HALTED: %s", errMsg)
 }
 
-// attemptSubmission tries to submit and verify a proof with retries
-func attemptSubmission(
-	client *ethclient.Client,
-	auth *bind.TransactOpts,
-	contractAddr string,
-	batchNumber uint64,
-	chunkIndex int,
-	chunkTrades []ParsedTrade,
-	proof groth16.Proof,
-	publicWitness witness.Witness,
-	maxAttempts int,
-	testMode bool,
-) (*types.Transaction, *types.Receipt, error) {
-
-	var tx *types.Transaction
-	var err error
-
+func submitProofWithRetry(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batchNumber uint64, chunkIndex int, chunkOps []ParsedOperation, proof groth16.Proof, publicWitness witness.Witness, maxAttempts int) (*types.Transaction, *types.Receipt, error) {
 	proofToSubmit := proof
-	if testMode {
-		log.Println("   🧪 TEST MODE: Corrupting proof to simulate verification failure...")
-		bn254Proof, ok := proof.(*bn254.Proof)
-		if ok {
-			corruptedProof := *bn254Proof
-			corruptedProof.Ar.X.Add(&corruptedProof.Ar.X, &corruptedProof.Ar.X)
-			proofToSubmit = &corruptedProof
-		}
-	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		tx, err = submitProof(client, auth, contractAddr, batchNumber, chunkIndex, chunkTrades, proofToSubmit, publicWitness)
+		tx, receipt, err := submitProof(client, auth, contractAddr, batchNumber, chunkIndex, chunkOps, proofToSubmit, publicWitness)
 		if err != nil {
 			if attempt < maxAttempts {
 				log.Printf("   ⚠️  Submission attempt %d/%d failed: %v. Retrying in 5s...\n", attempt, maxAttempts, err)
@@ -1126,30 +1135,19 @@ func attemptSubmission(
 			return nil, nil, fmt.Errorf("submission failed after %d attempts: %w", maxAttempts, err)
 		}
 
-		log.Printf("   ✅ Proof submitted. TxHash: %s\n", tx.Hash().Hex())
-		log.Println("   ⏳ Waiting for transaction to be mined...")
-
-		receipt, err := bind.WaitMined(context.Background(), client, tx)
-		if err != nil {
-			if attempt < maxAttempts {
-				log.Printf("   ⚠️  Mining attempt %d/%d failed: %v. Retrying...\n", attempt, maxAttempts, err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			return nil, nil, fmt.Errorf("transaction mining failed after %d attempts: %w", maxAttempts, err)
-		}
+		log.Printf("   ✅ Proof submitted and mined. TxHash: %s\n", tx.Hash().Hex())
 
 		if receipt.Status != types.ReceiptStatusSuccessful {
 			errMsg := fmt.Sprintf("transaction reverted with status: %v", receipt.Status)
 			if attempt < maxAttempts {
-				log.Printf("   ⚠️  Verification attempt %d/%d failed: %s. Retrying...\n", attempt, maxAttempts, errMsg)
+				log.Printf("   ⚠️  Transaction reverted: %s. Retrying...\n", errMsg)
 				time.Sleep(5 * time.Second)
 				continue
 			}
-			return tx, receipt, fmt.Errorf("execution reverted: %s", errMsg)
+			return tx, receipt, fmt.Errorf(errMsg)
 		}
 
-		log.Printf("   ✅ Transaction mined. Block Number: %v\n", receipt.BlockNumber)
+		log.Printf("   ✅ Transaction mined successfully. Block Number: %v\n", receipt.BlockNumber)
 		return tx, receipt, nil
 	}
 
