@@ -45,6 +45,14 @@ func (e *Engine) getOrCreateOrderbook(tokenID uint32) *Orderbook {
 
 // ProcessOrder receives an incoming order and matches it or adds it to the book.
 func (e *Engine) ProcessOrder(order *types.Order) error {
+	// 0. Validate amounts
+	if order.Amount.Cmp(big.NewInt(0)) <= 0 {
+		return fmt.Errorf("invalid order: amount must be > 0")
+	}
+	if order.Price.Cmp(big.NewInt(0)) <= 0 {
+		return fmt.Errorf("invalid order: price must be > 0")
+	}
+
 	// 1. Verify Signature
 	valid, err := VerifyEdDSASignature(order.MakerAddress, order.TokenID, order.Amount, order.Price, order.IsBuy, order.Nonce, order.Signature)
 	if err != nil || !valid {

@@ -130,3 +130,28 @@ func TestEngine_InvalidSignature(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid order signature")
 }
+
+func TestEngine_ZeroOrNegativeAmount(t *testing.T) {
+	tradeQueue := make(chan types.Trade, 10)
+	engine := NewEngine(tradeQueue)
+
+	// Zero amount
+	order1, _ := generateTestOrder(t, 1, 0, 50, false)
+	err1 := engine.ProcessOrder(order1)
+	assert.Error(t, err1)
+	assert.Contains(t, err1.Error(), "amount must be > 0")
+
+	// Negative amount (if manually forced into big.Int)
+	order2, _ := generateTestOrder(t, 1, 10, 50, false)
+	order2.Amount = big.NewInt(-10)
+	err2 := engine.ProcessOrder(order2)
+	assert.Error(t, err2)
+	assert.Contains(t, err2.Error(), "amount must be > 0")
+
+	// Zero price
+	order3, _ := generateTestOrder(t, 1, 10, 0, false)
+	err3 := engine.ProcessOrder(order3)
+	assert.Error(t, err3)
+	assert.Contains(t, err3.Error(), "price must be > 0")
+}
+

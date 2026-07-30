@@ -94,4 +94,33 @@ contract NowaRollupTest is Test {
         vm.expectRevert();
         rollup.submitBatch(proof, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
     }
+
+    function testDepositZeroAmountReverts() public {
+        vm.prank(alice);
+        vm.expectRevert("Deposit amount must be > 0");
+        rollup.deposit(1, 0, 12345, 67890);
+    }
+    
+    function testSubmitBatchAsNonProverReverts() public {
+        uint256[8] memory proof;
+        vm.prank(alice);
+        vm.expectRevert("Not an authorized prover");
+        rollup.submitBatch(proof, bytes32(0), bytes32(0), bytes32(0), bytes32(0));
+    }
+    
+    function testWithdraw() public {
+        // Setup Alice and Rollup balances
+        mockToken.mint(address(rollup), 1000);
+        
+        bytes32[] memory emptyProof;
+        vm.prank(alice);
+        
+        vm.expectEmit(true, true, false, true);
+        emit NowaRollup.Withdrawal(alice, 1, 300);
+        
+        rollup.withdraw(1, 300, emptyProof);
+        
+        assertEq(mockToken.balanceOf(alice), 300);
+        assertEq(mockToken.balanceOf(address(rollup)), 700);
+    }
 }
