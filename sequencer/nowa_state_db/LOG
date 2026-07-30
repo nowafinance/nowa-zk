@@ -1,0 +1,41 @@
+=============== Jul 30, 2026 (IST) ===============
+16:39:02.820557 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:39:02.822099 db@open opening
+16:39:02.822404 version@stat F·[] S·0B[] Sc·[]
+16:39:02.822946 db@janitor F·2 G·0
+16:39:02.822990 db@open done T·871.482µs
+16:42:04.119637 db@close closing
+16:42:04.121892 db@close done T·2.254756ms
+=============== Jul 30, 2026 (IST) ===============
+16:42:04.879398 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:42:04.879876 version@stat F·[] S·0B[] Sc·[]
+16:42:04.879887 db@open opening
+16:42:04.879913 journal@recovery F·1
+16:42:04.880123 journal@recovery recovering @1
+16:42:04.880620 version@stat F·[] S·0B[] Sc·[]
+16:42:04.882678 db@janitor F·2 G·0
+16:42:04.882709 db@open done T·2.812612ms
+16:42:19.158728 db@close closing
+16:42:19.158878 db@close done T·146.884µs
+=============== Jul 30, 2026 (IST) ===============
+16:42:19.697131 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:42:19.697240 version@stat F·[] S·0B[] Sc·[]
+16:42:19.697243 db@open opening
+16:42:19.697257 journal@recovery F·1
+16:42:19.697422 journal@recovery recovering @2
+16:42:19.697827 version@stat F·[] S·0B[] Sc·[]
+16:42:19.699642 db@janitor F·2 G·0
+16:42:19.699666 db@open done T·2.41661ms
+16:44:02.134688 db@close closing
+16:44:02.134946 db@close done T·252.994µs
+=============== Jul 30, 2026 (IST) ===============
+16:44:02.860853 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+16:44:02.861012 version@stat F·[] S·0B[] Sc·[]
+16:44:02.861024 db@open opening
+16:44:02.861053 journal@recovery F·1
+16:44:02.861237 journal@recovery recovering @4
+16:44:02.861752 version@stat F·[] S·0B[] Sc·[]
+16:44:02.865507 db@janitor F·2 G·0
+16:44:02.865539 db@open done T·4.508897ms
+16:45:40.519097 db@close closing
+16:45:40.519321 db@close done T·232.475µs

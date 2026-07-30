@@ -13,7 +13,7 @@
 
 ---
 
-## 🟢 Phase 4 & 5: Off-Chain Sequencer & DB (The Architectural Shift)
+## 🟢 Phase 4: The High-Frequency Go Sequencer
 *Goal: Move execution away from a slow L2 blockchain to a high-frequency off-chain matching engine.*
 
 ### The "No L2 Blockchain" Epiphany
@@ -23,28 +23,23 @@
 
 ### Technical Action Items
 1. **The Orderbook:** Build an in-memory orderbook that matches makers and takers instantly.
-2. **The Signature Pipeline (BabyJubJub):** To optimize ZK proving, users generate a temporary EdDSA (BabyJubJub) "Trading Key" when connecting via MetaMask. All off-chain trades are signed with this EdDSA key.
-3. **The EdDSA Sequencer:** The Go Sequencer performs a lightning-fast EdDSA verification on incoming WebSocket trades for sub-millisecond soft finality. Because BabyJubJub is a native curve to our BN254 SNARK, verifying these signatures inside the `gnark` circuit will be incredibly efficient and require minimal RAM.
-4. **The Merkle DB:** The Sequencer maintains a persistent database (LevelDB or a Kafka stream) representing the state of all balances. As trades match, it updates the DB and passes the state diffs (paths) and the EdDSA signatures to the Prover.
-5. **The Indexer:** The Indexer now ONLY watches Ethereum L1 for `Deposit` and `ForceWithdraw` events to inform the Sequencer of L1 actions.
+2. **The Signature Pipeline (ECDSA):** We utilize standard Secp256k1 ECDSA signatures. Users sign their trades via MetaMask (EIP-712). 
+3. **The Go Sequencer:** The Go Sequencer performs a lightning-fast ECDSA verification on incoming WebSocket trades for sub-millisecond soft finality. 
+4. **The Merkle DB:** The Sequencer maintains a persistent database (LevelDB) representing the state of all balances. As trades match, it updates the DB and passes the state diffs (paths) and the signatures to the Prover.
+5. **The ZK Batcher:** A background worker constantly polls the matched trades, groups them into batches of 25, and exposes a REST API for the Prover to fetch them.
 
 ---
 
-## 🟢 Phase 8: The Escape Hatch (Trustless Withdrawals)
-*Goal: Guarantee users can rescue their money if the Sequencer ever crashes or sensors them.*
-
-### The Escape Hatch Mechanics (L2 -> L1)
-* **The Emergency Freeze:** We will code a 7-day timer into the Ethereum contract. If the Sequencer crashes and no ZK proofs are submitted for 7 days, the contract enters **Emergency Mode**.
-* **Trustless Rescue:** In Emergency Mode, users submit a standard Merkle Proof to Ethereum. Ethereum verifies their balance against the last proven State Root and refunds their Real ETH automatically.
-
----
-
-## 🟢 Phase 10: Real L1/L2 Bridge (v1.0.0)
-*Goal: Allow real money to enter the system trustlessly.*
+## 🟢 Phase 5: The L1 Bridge & Escape Hatch
+*Goal: Guarantee users can rescue their money if the Sequencer ever crashes, and allow real money to enter the system trustlessly.*
 
 ### The Bridge Mechanics (L1 -> L2)
 * **Action:** We build the `NowaRollup.sol` Canonical Bridge. When a user deposits 10 Real ETH on Ethereum, the Indexer reads the event and triggers an `OpDeposit` inside the Sequencer.
 * **Security Strategy (Forking):** Bridge security is paramount. Instead of writing the L1 vault mechanics from scratch, we will heavily base our `deposit()` and `withdraw()` functions on the open-source, battle-tested smart contracts of Loopring (`ExchangeV3.sol`) and StarkEx to ensure zero vulnerabilities.
+
+### The Escape Hatch Mechanics (L2 -> L1)
+* **The Emergency Freeze:** We will code a 7-day timer into the Ethereum contract. If the Sequencer crashes and no ZK proofs are submitted for 7 days, the contract enters **Emergency Mode**.
+* **Trustless Rescue:** In Emergency Mode, users submit a standard Merkle Proof to Ethereum. Ethereum verifies their balance against the last proven State Root and refunds their Real ETH automatically.
 
 ---
 

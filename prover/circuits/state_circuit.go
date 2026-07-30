@@ -1,11 +1,11 @@
 package circuits
 
 import (
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/algebra/emulated/sw_emulated"
+	gnark_twistededwards "github.com/consensys/gnark/std/algebra/native/twistededwards"
 	"github.com/consensys/gnark/std/hash/mimc"
-	"github.com/consensys/gnark/std/math/emulated"
-	"github.com/consensys/gnark/std/signature/ecdsa"
+	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
 // Operation type tags.
@@ -25,9 +25,9 @@ const BatchSize = 5
 type Operation struct {
 	OpType frontend.Variable
 
-	MessageHash emulated.Element[emulated.Secp256k1Fr]
-	Sig         ecdsa.Signature[emulated.Secp256k1Fr]
-	PubKey      ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
+	MessageHash frontend.Variable // Native BN254 field element
+	Sig         eddsa.Signature   // BabyJubJub Signature
+	PubKey      eddsa.PublicKey   // BabyJubJub Public Key
 
 	SenderIndex    frontend.Variable
 	SenderBalance  frontend.Variable
@@ -36,7 +36,7 @@ type Operation struct {
 	SenderPathBits [MerkleDepth]frontend.Variable
 
 	// Receiver public key (no signature needed)
-	ReceiverPubKey   ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]
+	ReceiverPubKey   eddsa.PublicKey
 	ReceiverIndex    frontend.Variable
 	ReceiverBalance  frontend.Variable
 	ReceiverNonce    frontend.Variable
@@ -55,16 +55,6 @@ type StateTransitionCircuit struct {
 	WithdrawalHash frontend.Variable `gnark:",public"`
 
 	Ops [BatchSize]Operation
-}
-
-// pubKeyDigest folds a secp256k1 pubkey into two MiMC-friendly field elements.
-func pubKeyDigest(api frontend.API, pub *ecdsa.PublicKey[emulated.Secp256k1Fp, emulated.Secp256k1Fr]) (frontend.Variable, frontend.Variable) {
-	fp, _ := emulated.NewField[emulated.Secp256k1Fp](api)
-	xBits := fp.ToBitsCanonical(&pub.X)
-	yBits := fp.ToBitsCanonical(&pub.Y)
-	xLo := api.FromBinary(xBits[:128]...)
-	yLo := api.FromBinary(yBits[:128]...)
-	return xLo, yLo
 }
 
 // accountLeaf computes the MiMC hash of an account's state.
@@ -94,7 +84,12 @@ func rangeCheck(api frontend.API, val frontend.Variable) {
 }
 
 func (c *StateTransitionCircuit) Define(api frontend.API) error {
-	params := sw_emulated.GetSecp256k1Params()
+	// 1. Initialize the Twisted Edwards Curve (BabyJubJub)
+	curve, err := gnark_twistededwards.NewEdCurve(api, twistededwards.BN254)
+	if err != nil {
+		return err
+	}
+
 	h, err := mimc.NewMiMC(api)
 	if err != nil {
 		return err
@@ -111,9 +106,12 @@ func (c *StateTransitionCircuit) Define(api frontend.API) error {
 		// Ensure Amount fits in 252 bits (prevents malicious underflow/wraparound)
 		rangeCheck(api, op.Amount)
 
-		// Every operation type requires the sender's valid signature.
-		op.PubKey.Verify(api, params, &op.MessageHash, &op.Sig)
-		senderPubX, senderPubY := pubKeyDigest(api, &op.PubKey)
+		// 2. Verify BabyJubJub Signature (This is 100x cheaper than ECDSA!)
+		h.Reset() // Ensure hash is completely clean before EdDSA uses it!
+		err = eddsa.Verify(curve, op.Sig, op.MessageHash, op.PubKey, &h)
+		if err != nil {
+			return err
+		}
 
 		isWithdrawal := api.IsZero(api.Sub(op.OpType, OpWithdrawal))
 
@@ -121,7 +119,7 @@ func (c *StateTransitionCircuit) Define(api frontend.API) error {
 		enforcedReceiverIndex := api.Select(isWithdrawal, op.SenderIndex, op.ReceiverIndex)
 		api.AssertIsEqual(enforcedReceiverIndex, api.Select(isWithdrawal, op.ReceiverIndex, op.ReceiverIndex))
 
-		// --- Withdrawal Accumulator (Fix for Gap #2) ---
+		// --- Withdrawal Accumulator ---
 		// If OpType == Withdrawal, hash(currentHash, senderIndex, amount)
 		h.Reset()
 		h.Write(currentWithdrawalHash, op.SenderIndex, op.Amount)
@@ -130,7 +128,7 @@ func (c *StateTransitionCircuit) Define(api frontend.API) error {
 		currentWithdrawalHash = api.Select(isWithdrawal, nextWithdrawalHash, currentWithdrawalHash)
 
 		// --- Debit sender ---
-		oldSenderLeaf := accountLeaf(&h, op.SenderIndex, senderPubX, senderPubY, op.SenderBalance, op.SenderNonce)
+		oldSenderLeaf := accountLeaf(&h, op.SenderIndex, op.PubKey.A.X, op.PubKey.A.Y, op.SenderBalance, op.SenderNonce)
 		computedRoot := merkleRoot(&h, api, oldSenderLeaf, op.SenderPath, op.SenderPathBits)
 		api.AssertIsEqual(computedRoot, root)
 
@@ -139,21 +137,20 @@ func (c *StateTransitionCircuit) Define(api frontend.API) error {
 		newSenderBalance := api.Sub(op.SenderBalance, op.Amount)
 		newSenderNonce := api.Add(op.SenderNonce, 1)
 		
-		newSenderLeaf := accountLeaf(&h, op.SenderIndex, senderPubX, senderPubY, newSenderBalance, newSenderNonce)
+		newSenderLeaf := accountLeaf(&h, op.SenderIndex, op.PubKey.A.X, op.PubKey.A.Y, newSenderBalance, newSenderNonce)
 		root = merkleRoot(&h, api, newSenderLeaf, op.SenderPath, op.SenderPathBits)
 
 		// --- Credit receiver ---
 		// creditAmount is zero for withdrawals.
 		creditAmount := api.Select(isWithdrawal, 0, op.Amount)
-		receiverPubX, receiverPubY := pubKeyDigest(api, &op.ReceiverPubKey)
-
-		oldReceiverLeaf := accountLeaf(&h, op.ReceiverIndex, receiverPubX, receiverPubY, op.ReceiverBalance, op.ReceiverNonce)
+		
+		oldReceiverLeaf := accountLeaf(&h, op.ReceiverIndex, op.ReceiverPubKey.A.X, op.ReceiverPubKey.A.Y, op.ReceiverBalance, op.ReceiverNonce)
 		computedRoot2 := merkleRoot(&h, api, oldReceiverLeaf, op.ReceiverPath, op.ReceiverPathBits)
 		api.AssertIsEqual(computedRoot2, root)
 
 		newReceiverBalance := api.Add(op.ReceiverBalance, creditAmount)
 		// Receiver nonce does not increment, they didn't sign anything.
-		newReceiverLeaf := accountLeaf(&h, op.ReceiverIndex, receiverPubX, receiverPubY, newReceiverBalance, op.ReceiverNonce)
+		newReceiverLeaf := accountLeaf(&h, op.ReceiverIndex, op.ReceiverPubKey.A.X, op.ReceiverPubKey.A.Y, newReceiverBalance, op.ReceiverNonce)
 		root = merkleRoot(&h, api, newReceiverLeaf, op.ReceiverPath, op.ReceiverPathBits)
 	}
 

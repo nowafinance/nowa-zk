@@ -21,15 +21,10 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 | **Phase 1 (v0.1.0)** | Ethereum L1 Settlement & Integration | ✅ **Complete** |
 | **Phase 2 (v0.2.0)** | L1 Data Availability (DA) & ZK Scalability | ✅ **Complete** |
 | **Phase 3 (v0.3.0)** | Universal State Transition (The Rollup Engine) | ✅ **Complete** |
-| **Phase 4 (v0.4.0)** | Off-Chain Sequencer & Orderbook Core | ⏳ **Next** |
-| **Phase 5 (v0.5.0)** | Persistent Merkle DB & Crash Recovery | 📅 *Planned* |
-| **Phase 6 (v0.6.0)** | High-Frequency API & WebSocket Feeds | 📅 *Planned* |
-| **Phase 7 (v0.7.0)** | Internal Devnet & Shadow Trading | 📅 *Planned* |
-| **Phase 8 (v0.8.0)** | The Escape Hatch (Trustless Withdrawals) | 📅 *Planned* |
-| **Phase 9 (v0.9.0)** | Full System Audits & Rate Limiting | 📅 *Planned* |
-| **Phase 10 (v1.0.0)** | **Real L1/L2 Bridge & Mainnet Beta** | 📅 *Planned* |
-| **Phase 11 (v2.0.0)** | Decentralized Prover Network | 📅 *Planned* |
-| **Phase 12 (v3.0.0)** | The Year 2 Crossroads (Ultimate App vs Ecosystem Hub) | 📅 *Planned* |
+| **Phase 4 (v0.4.0)** | The High-Frequency Go Sequencer | ⏳ **Next** |
+| **Phase 5 (v0.5.0)** | The L1 Bridge & Escape Hatch | 📅 *Planned* |
+| **Phase 6 (v1.0.0)** | Security Audits & Mainnet Beta | 📅 *Planned* |
+| **Phase 7 (v2.0.0)** | Decentralized Provers & Ecosystem Expansion | 📅 *Planned* |
 
 ---
 
@@ -49,47 +44,24 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 * **Sparse Merkle Trees:** Implemented Depth-20 SMTs inside the circuit to mathematically track user balances and nonces.
 * **Unified Operations:** A single circuit that seamlessly processes Deposits, Trades, Transfers, and Withdrawal Requests while strictly enforcing balance constraints.
 
-### 📅 Phase 4: Off-Chain Sequencer & Orderbook Core (v0.4.0)
+### 📅 Phase 4: The High-Frequency Go Sequencer (v0.4.0)
 *Replacing slow blockchain consensus with a lightning-fast matching engine.*
-* **The Trading Engine:** Build a centralized, high-frequency orderbook matching engine in Go. 
-* **Gasless Signatures (BabyJubJub):** Transition users from paying L2 gas fees to signing free, off-chain messages. Users will generate a SNARK-friendly EdDSA (BabyJubJub) "Trading Key" in their browser for maximum ZK proving efficiency.
-* **The Sequencer:** The engine verifies these EdDSA signatures instantly in Go, matches trades, and chunks transactions into fixed-size ZK batches.
-* **No L2 Blockchain:** Remove all dependencies on an L2 blockchain (like Cosmos/EVM). The engine *is* the execution layer, allowing NASDAQ-level trading speeds.
+* **The Trading Engine:** Build a centralized, high-frequency orderbook matching engine in Go.
+* **Persistent Merkle DB:** Migrate the in-memory Sparse Merkle Tree to a persistent database (LevelDB) to guarantee state survival across crashes.
+* **High-Frequency API:** Expose WebSocket and REST APIs for users and algorithmic traders to stream real-time orderbook data and submit trades.
+* **The ZK Batcher:** Continuously chunk matched trades into fixed-size batches and hand them off to the Prover for ZK-SNARK generation.
 
-### 📅 Phase 5: Persistent Merkle DB & Crash Recovery (v0.5.0)
-*Ensuring the Sequencer never loses state.*
-* **Database Integration:** Migrate the in-memory Sparse Merkle Tree and Orderbook to a persistent database (LevelDB or a Kafka stream, depending on performance testing).
-* **State Recovery:** Build tooling to perfectly reconstruct the Sequencer's database purely from Ethereum L1 calldata (The ultimate disaster recovery).
+### 📅 Phase 5: The L1 Bridge & Escape Hatch (v0.5.0)
+*Connecting the Rollup to real Ethereum value while guaranteeing self-custody.*
+* **L1 Deposit Vaults:** Build the canonical Ethereum bridge contracts to map real ETH to L2 balances trustlessly, modeled after battle-tested protocols like Loopring.
+* **Trustless Withdrawals (The Escape Hatch):** Build an `emergencyWithdraw()` function on L1. If the Sequencer ever goes offline, users can submit standard Merkle proofs directly to L1 to rescue their funds.
 
-### 📅 Phase 6: High-Frequency API & WebSockets (v0.6.0)
-*Opening the DEX to the world.*
-* **REST API:** Endpoints for users to query their L2 balances and order history.
-* **WebSockets:** Real-time orderbook feeds and execution streams for algorithmic traders.
+### 📅 Phase 6: Security Audits & Mainnet Beta (v1.0.0)
+*Hardening the protocol for production.*
+* **Full System Audits:** Formal verification of the Gnark circuits and third-party security audits for the L1 bridge contracts.
+* **Mainnet Launch:** Deploy to Ethereum Mainnet with guarded deposit limits and strict API rate limiting.
 
-### 📅 Phase 7: Internal Devnet & Shadow Trading (v0.7.0)
-*Stress testing the engine.*
-* **Mock Traffic:** Deploy bots that execute 1,000 TPS to ensure the Prover can keep up with the Sequencer.
-* **Gas Optimization:** Tune the batch sizes and Ethereum submission intervals for maximum cost efficiency.
-
-### 📅 Phase 8: The Escape Hatch (v0.8.0)
-*Guaranteeing trustless self-custody.*
-* **Trustless Withdrawals:** Build the `emergencyWithdraw()` function on L1, allowing users to rescue funds using standard Merkle Proofs if the off-chain Sequencer ever goes offline.
-
-### 📅 Phase 9: Full System Audits (v0.9.0)
-*Security first.*
-* **Circuit Audit:** Formal verification of the Gnark circuits to ensure no fake proofs can be minted.
-* **Contract Audit:** Ensure the L1 smart contracts cannot be drained.
-
-### 📅 Phase 10: Real L1/L2 Bridge & Mainnet Beta (v1.0.0)
-*Connecting the Rollup to real Ethereum value.*
-* **L1 Vaults:** Build the Ethereum Deposit Vaults that map 1:1 with L2 token balances. To guarantee absolute security, we will fork the battle-tested, open-source Canonical Bridge contracts from established ZK protocols (like Loopring) rather than writing security-critical deposit mechanics from scratch.
-* **Mainnet Launch:** Deploy to Ethereum Mainnet with guarded deposit limits.
-
-### 📅 Phase 11: Decentralized Provers (v2.0.0)
-*Removing the final centralized component.*
+### 🔮 Phase 7: Decentralized Provers & Ecosystem Expansion (v2.0.0)
+*The endgame of decentralization.*
 * **Prover Market:** Allow anyone to run a Prover node and compete to generate proofs for the Sequencer in exchange for protocol rewards.
-
-### 🔮 Phase 12: The Year 2 Crossroads (v3.0.0)
-*After dominating the DEX market, the protocol decides its final form.*
-* **Path A (The Ultimate App):** Remain a highly focused ZK-Rollup. We decentralize the Sequencer using a lightweight ordering consensus (like Espresso or Tendermint), keeping execution blazing fast and entirely focused on trading.
-* **Path B (The Ecosystem Hub):** Pivot the massive TVL and userbase into a full Sovereign L1 Blockchain (Nowa Chain). The DEX becomes the flagship app, and developers worldwide are invited to build lending markets and NFT platforms using `$NOWA` as the native gas token.
+* **Nowa Chain:** Expand the ZK-Rollup into a fully Sovereign L1 or L3 AppChain ecosystem.
