@@ -1,3 +1,10 @@
+> [!NOTE]
+> **Archived 2026-08-17.** This document frames the off-chain Sequencer model as the
+> "Future Architecture" — that migration is now complete; the Sequencer (`sequencer/`)
+> is the live execution layer. Kept here as the historical record of *why* the project
+> moved off the Cosmos/indexer execution model. For the current architecture, see
+> [docs/architecture/overview.md](../architecture/overview.md).
+
 # 🔄 Nowa-ZK Architectural Evolution: Current vs Future
 
 This document provides a highly detailed, low-level technical breakdown of our transition from a "Blockchain-Bound" execution layer to a true "Off-Chain ZK-Rollup" execution layer, including exactly how user signatures and MetaMask interactions flow.

@@ -2,270 +2,89 @@
 
 ## Overview
 
-Nowa-ZK uses a tiered storage strategy to optimize for availability, efficiency, and cost.
+Three separate stores back the live pipeline, each with a different job:
 
-## Storage Layers
+| Layer | Technology | Default Path | Purpose |
+|---|---|---|---|
+| Sequencer state | LevelDB (Sparse Merkle Tree) | `~/.nowa-zk/sequencer/nowa_state_db` (via `make run-sequencer`) | Canonical L2 account balances/nonces — the source of truth the circuit proves against |
+| Prover checkpoint | BadgerDB | `~/.nowa-zk/prover/data` (`--data-dir`) | `last_processed_batch`, halt state, failure records — lets the Prover resume correctly |
+| L1 (Ethereum) | Ethereum state trie | — | Permanent: `stateRoot`, `batchCount`, per-batch blob/data hashes |
 
-### L2 Blockchain
-- **Purpose**: Source of truth for recent trades
-- **Technology**: Cosmos SDK LevelDB
-- **Retention**: Full history (immutable)
-- **Access**: RPC queries
+The Prover holds **no copy of trade data** — it fetches each batch from the Sequencer's
+REST API on demand, proves it, and only persists a few bytes of checkpoint metadata.
+There is no "batch storage" layer to clean up on the live path (unlike the legacy indexer
+design — see below).
 
-### Indexer
-- **Purpose**: Batch staging for proof generation
-- **Technology**: BadgerDB (LSM tree)
-- **Retention**: Recent unproven batches only
-- **Cleanup**: Automatic deletion after L1 finalization
+> [!WARNING]
+> This repo's git history currently has a *tracked* `sequencer/nowa_state_db/` directory
+> under `sequencer/`. That's a leftover from running the sequencer binary directly from
+> within `sequencer/` (its LevelDB path is relative — `./nowa_state_db`). The intended
+> path, used by `make run-sequencer`, is `~/.nowa-zk/sequencer/nowa_state_db` — outside
+> the repo and covered by `.gitignore`. Prefer `make run-sequencer` so you don't
+> accumulate real trade state inside your git working tree; `make clean-sequencer-state`
+> wipes the correct path.
 
-### Prover
-- **Purpose**: Proof metadata and submission tracking
-- **Technology**: BadgerDB
-- **Retention**: Metadata only (~4KB per batch)
-- **Data**: Batch number, L1 tx hash, L2 tx hashes, timestamp
+## Sequencer: LevelDB Sparse Merkle Tree
 
-### L1 Ethereum
-- **Purpose**: Permanent state commitments
-- **Technology**: Ethereum state trie
-- **Retention**: Forever (state roots + batch commitments)
-- **Data**: State roots, batch hashes, verification results
+- **Depth**: 28.
+- **Leaf index**: `accountID*256 + tokenID` (up to 256 tokens per account, matching
+  `NowaRollup.sol`'s 256-token cap).
+- **Account IDs**: assigned sequentially on first sight of a pubkey (`GetAccountID` in
+  `sequencer/internal/state/merkle_db.go`) — not derivable off-chain in advance; a client
+  must call `GET /account` (or complete a fill) before it knows its own leaf indices.
+- **Leaf value**: `MiMC(index, pubX, pubY, balance, nonce)`.
+- Every fill/deposit/withdrawal snapshots Merkle paths *before* mutating state (the
+  circuit needs the pre-image to verify the update), then writes the new balance.
 
-## Data Lifecycle
+## Prover: BadgerDB checkpoint store
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  L2 Transaction (Submitted)                                  │
-│  • Stored on L2 blockchain forever                           │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│  Indexer Batch Creation                                    │
-│  • Full trade data stored (~11MB per batch)            │
-│  • Kept until proven on L1                                   │
-│  Retention: ~5-10 minutes (until proving)                    │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│  Prover Processing                                           │
-│  • Fetches batch via HTTP (no local storage)                │
-│  • Generates proof in memory                                 │
-│  • Submits to L1                                             │
-│  • Saves only metadata (~4KB)                                │
-│  Retention: Forever (minimal size)                           │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│  L1 State Commitment                                         │
-│  • State root stored on Ethereum                             │
-│  • Batch commitment stored                                   │
-│  Retention: Forever (blockchain immutable)                   │
-└─────────────────────────────────────────────────────────────┘
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│  Indexer Cleanup                                           │
-│  • Deletes batch after L1 confirmation                       │
-│  • Queries prover every 5 minutes                            │
-│  • Keeps only recent unproven batches                        │
-│  Result: ~98% storage reduction                              │
-└─────────────────────────────────────────────────────────────┘
-```
+Tracked keys (see `prover/internal/storage/store.go`):
+- `last_processed_batch` — resume point after a restart.
+- Halt state — set if paranoid-mode proof verification fails repeatedly; requires
+  `--clear-halt` to resume.
+- Failure records — for post-mortem on a batch that failed to prove/submit.
 
-## Storage Breakdown
+This store is small (a handful of keys) regardless of how many batches have been
+processed — it deliberately keeps no historical trade data.
 
-### Indexer Database Schema
+## L1: Ethereum
 
-**BadgerDB Keys:**
-
-```
-# Batches
-batch_1              → {batch metadata + full tx data} (11MB)
-batch_2              → {batch metadata + full tx data} (11MB)
-...
-batch_N              → {batch metadata + full tx data} (11MB)
-
-# Block tracking (reorg detection)
-block_hash_7500      → "0xabc..."
-block_hash_7501      → "0xdef..."
-...
-
-# State tracking
-last_processed_block → "7600"
-cleanup:lastDeleted  → "900"
-```
-
-**Cleanup Impact:**
-- Before: All batches stored (~1.1TB for 100k batches)
-- After: Only recent unproven batches (~22GB for 2k batches)
-
-### Prover Database Schema
-
-**BadgerDB Keys:**
-
-```
-# Batch metadata
-proof_1              → {batch_number, tx_hash, tx_hashes, timestamp} (4KB)
-proof_2              → {batch_number, tx_hash, tx_hashes, timestamp} (4KB)
-...
-proof_N              → {batch_number, tx_hash, tx_hashes, timestamp} (4KB)
-
-# State tracking
-last_processed_batch → "1000"
-last_state_root      → "0x123..."
-
-# Failure tracking (optional)
-failure_50           → {error, timestamp}
-last_failure         → {batch_number, error}
-
-# Halt state (safety)
-halt_state           → {halted: true/false, reason}
-```
-
-**Total Size:** ~400MB for 100k batches
-
-### L1 Blockchain Storage
-
-**Smart Contract State:**
-
+`NowaRollup.sol` stores only:
 ```solidity
-// State variables
-mapping(uint256 => bytes32) public batchHashes;
-mapping(uint256 => bytes32) public stateRoots;
-uint256 public latestBatch;
+bytes32 public stateRoot;
+uint64  public batchCount;
+mapping(uint64 => bytes32) public batchBlobHash;
+mapping(uint64 => bytes32) public batchDataHash;
 ```
+The actual trade data lives in the EIP-4844 blob sidecar submitted alongside each batch —
+blobs aren't part of permanent execution-layer state (consensus clients prune them after
+~18 days per the protocol's blob retention window), so `batchDataHash` is what lets
+anyone verify a blob they've archived themselves still matches what was proven.
 
-**On-Chain Data:** ~64 bytes per batch (2 state roots)
+## Legacy: Indexer storage (not on the live path)
 
-## Retention Policies
-
-| Component | Data Type | Retention | Size per Batch |
-|-----------|-----------|-----------|----------------|
-| L2 Blockchain | Full trades | Forever | N/A (separate system) |
-| Indexer | Full batch data | Until L1 proven | ~11 MB |
-| Prover | Metadata only | Forever | ~4 KB |
-| L1 Contract | State roots | Forever | ~64 bytes |
-
-## Cleanup Strategy
-
-See [Cleanup System](./cleanup-system.md) for detailed implementation.
-
-### Key Points
-- Indexer deletes batches after L1 proof submission
-- Prover queries determine when it's safe to delete
-- Cleanup runs every 5 minutes
-- Tracks progress to avoid re-scanning
-
-## Performance Characteristics
-
-### Write Performance
-| Component | Operation | Latency |
-|-----------|-----------|---------|
-| Indexer | Save batch | ~10ms |
-| Prover | Save metadata | ~5ms |
-| L1 Contract | Store state | ~12s (block time) |
-
-### Read Performance
-| Component | Operation | Latency |
-|-----------|-----------|---------|
-| Indexer | Get batch | ~5ms |
-| Prover | Get metadata | ~3ms |
-| L1 Contract | Read state | ~100ms (RPC) |
-
-### Storage Growth Rate
-
-**Example: 100 TPS sustained**
-```
-Batches per hour: 100 TPS ÷ 25 trades/batch × 3600s = ~14400 batches/hour
-
-Without cleanup:
-  2812 batches × 11 MB = ~31 GB/hour
-  
-With cleanup (keeping 2-3 hours):
-  ~100 batches × 11 MB = ~1.1 GB steady state
-```
-
-## Archival Considerations
-
-### Current Implementation
-- No archival layer (L2 blockchain is source of truth)
-- Indexer deletes proven batches
-- Prover keeps lightweight metadata
-
-### Future Options
-
-**Option 1: S3/Cloud Storage**
-- Archive deleted batches to S3
-- Compress before upload (~90% reduction)
-- Cost: ~$0.023/GB/month
-
-**Option 2: IPFS/Arweave**
-- Decentralized archival
-- Content-addressed
-- Pay once, store forever
-
-**Option 3: Data Availability Layer**
-- Use Celestia or EigenDA
-- Designed for rollup data
-- Cryptographic proofs of availability
+The Cosmos-indexer design (`indexer/`) used BadgerDB to stage full 25-trade batches
+(~11MB each) until L1-proven, then deleted them on a 5-minute cleanup cycle. None of this
+runs today — the Sequencer/Prover pipeline above doesn't call the Indexer at all. If
+you're reviving that subsystem, the old docs are preserved at
+[storage — legacy indexer cleanup](../archived-files/cleanup-system-legacy-indexer.md)
+and [indexer-batch-flow-legacy.md](../archived-files/indexer-batch-flow-legacy.md), but
+treat their specifics (ports, schema) as a starting point to re-verify against
+`indexer/internal/indexer/*.go`, not as current fact.
 
 ## Disaster Recovery
 
-### Indexer Recovery
-1. Restart indexer → reads `last_processed_block`
-2. Resumes from last checkpoint
-3. Rebuilds incomplete batch from DB
-4. Continues processing
+**Sequencer**: the LevelDB tree is the only copy of L2 state — there's no L1 archival
+of individual balances (only `stateRoot`). If it's lost without a valid backup, funds
+can't currently be recovered from L1 alone — see the "no escape hatch" gap in
+[overview.md](./overview.md#known-gaps-as-of-2026-08-17).
 
-### Prover Recovery
-1. Restart prover → reads `last_processed_batch`
-2. Queries indexer for next batch
-3. Continues proving from checkpoint
-4. No data loss (L1 is source of truth)
-
-### Complete Data Loss
-**Indexer:**
-- Can rebuild from L2 blockchain (source of truth)
-- Query L2 RPC for historical blocks
-- Recreate batches deterministically
-
-**Prover:**
-- Cannot rebuild proofs (ephemeral)
-- Metadata lost but not critical
-- L1 still has state roots (verification unaffected)
-
-## Database Configuration
-
-### BadgerDB Tuning
-
-**Indexer:**
-```go
-opts := badger.DefaultOptions(path)
-opts.ValueLogFileSize = 256 << 20  // 256MB (large batches)
-opts.NumLevelZeroTables = 5
-opts.NumLevelZeroTablesStall = 10
-```
-
-**Prover:**
-```go
-opts := badger.DefaultOptions(path)
-opts.ValueLogFileSize = 64 << 20   // 64MB (small metadata)
-opts.NumCompactors = 2
-```
-
-## Monitoring
-
-### Key Metrics
-- Indexer DB size
-- Prover DB size
-- Batches deleted per cleanup run
-- Cleanup duration
-- Storage growth rate
-
-### Alerts
-- Indexer DB > 500GB (cleanup may be failing)
-- Prover DB > 10GB (unexpected for metadata)
-- Cleanup failing for > 30 minutes
+**Prover**: fully recoverable. Its checkpoint store only tracks progress; if lost, it can
+be regenerated by clearing the halt state and re-querying `NowaRollup.batchCount` to
+figure out where to resume (no purpose-built recovery command exists yet — this is a
+manual `cast call` today, not automated).
 
 ## Related Documentation
-- [Cleanup System](./cleanup-system.md)
-- [Indexer Architecture](./indexer.md)
-- [Prover Architecture](./prover.md)
+- [Architecture Overview](./overview.md)
+- [Data Flow](./data-flow.md)
+- [Troubleshooting](../operations/troubleshooting.md)

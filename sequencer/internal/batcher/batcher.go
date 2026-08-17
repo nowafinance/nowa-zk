@@ -1,26 +1,65 @@
 package batcher
 
 import (
+	"encoding/binary"
+	"fmt"
+	"math/big"
 	"sync"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/types"
 )
 
-const BatchSize = 5 // Must exactly match the ZK Circuit
+const BatchSize = 1 // must match prover/circuits.BatchSize — real fills only, no dummy padding
+
+const (
+	OpTrade    = 0
+	OpTransfer = 1
+	OpWithdraw = 2
+	OpDeposit  = 3
+)
 
 type Batcher struct {
-	mu           sync.Mutex
-	currentBatch *types.ZKBatch
-	latestBatch  *types.ZKBatch
-	batchCounter uint64
+	mu              sync.Mutex
+	currentBatch    *types.ZKBatch
+	latestBatch     *types.ZKBatch
+	batchCounter    uint64
+	batchHistory    map[uint64]*types.ZKBatch
+
+	// Running hash accumulators for the current batch
+	currentDepositHash    *big.Int
+	currentWithdrawalHash *big.Int
 }
 
 func NewBatcher() *Batcher {
 	return &Batcher{
+		// Prover treats lastProcessed=0 as "none yet" and requests batch 1 next.
 		currentBatch: &types.ZKBatch{
-			BatchID: 0,
+			BatchID: 1,
 		},
+		batchCounter:          1,
+		batchHistory:          make(map[uint64]*types.ZKBatch),
+		currentDepositHash:    big.NewInt(0),
+		currentWithdrawalHash: big.NewInt(0),
 	}
+}
+
+// mimcHashTwo hashes two *big.Int values using MiMC (BN254), producing a *big.Int.
+func mimcHashTwo(a, b *big.Int) *big.Int {
+	h := mimc.NewMiMC()
+	var aFr, bFr fr.Element
+	aFr.SetBigInt(a)
+	bFr.SetBigInt(b)
+	ab := aFr.Bytes()
+	bb := bFr.Bytes()
+	h.Write(ab[:])
+	h.Write(bb[:])
+	var res fr.Element
+	res.SetBytes(h.Sum(nil))
+	out := new(big.Int)
+	res.BigInt(out)
+	return out
 }
 
 // AddTransition adds a state transition to the current batch.
@@ -29,28 +68,58 @@ func (b *Batcher) AddTransition(t types.StateTransition, oldRoot, newRoot string
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// If this is the first transition in the batch, set the OldRoot
+	// If this is the first transition in the batch, set the OldRoot.
 	if len(b.currentBatch.Transitions) == 0 {
 		b.currentBatch.OldRoot = oldRoot
 	}
 
 	b.currentBatch.Transitions = append(b.currentBatch.Transitions, t)
 
-	// Update the NewRoot after every transition so the final one is the batch's NewRoot
+	// Update the NewRoot after every transition so the final one is the batch's NewRoot.
 	b.currentBatch.NewRoot = newRoot
 
-	if len(b.currentBatch.Transitions) == BatchSize {
-		// Batch is full! Seal it.
-		// Set WithdrawalHash to zero for now (we can implement later)
-		b.currentBatch.WithdrawalHash = "0"
+	// Accumulate DepositHash: H(currentHash, leafIndex, amount)  for OpDeposit.
+	// Mirrors the circuit's deposit accumulator.
+	if t.OpType == OpDeposit {
+		leafIndex := new(big.Int).SetUint64(t.TakerBase.Index)
+		amount, ok := new(big.Int).SetString(t.Amount, 10)
+		if !ok {
+			amount = big.NewInt(0)
+		}
+		// H(H(currentHash, leafIndex), amount)
+		mid := mimcHashTwo(b.currentDepositHash, leafIndex)
+		b.currentDepositHash = mimcHashTwo(mid, amount)
+	}
 
-		// Move current to latest
+	// Accumulate WithdrawalHash: H(currentHash, leafIndex, amount) for OpWithdraw.
+	if t.OpType == OpWithdraw {
+		leafIndex := new(big.Int).SetUint64(t.MakerBase.Index)
+		amount, ok := new(big.Int).SetString(t.Amount, 10)
+		if !ok {
+			amount = big.NewInt(0)
+		}
+		mid := mimcHashTwo(b.currentWithdrawalHash, leafIndex)
+		b.currentWithdrawalHash = mimcHashTwo(mid, amount)
+	}
+
+	if len(b.currentBatch.Transitions) == BatchSize {
+		// Batch is full — seal it.
+		b.currentBatch.WithdrawalHash = b.currentWithdrawalHash.String()
+		b.currentBatch.DepositHash = b.currentDepositHash.String()
+
+		// Store in history and expose as latest.
+		sealedID := b.currentBatch.BatchID
+		b.batchHistory[sealedID] = b.currentBatch
 		b.latestBatch = b.currentBatch
 
+		// Start a new empty batch.
 		b.batchCounter++
 		b.currentBatch = &types.ZKBatch{
 			BatchID: b.batchCounter,
 		}
+		// Reset accumulators for the next batch.
+		b.currentDepositHash = big.NewInt(0)
+		b.currentWithdrawalHash = big.NewInt(0)
 	}
 }
 
@@ -61,9 +130,39 @@ func (b *Batcher) GetLatestBatch() *types.ZKBatch {
 	return b.latestBatch
 }
 
-// GetCurrentBatchSize returns the number of transitions in the current batch.
+// GetBatch returns a specific sealed batch by its ID.
+func (b *Batcher) GetBatch(id uint64) (*types.ZKBatch, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	batch, ok := b.batchHistory[id]
+	return batch, ok
+}
+
+// GetBatchCount returns the number of sealed batches.
+func (b *Batcher) GetBatchCount() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return uint64(len(b.batchHistory))
+}
+
+// GetCurrentBatchSize returns the number of transitions in the current (unsealed) batch.
 func (b *Batcher) GetCurrentBatchSize() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return len(b.currentBatch.Transitions)
+}
+
+// batchIDToKey encodes batch ID as big-endian bytes for storage keys.
+func batchIDToKey(id uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, id)
+	return b
+}
+
+// DebugDepositHash returns a string representation of the current deposit hash.
+// Used for logging/debugging only.
+func (b *Batcher) DebugDepositHash() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return fmt.Sprintf("%s", b.currentDepositHash.String())
 }

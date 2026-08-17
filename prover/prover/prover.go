@@ -1,25 +1,10 @@
 package prover
 
-import (
-	"fmt"
-
-	"github.com/nowafinance/nowa-zk/prover/internal/witness"
-)
-
-// RunProve orchestrates a proof run (placeholder).
-// Replace with actual gnark compile/setup/prove/verify pipeline.
+// RunProve is a legacy stub — the real proving pipeline lives in:
+//   cmd/prover/start.go → start() → generateProof() → verifyLocal() → submitProof()
+//
+// To run the prover:
+//   ./prover-bin start --keys-dir ./keys --contract <addr> --private-key <key>
 func RunProve(circuitID string) error {
-	w, err := witness.BuildExample()
-	if err != nil {
-		return fmt.Errorf("build witness: %w", err)
-	}
-	_ = w
-
-	// TODO: compile circuits (frontend.Compile), run groth16.Setup, groth16.Prove, etc.
-	// Example flow:
-	//  - import circuit from circuits/ and compile with frontend.Compile
-	//  - create witness with witness package
-	//  - run backend/groth16 Setup/Prove/Verify
-
 	return nil
 }

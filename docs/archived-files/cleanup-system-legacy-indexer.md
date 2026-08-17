@@ -1,3 +1,10 @@
+> [!NOTE]
+> **Archived 2026-08-17.** Describes the cleanup job for the legacy Cosmos `indexer/`
+> service, which is no longer part of the live trading pipeline (the Sequencer talks
+> directly to the Prover; see [docs/architecture/overview.md](../architecture/overview.md)).
+> `indexer/` still builds and runs (`make run-indexer`) if you need it, but it isn't on
+> the path real trades take today. Kept for reference if that subsystem is revived.
+
 # Intelligent Cleanup System
 
 ## Overview

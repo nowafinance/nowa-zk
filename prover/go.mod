@@ -9,8 +9,8 @@ require (
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/gofiber/swagger v1.1.1
+	github.com/holiman/uint256 v1.3.2
 	github.com/joho/godotenv v1.5.1
-	github.com/nowafinance/nowa-zk/sequencer v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.1
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.48.0
@@ -53,7 +53,6 @@ require (
 	github.com/google/pprof v0.0.0-20250820193118-f64d9cf942d6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
-	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ingonyama-zk/icicle-gnark/v3 v3.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -65,6 +64,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/ronanh/intcomp v1.1.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/shirou/gopsutil v3.21.4-0.20210419000835-c7a38de76ee5+incompatible // indirect

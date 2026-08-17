@@ -1,30 +1,30 @@
 # Cloud Setup Guide
 
-This guide describes how to deploy the **Nowa-ZK Indexer and Prover** on a Linux cloud server.
+Deploy the **Sequencer** and **Prover** on a Linux cloud server as systemd services.
+
+> [!NOTE]
+> This supersedes an earlier version of this guide built around an Indexer-centric
+> design (contracts named `TradeRegistry`/`StateManager`, indexer as the primary
+> service). The live pipeline today is Sequencer → Prover → `NowaRollup`. The Indexer
+> is optional/legacy — see [architecture/overview.md](../architecture/overview.md#indexer-indexer--legacy-optional).
+> Its own deployment steps aren't covered here; add an `indexer` service by mirroring
+> the Prover unit below with `indexer-bin start` if you need it.
 
 ## Prerequisites
 
-*   Linux server (Ubuntu 20.04+ recommended)
-*   `sudo` access
-*   Git, Make, curl installed
+- Linux server (Ubuntu 22.04 LTS recommended — see the root `README.md`'s stated minimum: 16GB RAM, 4 cores, 50GB SSD)
+- `sudo` access
+- Git, Make, curl installed
 
 ---
 
 ## 1. SSH Key Setup
 
-Generate an SSH key to clone the private repository.
-
 ```bash
-# Generate SSH key
-ssh-keygen -t ed25519 -C "zkprover"
-
-# Display public key
+ssh-keygen -t ed25519 -C "nowa-zk"
 cat ~/.ssh/id_ed25519.pub
 ```
-
-*   Add this key to **GitHub Repo Settings** → **Deploy Keys**.
-
-**Test Connection:**
+Add it under GitHub → repo → Settings → Deploy Keys, then test:
 ```bash
 ssh -T git@github.com
 ```
@@ -34,292 +34,115 @@ ssh -T git@github.com
 ## 2. Install Dependencies
 
 ```bash
-# Update system
 sudo apt update && sudo apt upgrade -y
+sudo apt install -y make git build-essential curl jq python3
 
-# Install build tools
-sudo apt install -y make git build-essential curl
-
-# Install Go 1.24.10
 curl -OL https://go.dev/dl/go1.24.10.linux-amd64.tar.gz
 sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.24.10.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-
-# Verify Go installation
 go version
 
-# Install Foundry
 curl -L https://foundry.paradigm.xyz | bash
 source ~/.bashrc
 foundryup
-
-# Verify Foundry installation
 forge --version
-cast --version
 ```
 
 ---
 
-## 3. Clone & Build
+## 3. Clone, Set Up Keys, Build
 
 ```bash
-# Clone the repository
 git clone git@github.com:nowafinance/nowa-zk.git ~/nowa-zk
 cd ~/nowa-zk
 
-# Initialize submodules (if any)
-git submodule update --init --recursive
+cp .env.example .env
+nano .env
+# Set at minimum: L1_RPC_URL, PRIVATE_KEY (funded — pays for deploy + every batch submission)
+
+make setup   # keys → ~/.nowa-zk/keys/, regenerates contracts/src/generated/Verifier.sol
+make build   # sequencer-bin, prover-bin, contracts
 ```
 
-### Build Prover Keys
-
-```bash
-cd ~/nowa-zk/prover
-
-# Build prover binary first
-go build -o ../build/prover-bin ./cmd/prover
-
-# Generate keys and verifier contract
-../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-
-cd ..
-```
-
-### Build Contracts
-
-```bash
-cd ~/nowa-zk/contracts
-
-# Build all contracts
-forge build
-
-cd ..
-```
-
-### Build Indexer
-
-```bash
-cd ~/nowa-zk/indexer
-
-# Build indexer binary
-go build -o ../build/indexer-bin ./cmd/indexer
-
-cd ..
-```
-
-## 4. Directory Setup
-
-```bash
-# Create directory for persistent data
-sudo mkdir -p /var/lib/nowa-zk/indexer/state
-sudo mkdir -p /var/lib/nowa-zk/prover/keys
-sudo mkdir -p /var/lib/nowa-zk/prover/data
-
-# Set ownership to current user
-sudo chown -R $USER:$USER /var/lib/nowa-zk
-```
-
-### Persist Keys Copy
-
-```bash
-# Copy keys to persistent storage
-sudo cp -r ~/nowa-zk/keys/* /var/lib/nowa-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/nowa-zk
-```
+`chmod 600 .env` — it holds a private key.
 
 ---
 
-
----
-
-## 5. Environment Configuration
-
-Create environment configuration file.
+## 4. Deploy Contracts
 
 ```bash
-sudo mkdir -p /etc/nowa
-sudo nano /etc/nowa/.env
-```
-
-### `/etc/nowa/.env`
-
-```bash
-L2_RPC_URL=http://0.0.0.0:8545
-L1_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-PRIVATE_KEY=0xYOUR_PRIVATE_KEY_HERE
-TRAFFIC_GEN_KEY=0xYOUR_TRAFFIC_GEN_PRIVATE_KEY_HERE
-INDEX_FROM_BLOCK=0
-PROVER_API=http://0.0.0.0:8081
-STATE_DB_PATH=/var/lib/nowa-zk/indexer/state
-```
-
-
-**Secure the file:**
-```bash
-sudo chmod 600 /etc/nowa/.env
-```
-
----
-
-## 6. Deploy Contracts
-
-```bash
-# Make it readable by owner and group
-sudo chmod 640 /etc/nowa/.env
-
-# Change ownership to your user
-sudo chown $USER:$USER /etc/nowa/.env
-
-# Now you can read it
 set -a
-source /etc/nowa/.env
+source .env
 set +a
 
-# Navigate to contracts directory
-cd ~/nowa-zk/contracts
-
-# Create deployments directory (required for saving deployment addresses)
-mkdir -p deployments
-
-# Deploy to L1 (Sepolia/Mainnet)
-forge script script/Deploy.s.sol:Deploy --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY --broadcast
-
-# Optional: Deploy+Verify contracts on block explorer
-# forge script script/Deploy.s.sol:Deploy --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify --etherscan-api-key $ETHERSCAN_API_KEY
-
-cd ..
+make deploy
 ```
+This runs `forge script script/Deploy.s.sol --rpc-url $L1_RPC_URL --broadcast`, deploying
+`Verifier.sol` then `NowaRollup.sol`, and copies the resulting addresses to
+`~/.nowa-zk/deployments.json` — both the Sequencer (for its deposit watcher) and the
+Prover auto-load `NowaRollup`'s address from there.
 
-
-
-> [!NOTE]
-> **Expected Warning**: You may see `Warning: Script contains a transaction to 0x... which does not contain any code.`
-> 
-> This is normal! The deployment script sets your deployer address as the authorized indexer. Since your address is an EOA (wallet), not a contract, it has no code. Just type `yes` to continue.
-
-**Save the deployed contract address** - you'll need it for the prover service configuration.
-
-
-## Manual Verification on Block Explorer (Optional)
-
-If you deployed the contracts and want to manually verify them on a block explorer, you will need the contract addresses, source code, and compiler settings.
-
-### 1. Find Your Contract Addresses
-All deployed contract addresses are automatically saved in your deployments file:
+**Register any ERC20 tokens you want tradeable** (the deploy script doesn't do this —
+`registerToken` is owner-only, call it per token after deploy):
 ```bash
-cat ~/nowa-zk/contracts/deployments/deployments.json
-```
-sample output 
-```
-{
-  "TradeRegistry": "0xbcCF1fbBD099524f4d57986B80E8A2130e5371fB",
-  "GnarkVerifier": "0xF46f6ecd13F5D2ffAd6d91F134F3A49b6fc48A28",
-  "InitialStateRoot": "0x0000000000000000000000000000000000000000000000000000000000000001",
-  "Indexer": "0x8AA96ceA21f85b3b83E9FC5dE7e9Cc53223634D9",
-  "StateManager": "0x94c10873A2d060a3e133C86dfE275694E726c336",
-  "VerifierAdapter": "0x5cfFd99c02eD2Ff1B5c1F421A62D972860e0fC19"
-}
-```
-
-### 2. Compiler Settings
-When manually verifying via a web interface, use the following settings:
-- **Compiler Type**: Solidity (Single file)
-- **Compiler Version**: Run the following command to check the exact version used in your configuration:
-  ```bash
-  cd ~/nowa-zk/contracts && forge config | grep solc
-  ```
-- **Optimization**: Check your `foundry.toml` (Default is typically Yes, 200 runs)
-
-### 3. Verification Methods
-
-**Method A: Using Forge (Recommended)**
-
-You can verify all your deployed contracts directly from the terminal. This avoids UI bugs and handles multi-file contracts perfectly.
-
-First, set your endpoints (replace with your actual RPC and Explorer API if different):
-```bash
-cd ~/nowa-zk/contracts
-export VERIFY_RPC="https://node1.nowa.finance"
-export VERIFY_API="https://apiexplorer.nowa.finance/api\?"
-```
-
-Then, run these commands, replacing the `0x...` placeholders with the exact addresses from your `deployments.json`:
-
-```bash
-# 1. Verify StateManager
-forge verify-contract <STATE_MANAGER_ADDRESS> src/StateManager.sol:StateManager \
-  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
-
-# 2. Verify GnarkVerifier
-forge verify-contract <GNARK_VERIFIER_ADDRESS> src/generated/RollupVerifier.sol:Verifier \
-  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
-
-# 3. Verify VerifierAdapter
-forge verify-contract <VERIFIER_ADAPTER_ADDRESS> src/VerifierAdapter.sol:VerifierAdapter \
-  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
-
-# 4. Verify TradeRegistry
-forge verify-contract <TRADE_REGISTRY_ADDRESS> src/TradeRegistry.sol:TradeRegistry \
-  --rpc-url $VERIFY_RPC --verifier blockscout --verifier-url $VERIFY_API
-```
-
-**Method B: Flattening Source Code for Web UI**
-
-If the explorer requires a single flattened file, generate it using:
-```bash
-cd ~/nowa-zk/contracts
-forge flatten src/TradeRegistry.sol > TradeRegistry_flattened.sol
-```
-*(You can repeat this for `src/StateManager.sol` and the others if needed).*
-
----
-
-## 7. Configure Deployment Info
-
-The prover service needs to know the deployed contract address. After deployment, the addresses are saved in the Foundry broadcast file.
-
-```bash
-# Create the .Nowa-ZK directory
-mkdir -p ~/.nowa-zk
-
-# Copy the deployment file from Foundry's broadcast directory
-cp ~/nowa-zk/contracts/deployments/deployments.json ~/.nowa-zk/deployments.json
-
-# Verify the file was copied correctly
-cat ~/.nowa-zk/deployments.json
+ROLLUP=$(jq -r '.NowaRollup' ~/.nowa-zk/deployments.json)
+cast send $ROLLUP "registerToken(address)" <TOKEN_ADDRESS> --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY
 ```
 
 > [!IMPORTANT]
-> The prover auto-loads the `TradeRegistry` contract address from this file. If you redeploy contracts, you must update this file with the new addresses.
+> **Bootstrap `stateRoot` — required after every fresh deploy, unconditionally.**
+> A fresh `NowaRollup` starts at `stateRoot = 0` — but no real Sequencer tree ever
+> roots to `0`, empty or not. A depth-28 SMT's empty root is the MiMC hash of 28 levels
+> of zero-nodes
+> (`18793058299019184980413965763163005521513826601986169737543200321140307321520`),
+> not literal `0`. Skip this and **every `submitBatch()` reverts with "Invalid old
+> state root" — spending real gas on each failed attempt.** Sync it once, while
+> `batchCount == 0`:
+> ```bash
+> set -a; source .env; set +a   # cast does NOT auto-load .env like the Go binaries do
+>
+> ROLLUP=$(jq -r '.NowaRollup' ~/.nowa-zk/deployments.json)
+> OLDROOT_DEC=$(curl -s http://localhost:8080/batch/1 | jq -r '.old_root')   # batch #1, not /batch/latest — the Prover always starts there on a fresh checkpoint
+> OLDROOT_HEX=$(python3 -c "print('0x' + format(int('$OLDROOT_DEC'), '064x'))")
+> cast send $ROLLUP "setStateRoot(bytes32)" $OLDROOT_HEX --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY
+> ```
+> Redeploying again doesn't avoid this either — a fresh `NowaRollup` always starts at
+> `stateRoot = 0` regardless of deploy count.
 
 ---
 
-## 8. Systemd Services
+## 5. Directory Setup
 
-First, set your username (this only needs to be done once):
+`~/.nowa-zk/` (keys, deployments, per-service data) is created automatically by the
+`make` targets above and by the services below. No `/var/lib/nowa-zk` or `/etc/nowa-zk`
+convention is needed — everything the binaries read/write lives under `~/.nowa-zk/` for
+the user running them.
 
+---
+
+## 6. Systemd Services
+
+Set the username the services will run as:
 ```bash
-# Set your username here (e.g., prover, nowa, ubuntu, etc.)
-USERNAME=prover
+USERNAME=nowa
 ```
 
-### Indexer Service
-
-Create the indexer service file:
+### Sequencer Service
 
 ```bash
-sudo tee /etc/systemd/system/nowa-indexer.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/nowa-sequencer.service > /dev/null <<EOF
 [Unit]
-Description=Nowa-ZK Indexer Service
+Description=Nowa-ZK Sequencer
 After=network-online.target
 
 [Service]
 User=$USERNAME
 Group=$USERNAME
-WorkingDirectory=/home/$USERNAME/nowa-zk
-EnvironmentFile=/etc/nowa/.env
-ExecStart=/home/$USERNAME/nowa-zk/build/indexer-bin start
+WorkingDirectory=/home/$USERNAME/.nowa-zk/sequencer
+EnvironmentFile=/home/$USERNAME/nowa-zk/.env
+Environment=ROLLUP_CONTRACT_ADDRESS=REPLACE_WITH_NOWAROLLUP_ADDRESS
+ExecStart=/home/$USERNAME/nowa-zk/build/sequencer-bin
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -329,23 +152,25 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 ```
+Replace `REPLACE_WITH_NOWAROLLUP_ADDRESS` with `jq -r '.NowaRollup' ~/.nowa-zk/deployments.json`,
+or drop the `Environment=` line and instead put `ROLLUP_CONTRACT_ADDRESS=0x...` directly
+in `.env`. `WorkingDirectory` matters — it's what makes the Sequencer's relative LevelDB
+path (`./nowa_state_db`) land under `~/.nowa-zk/sequencer/` instead of somewhere random.
 
 ### Prover Service
-
-Create the prover service file:
 
 ```bash
 sudo tee /etc/systemd/system/nowa-prover.service > /dev/null <<EOF
 [Unit]
-Description=Nowa-ZK Prover Service
-After=network-online.target
+Description=Nowa-ZK Prover
+After=network-online.target nowa-sequencer.service
 
 [Service]
 User=$USERNAME
 Group=$USERNAME
 WorkingDirectory=/home/$USERNAME/nowa-zk
-EnvironmentFile=/etc/nowa/.env
-ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start --keys-dir /var/lib/nowa-zk/prover/keys --data-dir /var/lib/nowa-zk/prover/data
+EnvironmentFile=/home/$USERNAME/nowa-zk/.env
+ExecStart=/home/$USERNAME/nowa-zk/build/prover-bin start --keys-dir /home/$USERNAME/.nowa-zk/keys --indexer-url http://localhost:8080
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -355,195 +180,167 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 ```
+The Prover auto-loads `NowaRollup`'s address from `~/.nowa-zk/deployments.json` and its
+private key / RPC URL from the `EnvironmentFile` (`PRIVATE_KEY`, `L1_RPC_URL`) — no need
+to pass `--contract`/`--private-key` explicitly unless you want to override them.
 
 ---
 
-## 9. Start Services
-
-### Enable Services
+## 7. Start Services
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable nowa-indexer nowa-prover
-```
+sudo systemctl enable nowa-sequencer nowa-prover
+sudo systemctl start nowa-sequencer
 
-### Start Indexer
+# confirm it's up before starting the prover
+sudo systemctl status nowa-sequencer
+curl http://localhost:8080/batch/count
 
-```bash
-sudo systemctl start nowa-indexer
-```
-
-**Check Status & Logs:**
-```bash
-sudo systemctl status nowa-indexer
-sudo journalctl -u nowa-indexer -f
-```
-
-### Start Prover
-
-Once the indexer is running smoothly:
-
-```bash
 sudo systemctl start nowa-prover
-```
-
-**Check Status & Logs:**
-```bash
-sudo systemctl status nowa-prover
 sudo journalctl -u nowa-prover -f
 ```
 
 ---
 
-## 10. Verify Deployment
+## 8. Testing This Deployment
 
-### Check Service Status
+Process-up isn't the same as "it actually proves and settles a trade." Confirm each
+stage in order — this is the same sequence covered for local dev in
+[../testing.md](../testing.md), adapted for a server you reach over SSH.
+
+### 8a. Services are alive
 
 ```bash
-# Check both services
-sudo systemctl status nowa-indexer nowa-prover
+sudo systemctl status nowa-sequencer nowa-prover
+curl http://localhost:8080/orderbook?token_id=1
+```
+There's no `/status` or `/health` endpoint on the Sequencer today — liveness is "does
+`/orderbook` respond."
 
-# Follow logs
-sudo journalctl -u nowa-indexer -f
+### 8b. Drive a real matched trade
+
+From the server (or over an SSH tunnel to its `:8080`):
+```bash
+cd ~/nowa-zk/sequencer
+go run ./cmd/cli/test_client.go
+curl http://localhost:8080/batch/count       # → {"count":1}
+curl http://localhost:8080/batch/latest      # sealed batch with real Merkle paths
+```
+
+### 8c. Watch the Prover actually prove and submit
+
+```bash
+sudo journalctl -u nowa-prover -f
+```
+Expect, in order:
+```
+📦 Processing batch #1
+🔐 Generating proof...
+🕵️ Verifying proof locally...
+📤 Submitting proof + EIP-4844 DA blob to L1...
+```
+
+If it stalls silently after "Starting prover loop..." with no "Processing batch #N"
+line even though `/batch/count` is non-zero, the Prover's checkpoint store
+(`~/.nowa-zk/prover/data`) likely has a stale `last_processed_batch` from a previous
+deployment on this same host — `make clean-data` clears it (keys/deployments are
+preserved) and restart the service.
+
+If it reaches "Submitting..." and then logs `❌ L1 tx reverted`, see the
+`setStateRoot` bootstrap step in §4 above — an unsynced `stateRoot` is the most common
+cause, and each retry spends real gas, so fix it before letting the service keep
+auto-retrying.
+
+### 8d. Confirm it actually landed on L1
+
+```bash
+ROLLUP=$(jq -r '.NowaRollup' ~/.nowa-zk/deployments.json)
+cast call $ROLLUP "batchCount()(uint64)" --rpc-url $L1_RPC_URL
+cast call $ROLLUP "stateRoot()(bytes32)" --rpc-url $L1_RPC_URL
+```
+`batchCount` should have incremented and `stateRoot` should equal the batch's
+`new_root` (converted to hex) from step 8b. Cross-check the submission transaction on
+a block explorer (Sepolia: `https://sepolia.etherscan.io/address/$ROLLUP`) — look for a
+successful `submitBatch` call with a blob attached.
+
+---
+
+## 9. Restart After Clearing All Data
+
+Once a batch has been submitted, a contract's `stateRoot` and the Sequencer's tree are
+permanently linked — you can't just wipe one side. Full working sequence:
+
+```bash
+# 1. Stop services
+sudo systemctl stop nowa-sequencer nowa-prover
+
+# 2. Wipe all local state
+make clean-sequencer-state
+rm -f ~/.nowa-zk/sequencer/test_client.lock
+make clean-data
+
+# 3. Fresh contract (a used one's batchCount > 0 blocks re-bootstrapping)
+set -a; source .env; set +a
+make deploy
+
+# 4. Restart the Sequencer
+sudo systemctl start nowa-sequencer
+
+# 5. Generate trades — one Alice/Bob pair placing N trades in one run
+cd ~/nowa-zk/sequencer
+go run ./cmd/cli/test_client.go --count 100
+cd ..
+
+# 6. Bootstrap stateRoot from batch #1 (always #1 — see §4's note above)
+ROLLUP=$(jq -r '.NowaRollup' ~/.nowa-zk/deployments.json)
+OLDROOT_DEC=$(curl -s http://localhost:8080/batch/1 | jq -r '.old_root')
+OLDROOT_HEX=$(python3 -c "print('0x' + format(int('$OLDROOT_DEC'), '064x'))")
+cast send $ROLLUP "setStateRoot(bytes32)" $OLDROOT_HEX --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY
+
+# 7. Start the Prover — processes batch #1, #2, ... in order
+sudo systemctl start nowa-prover
 sudo journalctl -u nowa-prover -f
 ```
 
-### Test API Endpoints
+> [!NOTE]
+> Each batch is one real L1 transaction (`BatchSize = 1`) — `--count 100` means 100
+> proofs and 100 gas-spending submissions if the Prover runs to completion.
+
+**Partial resets** (skip the full sequence if you don't need a fresh contract):
+```bash
+make clean-data              # wipe Prover/Indexer DBs only, keep keys & deployments
+make clean-sequencer-state   # wipe the Sequencer's Merkle tree only (stop the service first!)
+```
+For wiping *everything* including keys (not just data), see [cloud-clear.md](./cloud-clear.md).
+
+---
+
+## Manual Verification on a Block Explorer (optional)
 
 ```bash
-# Check indexer status
-curl http://localhost:8080/status
-
-# Check latest batch
-curl http://localhost:8080/batch/latest
+cd ~/nowa-zk/contracts
+cat ~/nowa-zk/contracts/deployments/deployments.json   # {"Verifier": "0x...", "NowaRollup": "0x..."}
+forge config | grep solc   # confirm the compiler version to enter in the explorer UI
 ```
+
+```bash
+# Verifier
+forge verify-contract <VERIFIER_ADDRESS> src/generated/Verifier.sol:Verifier \
+  --rpc-url $L1_RPC_URL --etherscan-api-key $ETHERSCAN_API_KEY
+
+# NowaRollup (constructor args: verifier address + initial state root)
+forge verify-contract <NOWAROLLUP_ADDRESS> src/NowaRollup.sol:NowaRollup \
+  --rpc-url $L1_RPC_URL --etherscan-api-key $ETHERSCAN_API_KEY \
+  --constructor-args $(cast abi-encode "constructor(address,bytes32)" <VERIFIER_ADDRESS> <INITIAL_ROOT>)
+```
+`make verify-contracts` does exactly this for you (Sepolia, chain ID `11155111`) if
+`ETHERSCAN_API_KEY` is set in `.env`.
 
 ---
 
 ## Troubleshooting
 
-### Services Won't Start
-
-```bash
-# Check logs
-sudo journalctl -u nowa-indexer -n 50
-sudo journalctl -u nowa-prover -n 50
-
-# Verify binaries exist
-ls -lh ~/nowa-zk/build/
-
-# Verify permissions
-ls -lh /var/lib/nowa-zk/
-```
-
-### Connection Issues
-
-*   Verify RPC URL is accessible: `curl -X POST $RPC -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'`
-*   Check firewall rules
-*   Ensure private key has sufficient funds
-
-### Key Issues
-
-```bash
-# Verify keys exist
-ls -lh /var/lib/nowa-zk/prover/keys/
-
-# Regenerate if needed
-cd ~/nowa-zk/prover
-../build/prover-bin setup --output-dir ../keys --contract-output ../contracts/src/generated
-sudo cp -r ../keys/* /var/lib/nowa-zk/prover/keys/
-```
-
----
-
-## Disk Space Management
-
-Over time, system logs can consume significant disk space. This section covers how to manage disk usage and keep your server healthy.
-
-### Capping journald Logs
-
-Configure systemd-journald to limit log storage to **500 MB**:
-
-```bash
-sudo nano /etc/systemd/journald.conf
-```
-
-Add or modify these settings:
-
-```ini
-[Journal]
-SystemMaxUse=500M
-SystemKeepFree=1G
-```
-
-Apply the changes:
-
-```bash
-sudo systemctl restart systemd-journald
-```
-
-**Verify the configuration:**
-
-```bash
-# Check current log usage
-journalctl --disk-usage
-
-# Confirm limits are applied
-systemctl show systemd-journald | grep -E 'SystemMaxUse|SystemKeepFree'
-```
-
-### What This Fixes
-
-✅ journald logs are capped at **500 MB**  
-✅ Disk will not silently fill again  
-✅ System remains fully debuggable  
-✅ Nowa-ZK services unaffected  
-
----
-
-## Optional Optimizations
-
-### Reclaim Go Build Cache (Go Developers)
-
-Free up ~2.4 GB by cleaning Go caches:
-
-```bash
-go clean -modcache
-rm -rf ~/.cache/go-build
-```
-
-### Nowa-ZK Disk Strategy
-
-Your indexer state (`/var/lib/nowa-zk`) will grow over time. Options:
-
-| Strategy | Description |
-|----------|-------------|
-| Periodic cleanup | Clear old data for dev environments |
-| Move to another disk | Relocate `/var/lib/nowa-zk` to a larger partition |
-| Bind-mount to SSD | Mount external storage for performance |
-
-### LVM Expansion (Future-Proofing)
-
-If your system uses LVM (`ubuntu-vg/ubuntu-lv`) and has unallocated space, you can extend `/` **without reinstalling**:
-
-```bash
-# Check available space
-sudo vgdisplay
-
-# Extend the logical volume (example: add 10G)
-sudo lvextend -L +10G /dev/ubuntu-vg/ubuntu-lv
-
-# Resize the filesystem
-sudo resize2fs /dev/ubuntu-vg/ubuntu-lv
-```
-
----
-
-## System Health Checklist
-
-| Resource  | Status        |
-|-----------|---------------|
-| RAM       | 🟢 Excellent  |
-| Disk      | 🟢 Healthy    |
-| Logs      | 🟢 Controlled |
-| Stability | 🟢 Solid      |
+See [operations/troubleshooting.md](../operations/troubleshooting.md) for the common
+failure modes (stale keys, wrong contract address, `.env` not loading, disk/log
+management).

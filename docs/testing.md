@@ -1,444 +1,243 @@
-# Testing Guide: Nowa-ZK App-Specific ZK Validium
+# Testing Guide
 
-Quick reference for testing all components of the Nowa-ZK system with terminal commands.
+Quick reference for testing every component of the Nowa-ZK system, plus a real
+end-to-end run.
+
+> [!NOTE]
+> This guide assumes **local development** — everything running on one machine across
+> a few terminals, per [deployment/local.md](deployment/local.md). Testing an already
+> -deployed **cloud** instance (systemd services, SSH, a live Sepolia contract) has its
+> own walkthrough: [deployment/cloud.md §8](deployment/cloud.md#8-testing-this-deployment).
+> The underlying test commands are the same either way — the cloud guide just adapts
+> them for journalctl/systemd instead of foreground terminals.
 
 ---
 
 ## Quick Setup & Validation
 
 ```bash
-# Full clean setup
-make clean
-make setup
+make clean-artifacts
+make setup    # generates ~/.nowa-zk/keys/ + contracts/src/generated/Verifier.sol
 make build
-make test
-
-# Verify binaries
-ls -lh build/
-# Should show: indexer-bin, prover-bin
+make test     # runs contracts + indexer + prover + sequencer unit tests
 ```
 
 ---
 
 ## 1. Contract Testing
 
-### Unit Tests
 ```bash
 cd contracts
 forge test -vv
 
 # Specific test
-forge test --match-test testVerifyProof -vvv
+forge test --match-test testDeposit -vvv
 
 # Gas report
 forge test --gas-report
 ```
 
-### Deploy & Verify
+Deploy locally against Anvil:
 ```bash
-# Deploy to local anvil
-make anvil                    # Terminal 1
-make deploy                   # Terminal 2
+make anvil      # Terminal 1
+make deploy     # Terminal 2 — needs L1_RPC_URL=http://localhost:8545 in .env
 
-# Check deployment
-cat ~/.nowa-zk/deployments.json
+cat ~/.nowa-zk/deployments.json   # {"NowaRollup": "0x...", "Verifier": "0x..."}
 ```
 
-**Common Errors:**
-```bash
-# Error: "RollupVerifier.sol not found"
-make setup  # Regenerate verifier
-
-# Error: "insufficient funds"
-# Check .env has funded private key for anvil
-grep PRIVATE_KEY .env
-```
+**Common error**: `Verifier.sol not found` → run `make setup` first (it generates the
+verifier from the compiled circuit before contracts can build against it).
 
 ---
 
-## 2. Indexer Testing
+## 2. Sequencer Testing
 
-### Unit Tests
+### Unit tests
 ```bash
-cd indexer
+cd sequencer
 go test ./... -v
-
-# Specific package
-go test ./internal/indexer -v
-
-# Coverage
-go test ./... -cover -coverprofile=coverage.out
-go tool cover -html=coverage.out
+# or: make test-sequencer
 ```
+Covers matching (`internal/engine`), the LevelDB SMT (`internal/state`), batching
+(`internal/batcher`), and full trade application (`cmd/sequencer/apply_trade_test.go`).
 
-### Integration Test
+### Live integration test
 ```bash
-# Start indexer
-make run-indexer
+# Terminal 1
+make run-sequencer
+# → "Sequencer API listening on :8080..."
 
-# Test API
-curl http://localhost:8080/health
-curl http://localhost:8080/api/batches/latest
-curl http://localhost:8080/prover/batch/latest
-
-# Check metrics
-curl http://localhost:8080/metrics
+# Terminal 2
+make test-sequencer-live
+# runs sequencer/cmd/cli/test_client.go: generates one Alice & Bob EdDSA keypair pair,
+# registers both accounts (GET /account) ONCE, signs a real order-intent signature AND
+# the correct in-circuit authorization signature, then posts a matching sell/buy pair.
 ```
 
-### Traffic Generation
+Confirm the match landed:
 ```bash
-# Generate test transactions
-make run-traffic-gen COUNT=1000
-
-# Check batch creation
-curl http://localhost:8080/api/batches/latest | jq
+curl http://localhost:8080/orderbook?token_id=1
+curl http://localhost:8080/batch/count       # → {"count":1}
+curl http://localhost:8080/batch/latest      # full sealed batch, with real Merkle paths
 ```
 
-**Common Errors:**
+**Common error**: `circuit_signature required` — you're hitting `/order` with a payload
+that only has the order-intent `signature` field. The circuit-level signature is a
+*separate* field (`circuit_signature`) over a different message
+(`MiMC(OpType, pubX, pubY, baseIndex, quoteIndex)`) — see
+`sequencer/cmd/cli/test_client.go` for how to construct it, or
+[architecture/data-flow.md](architecture/data-flow.md#1-order-submission).
+
+### Stress-testing with many trades (`--count`)
+
 ```bash
-# Error: "bind: address already in use"
-lsof -i :8080
-kill -9 <PID>
-
-# Error: "failed to connect to state db"
-rm -rf ~/.nowa-zk/indexer/data
-make run-indexer
-
-# Error: "RPC connection failed"
-# Check L2_RPC_URL in .env
-curl -X POST $L2_RPC_URL -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+cd sequencer
+go run ./cmd/cli/test_client.go --count 1000
+curl http://localhost:8080/batch/count   # should have grown by exactly 1000
 ```
+Registers one Alice/Bob pair once, then places `N` matched trades in the same run —
+every resulting batch chains correctly (`batch[i].new_root == batch[i+1].old_root`),
+which is what actually lets you verify multi-batching / the Prover working through a
+backlog, rather than one isolated trade.
+
+> [!CAUTION]
+> **Do not run `test_client.go` (or `make test-sequencer-live`) more than once per
+> Sequencer/contract lifetime.** `GET /account` lab-credits a new pubkey by writing
+> directly to the Merkle tree with no `StateTransition` recorded — invisible to the
+> batcher. A second run mints a *new* random keypair, silently advancing the tree root
+> between already-sealed batches, and the next batch becomes permanently unsubmittable
+> (`setStateRoot()`'s escape hatch only works while `batchCount == 0`). We hit this
+> live: batch #1 settled, a second run's batch #2 never could. The tool now enforces
+> this itself — it writes `~/.nowa-zk/sequencer/test_client.lock` after a successful
+> run and refuses to run again (`--force` to override if you understand the risk; see
+> [operations/troubleshooting.md](operations/troubleshooting.md) for full recovery
+> options if you're already stuck).
 
 ---
 
 ## 3. Prover Testing
 
-### Unit Tests
+### Unit tests
 ```bash
 cd prover
 go test ./... -v
 
-# Circuit benchmarks
-cd circuits
-go test -bench=. -benchtime=3s
+# Circuit correctness + benchmarks (includes a real Groth16 prove/verify cycle, ~14s)
+cd circuits && go test -v -bench=. -benchtime=1x
 ```
 
-### Setup Validation
+### Setup validation
 ```bash
-# Check keys exist
 ls -lh ~/.nowa-zk/keys/
-# Should show: rollup.r1cs, rollup.pk, rollup.vk
+# Should show: state.ccs (or rollup.r1cs), state.pk (or rollup.pk), state.vk (or rollup.vk)
 
-# Verify verifier contract generated
-ls -lh contracts/src/generated/RollupVerifier.sol
+ls -lh contracts/src/generated/Verifier.sol
 ```
 
-### Integration Test
+### Live integration test
+
+Needs a sealed batch from the Sequencer test above, plus a funded `PRIVATE_KEY` and
+`L1_RPC_URL` in the root `.env` if you want to go all the way to L1 submission.
+
 ```bash
-# Normal operation
+# From the repo root (so .env loads automatically):
 make run-prover
-
-# Watch logs
-tail -f ~/.nowa-zk/prover/data/*.log  # if logging to file
+```
+Or manually, from inside `prover/` (note: `.env` won't auto-load here — see
+[Troubleshooting](operations/troubleshooting.md#env-not-loading-when-running-from-a-subdirectory)):
+```bash
+cd prover
+export $(grep -v '^\s*#' ../.env | xargs)
+go run ./cmd/prover start --keys-dir ~/.nowa-zk/keys --indexer-url http://localhost:8080
 ```
 
-### Error Handling Tests
+Expected sequence:
+```
+📦 Processing batch #1
+🔐 Generating proof...          ← Groth16 prove, ~1-2s for a single-fill batch
+🕵️ Verifying proof locally...   ← should always pass if the previous step succeeded
+📤 Submitting proof + EIP-4844 DA blob to L1...   ← spends real gas from PRIVATE_KEY
+```
 
-**Test 1: Paranoid Mode (Proof Rebuild)**
+> [!WARNING]
+> The last step broadcasts a real transaction. Only run it against a network/key you
+> intend to spend testnet (or real) gas on.
+
+### Error handling tests (paranoid mode)
 ```bash
-# Simulate verification failure
 ./build/prover-bin start --keys-dir ~/.nowa-zk/keys --test-failure
+# Expected: retries → rebuild → halt
 
-# Expected: 3 retries → rebuild → halt
-# Check failure data
-ls -lh ~/.nowa-zk/prover/failures/
-cat ~/.nowa-zk/prover/failures/batch_*_error.log
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt   # resume after halt
+./build/prover-bin start --keys-dir ~/.nowa-zk/keys --test-failure --paranoid-mode=false
+# Expected: retries only, no rebuild, moves to next batch
 ```
 
-**Test 2: Recovery from Halt**
+**Common errors:**
 ```bash
-# Try restart (should refuse)
-./build/prover-bin start --keys-dir ~/.nowa-zk/keys
+# "invalid witness size, got N, expected M"
+# The compiled keys in --keys-dir don't match the current circuit.
+# Fix: make setup   (regenerates keys to match prover/circuits/state_circuit.go)
+# Do NOT point --keys-dir at prover/keys/ — that's git-ignored and may be stale.
 
-# Clear halt and resume
-./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt
-```
+# "constraint #N is not satisfied"
+# Either a genuine key/circuit mismatch (same fix as above), or the batch's
+# circuit_signature fields don't authorize the exact message the circuit expects
+# (see Sequencer testing above) — check the signing recipe, not just the keys.
 
-**Test 3: Disable Paranoid Mode**
-```bash
-./build/prover-bin start --keys-dir ~/.nowa-zk/keys \
-  --test-failure --paranoid-mode=false
-# Expected: retries only, no rebuild, continues to next batch
-```
-
-**Common Errors:**
-```bash
-# Error: "failed to load circuit/keys"
-make setup  # Regenerate keys
-ls -lh ~/.nowa-zk/keys/
-
-# Error: "failed to fetch contract state root"
-# Check contract deployed
-cat ~/.nowa-zk/deployments.json
-
-# Error: "local verification failed"
-# Circuit/key mismatch - regenerate both
-cd contracts && forge clean
-make setup
-
-# Error: "transaction reverted"
-# Check contract address correct
-./build/prover-bin start --keys-dir ~/.nowa-zk/keys --contract <ADDR>
-
-# Error: "prover is halted"
-./build/prover-bin start --keys-dir ~/.nowa-zk/keys --clear-halt
+# "send blob tx: unexpected eip-4844 sidecar after osaka"
+# go-ethereum built the old single-proof (Version0) blob sidecar; the connected
+# chain has moved past the Osaka hardfork and rejects that format. Fixed in
+# prover/internal/da/blob.go (BlobSidecarVersion1 / cell proofs) — make sure
+# you're on a build that includes that fix.
 ```
 
 ---
 
-## 4. End-to-End Testing
+## 4. Contract Unit Tests Directly Against the Circuit
 
-### Complete Flow Test
+`contracts/test/NowaRollup.t.sol` exercises `deposit`/`submitBatch`/proof verification
+against a `TestVerifier.sol` stub and a canned proof (`contracts/test/data/test_proof.json`).
+Regenerate the test proof if the circuit changes — a stale fixture here will fail in a
+way that looks like a contract bug but isn't.
+
+---
+
+## 5. Full End-to-End Test
+
 ```bash
-# Terminal 1: Blockchain (if using anvil)
+# Terminal 1: local chain (skip if using a real testnet RPC)
 make anvil
 
-# Terminal 2: Deploy contracts
+# Terminal 2: deploy contracts
 make deploy
 cat ~/.nowa-zk/deployments.json
 
-# Terminal 3: Indexer
-make run-indexer
+# Terminal 3: Sequencer
+make run-sequencer
 
-# Terminal 4: Prover  
+# Terminal 4: drive real trades
+make test-sequencer-live
+curl http://localhost:8080/batch/latest
+
+# Terminal 5: Prover — proves + submits to L1
 make run-prover
-
-# Terminal 5: Generate traffic
-make run-traffic-gen COUNT=500
-
-# Verify
-curl http://localhost:8080/api/batches/latest | jq '.number'
-# Should increment as prover processes batches
 ```
 
-### State Synchronization Test
-```bash
-# Stop prover mid-processing
-pkill prover-bin
-
-# Check last processed batch
-# (stored in ~/.nowa-zk/prover/data/)
-
-# Restart prover
-make run-prover
-# Should resume from last batch
-```
-
-### Performance Test
-```bash
-# High volume traffic
-make run-traffic-gen COUNT=10000
-
-# Monitor prover throughput
-watch -n 1 'curl -s http://localhost:8081/health | jq'
-
-# Check batch processing time
-# (look for "took=" in prover logs)
-```
+Watch the Sequencer's stdout for `Matched Trade: ...` / `Sealed batches available: N`,
+and the Prover's for the proof-generation → verification → submission sequence above.
 
 ---
 
-## 5. Common System Errors & Debugging
+## 6. Indexer Testing (legacy, optional)
 
-### Setup Issues
-
-**Error: `make setup` fails**
+The Indexer (`indexer/`) isn't on the live trading path (see
+[architecture/overview.md](architecture/overview.md#indexer-indexer--legacy-optional)),
+but it still has its own test suite if you're working on it:
 ```bash
-# Check Go installed
-go version  # Need 1.24.10+
-
-# Check Foundry installed
-forge --version
-
-# Clean and retry
-make clean
-make setup
-```
-
-**Error: Keys not generated**
-```bash
-# Manual key generation
-./build/prover-bin setup --output-dir ~/.nowa-zk/keys \
-  --contract-output contracts/src/generated
-
-# Verify
-ls -lh ~/.nowa-zk/keys/
-ls -lh contracts/src/generated/RollupVerifier.sol
-```
-
-### Runtime Issues
-
-**Indexer not creating batches**
-```bash
-# Check RPC connection
-curl -X POST $L2_RPC_URL -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
-
-# Check transactions in mempool
-curl http://localhost:8080/api/mempool | jq
-
-# Reset state
-rm -rf ~/.nowa-zk/indexer/data
-make run-indexer
-```
-
-**Prover not processing batches**
-```bash
-# Check indexer is running
-curl http://localhost:8080/health
-
-# Check batches available
-curl http://localhost:8080/prover/batch/latest
-
-# Check prover contract address
-cat ~/.nowa-zk/deployments.json
-# Should match what prover is using
-
-# Manual contract check
-cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $L1_RPC_URL
-```
-
-**State root mismatch**
-```bash
-# Get contract state root
-cast call <CONTRACT_ADDR> "getCurrentStateRoot()" --rpc-url $L1_RPC_URL
-
-# Reset prover state (WARNING: deletes progress)
-rm -rf ~/.nowa-zk/prover/data
-make run-prover
-```
-
-**Gas estimation failures**
-```bash
-# Check wallet has funds
-cast balance <YOUR_ADDRESS> --rpc-url $L1_RPC_URL
-
-# Increase gas limit in code if needed
-# Or use faster RPC endpoint
-```
-
-### Network Issues
-
-**Port conflicts**
-```bash
-# Find process using port
-lsof -i :8080  # Indexer
-lsof -i :8081  # Prover API
-lsof -i :8545  # Anvil
-
-# Kill process
-kill -9 <PID>
-```
-
-**RPC timeouts**
-```bash
-# Test RPC latency
-time curl -X POST $L1_RPC_URL -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
-
-# Use local node or faster endpoint
-# Update .env with better RPC
-```
-
-### Data Issues
-
-**Corrupted database**
-```bash
-# Indexer
-rm -rf ~/.nowa-zk/indexer/data
-make run-indexer
-
-# Prover (WARNING: loses progress)
-rm -rf ~/.nowa-zk/prover/data
-make run-prover
-```
-
-**Disk space full**
-```bash
-# Check space
-df -h ~/.nowa-zk
-
-# Clean old data
-rm -rf ~/.nowa-zk/prover/failures/*  # Old test data
-# Badger DB auto-compacts but can be manually cleaned
-```
-
----
-
-## 6. Debugging Tools
-
-### Logs
-```bash
-# Enable debug logging in prover
-# (already enabled by default - look for DEBUG: lines)
-
-# Grep for errors
-journalctl -u nowa-zk-prover | grep ERROR
-# or if running in terminal:
-make run-prover 2>&1 | tee prover.log
-grep ERROR prover.log
-```
-
-### State Inspection
-```bash
-# Check BadgerDB (Indexer)
-# Keys: last_batch_number, batch_<N>, tx_<hash>
-
-# Check BadgerDB (Prover)  
-# Keys: last_processed_batch, last_state_root, halt_state, failure_<N>
-
-# Manual inspection (requires badger CLI or custom tool)
-```
-
-### Contract Debugging
-```bash
-# Get batch info from contract
-cast call <CONTRACT_ADDR> "getBatch(uint256)" <BATCH_NUM> --rpc-url $L1_RPC_URL
-
-# Get total batches
-cast call <CONTRACT_ADDR> "totalBatches()" --rpc-url $L1_RPC_URL
-
-# Check events
-cast logs --address <CONTRACT_ADDR> --from-block <START> --to-block latest
-```
-
-### Performance Profiling
-```bash
-# Go profiling
-go test -cpuprofile=cpu.prof -memprofile=mem.prof ./...
-go tool pprof cpu.prof
-
-# Circuit benchmarks
-cd prover/circuits
-go test -bench=BenchmarkProve -benchmem -cpuprofile=cpu.prof
-```
-
----
-
-## 7. CI/CD Testing
-
-```bash
-# Full CI test suite
-make clean
-make deps
-make build  
-make test
-
-# Expected: All tests pass
-# contracts: forge test
-# indexer: go test ./...
-# prover: go test ./...
+cd indexer
+go test ./... -v
+./test.sh   # shell-driven integration smoke, see the script for exact endpoints
 ```
 
 ---
@@ -447,33 +246,28 @@ make test
 
 | Component | Command | Purpose |
 |-----------|---------|---------|
-| All | `make test` | Run all unit tests |
+| Everything | `make test` | All unit tests (contracts + indexer + prover + sequencer) |
 | Contracts | `cd contracts && forge test` | Contract unit tests |
-| Indexer | `cd indexer && go test ./...` | Indexer unit tests |
-| Prover | `cd prover && go test ./...` | Prover unit tests |
-| E2E | See section 4 | Full system test |
-| Error Handling | `--test-failure` flag | Test paranoid mode |
-| Performance | `make run-traffic-gen COUNT=10000` | Load test |
+| Sequencer | `cd sequencer && go test ./...` (or `make test-sequencer`) | Matching, SMT, batching |
+| Sequencer (live) | `make test-sequencer-live` (needs `make run-sequencer` running) | Real matched trade against a live REST API |
+| Prover | `cd prover && go test ./...` | Circuit, DA blob packing, witness building |
+| Circuit benchmarks | `cd prover/circuits && go test -bench=. -benchtime=1x` | Real Groth16 prove/verify timing |
+| E2E | See §5 above | Full order → match → proof → L1 |
 
 ---
 
-## Test Checklist
+## Test Checklist Before Deploying Anywhere Real
 
-Before deployment:
-- [ ] `make clean && make setup && make build && make test` passes
-- [ ] Contracts deploy successfully
-- [ ] Indexer creates batches from transactions
-- [ ] Prover processes batches and submits proofs
-- [ ] Error handling tested (paranoid mode)
-- [ ] State recovery tested (restart components)
-- [ ] Performance meets requirements (batch time < target)
-
----
-
-## Getting Help
-
-- Check logs for ERROR/WARN messages
-- Verify all environment variables in `.env`
-- Ensure all binaries are latest version: `make build`
-- Reset state if corrupted: `make clean && make setup`
-- Join Discord/GitHub issues for support
+- [ ] `make clean-artifacts && make setup && make build && make test` passes
+- [ ] `~/.nowa-zk/keys/` and `contracts/src/generated/Verifier.sol` are freshly
+      generated together (never mix keys from one circuit version with a verifier from
+      another)
+- [ ] Contracts deploy successfully and `~/.nowa-zk/deployments.json` reflects the new
+      addresses
+- [ ] `make test-sequencer-live` against `make run-sequencer` produces a sealed batch
+- [ ] `make run-prover` gets through proof generation + local verification (L1
+      submission only if you intend to spend gas)
+- [ ] Error handling tested (`--test-failure`, `--clear-halt`)
+- [ ] You are aware `NowaRollup.withdraw()` is a placeholder, not an escape hatch — see
+      [architecture/overview.md](architecture/overview.md#known-gaps-as-of-2026-08-17)
+      before treating any deployment as holding real user funds

@@ -200,3 +200,26 @@ func (e *Engine) insertAsk(ob *Orderbook, order *types.Order) {
 		ob.Asks[insertIdx] = order
 	}
 }
+
+// SnapshotOrderbook returns copies of resting bids/asks for a token (for API).
+func (e *Engine) SnapshotOrderbook(tokenID uint32) (bids []*types.Order, asks []*types.Order) {
+	ob := e.getOrCreateOrderbook(tokenID)
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
+	bids = make([]*types.Order, len(ob.Bids))
+	for i, o := range ob.Bids {
+		cp := *o
+		cp.Amount = new(big.Int).Set(o.Amount)
+		cp.Price = new(big.Int).Set(o.Price)
+		bids[i] = &cp
+	}
+	asks = make([]*types.Order, len(ob.Asks))
+	for i, o := range ob.Asks {
+		cp := *o
+		cp.Amount = new(big.Int).Set(o.Amount)
+		cp.Price = new(big.Int).Set(o.Price)
+		asks[i] = &cp
+	}
+	return bids, asks
+}

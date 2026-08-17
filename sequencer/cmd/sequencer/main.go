@@ -1,16 +1,16 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
-	"math/big"
-	"strings"
-	"time"
-
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/api"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/batcher"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/engine"
@@ -21,65 +21,72 @@ import (
 func main() {
 	fmt.Println("Starting Nowa-ZK Sequencer...")
 
-	// 1. Initialize State DB (LevelDB SMT)
 	tree, err := state.NewLevelDBMerkleTree("./nowa_state_db", 28)
 	if err != nil {
 		log.Fatalf("Failed to initialize state DB: %v", err)
 	}
 	defer tree.Close()
 
-	// 2. Start Matching Engine
 	tradeQueue := make(chan types.Trade, 1000)
 	eng := engine.NewEngine(tradeQueue)
-
 	batch := batcher.NewBatcher()
 
-	// Background worker to process trades and update state DB
+	// Apply every real match into Merkle state + ZK batch (BatchSize=1 ⇒ seals immediately).
 	go func() {
 		for trade := range tradeQueue {
-			fmt.Printf("Matched Trade: %s (Amount: %s, Price: %s)\n", trade.TradeID, trade.MatchAmount.String(), trade.MatchPrice.String())
+			fmt.Printf("Matched Trade: %s (Amount: %s, Price: %s)\n",
+				trade.TradeID, trade.MatchAmount.String(), trade.MatchPrice.String())
 			applyTrade(trade, tree, batch)
-		}
-	}()
-
-	// Background worker to auto-pad batches with dummy trades every 10 seconds if there are pending trades
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-			current := batch.GetCurrentBatchSize()
-			if current > 0 && current < batcher.BatchSize {
-				fmt.Printf("Auto-padding batch with %d dummy trades...\n", batcher.BatchSize-current)
-				for i := current; i < batcher.BatchSize; i++ {
-					applyDummyTrade(tree, batch)
-				}
+			if n := batch.GetBatchCount(); n > 0 {
+				fmt.Printf("Sealed batches available: %d (latest ready for prover)\n", n)
 			}
 		}
 	}()
 
-	// Start API Server (inject batcher as well)
-	server := api.NewServer(eng, batch)
+	server := api.NewServer(eng, batch, tree)
 	go func() {
 		if err := server.Start(":8080"); err != nil {
 			log.Fatalf("Server failed: %v", err)
 		}
 	}()
 
-	// 4. Start L1 Deposit Watcher
-	// Use environment variables for L1 connection
 	rpcURL := os.Getenv("L1_RPC_URL")
-	if rpcURL == "" { rpcURL = "http://localhost:8545" }
+	if rpcURL == "" {
+		rpcURL = "http://localhost:8545"
+	}
 	contractAddr := os.Getenv("ROLLUP_CONTRACT_ADDRESS")
+	if contractAddr == "" {
+		home, _ := os.UserHomeDir()
+		// optional: Makefile may export it
+		_ = home
+	}
 	if contractAddr != "" {
 		go StartDepositWatcher(rpcURL, contractAddr, tree, batch)
 	} else {
 		fmt.Println("No ROLLUP_CONTRACT_ADDRESS provided. Deposit watcher disabled.")
 	}
 
-	// Wait for termination signal
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
 	fmt.Println("\nShutting down Sequencer gracefully...")
+}
+
+func decodePubKeyXY(pubKeyHex string) (*big.Int, *big.Int, error) {
+	clean := strings.TrimPrefix(pubKeyHex, "0x")
+	raw, err := hex.DecodeString(clean)
+	if err != nil {
+		return nil, nil, err
+	}
+	var pk eddsa.PublicKey
+	if _, err := pk.SetBytes(raw); err != nil {
+		return nil, nil, err
+	}
+	x := new(big.Int)
+	y := new(big.Int)
+	pk.A.X.BigInt(x)
+	pk.A.Y.BigInt(y)
+	return x, y, nil
 }
 
 func getOrCreateBalance(tree *state.LevelDBMerkleTree, pubKeyHex string, tokenID uint32) (*types.BalanceState, error) {
@@ -93,19 +100,17 @@ func getOrCreateBalance(tree *state.LevelDBMerkleTree, pubKeyHex string, tokenID
 		return nil, err
 	}
 	if acc == nil {
-		// Decode pubkey 
-		cleanHex := strings.TrimPrefix(pubKeyHex, "0x")
-		pubX, _ := new(big.Int).SetString(cleanHex[:len(cleanHex)/2], 16)
-		pubY, _ := new(big.Int).SetString(cleanHex[len(cleanHex)/2:], 16)
-		if pubX == nil { pubX = big.NewInt(0) }
-		if pubY == nil { pubY = big.NewInt(0) }
-
+		pubX, pubY, err := decodePubKeyXY(pubKeyHex)
+		if err != nil {
+			pubX, pubY = big.NewInt(0), big.NewInt(0)
+			fmt.Printf("getOrCreateBalance: pubkey decode failed (%v), using zeros\n", err)
+		}
 		acc = &types.BalanceState{
 			AccountID: accID,
 			TokenID:   tokenID,
 			PubKeyX:   pubX,
 			PubKeyY:   pubY,
-			Balance:   new(big.Int).SetInt64(1000000), // Give new balances 1 million tokens for testing!
+			Balance:   new(big.Int).SetInt64(1000000), // lab credit until L1 deposit path is used
 			Nonce:     0,
 		}
 		if err := tree.SetBalance(acc); err != nil {
@@ -130,121 +135,137 @@ func getEmptyStateUpdate(tree *state.LevelDBMerkleTree, index uint64) types.Stat
 	}
 }
 
+func quoteTokenForBook(baseToken uint32) uint32 {
+	if baseToken == 1 {
+		return 2
+	}
+	return 1
+}
+
+func snapshotUpdate(tree *state.LevelDBMerkleTree, acc *types.BalanceState) types.StateUpdate {
+	index := (acc.AccountID * 256) + uint64(acc.TokenID)
+	path, bits := tree.GetPath(index)
+	var pathStr [28]string
+	for i := 0; i < 28; i++ {
+		pathStr[i] = path[i].String()
+	}
+	return types.StateUpdate{
+		Index: index, Balance: acc.Balance.String(), Nonce: acc.Nonce, Path: pathStr, PathBits: bits,
+	}
+}
+
+// applyTrade orients the fill as circuit expects: maker = seller of base, taker = buyer paying quote.
+// Partial fills: MatchAmount can be < resting size; remainder stays on the book with the same circuit auth.
 func applyTrade(trade types.Trade, tree *state.LevelDBMerkleTree, batch *batcher.Batcher) {
+	var sellOrder, buyOrder types.Order
+	switch {
+	case !trade.MakerOrder.IsBuy && trade.TakerOrder.IsBuy:
+		sellOrder, buyOrder = trade.MakerOrder, trade.TakerOrder
+	case trade.MakerOrder.IsBuy && !trade.TakerOrder.IsBuy:
+		sellOrder, buyOrder = trade.TakerOrder, trade.MakerOrder
+	default:
+		fmt.Printf("applyTrade: expected one buy and one sell, skipping %s\n", trade.TradeID)
+		return
+	}
+
+	if sellOrder.CircuitSignature == "" || buyOrder.CircuitSignature == "" {
+		fmt.Printf("applyTrade: missing circuit_signature on orders, skipping %s\n", trade.TradeID)
+		return
+	}
+
+	baseToken := sellOrder.TokenID
+	quoteToken := quoteTokenForBook(baseToken)
+	if sellOrder.TokenID != buyOrder.TokenID {
+		// Rare dual-token path from unit tests: buyer sells their TokenID as quote.
+		quoteToken = buyOrder.TokenID
+		baseToken = sellOrder.TokenID
+	}
+
+	matchAmount := trade.MatchAmount
+	matchQuote := new(big.Int).Mul(trade.MatchAmount, trade.MatchPrice)
+
+	sellerBase, err := getOrCreateBalance(tree, sellOrder.MakerAddress, baseToken)
+	if err != nil {
+		fmt.Printf("applyTrade: seller base: %v\n", err)
+		return
+	}
+	sellerQuote, err := getOrCreateBalance(tree, sellOrder.MakerAddress, quoteToken)
+	if err != nil {
+		fmt.Printf("applyTrade: seller quote: %v\n", err)
+		return
+	}
+	buyerBase, err := getOrCreateBalance(tree, buyOrder.MakerAddress, baseToken)
+	if err != nil {
+		fmt.Printf("applyTrade: buyer base: %v\n", err)
+		return
+	}
+	buyerQuote, err := getOrCreateBalance(tree, buyOrder.MakerAddress, quoteToken)
+	if err != nil {
+		fmt.Printf("applyTrade: buyer quote: %v\n", err)
+		return
+	}
+
+	if sellerBase.Balance.Cmp(matchAmount) < 0 {
+		fmt.Printf("applyTrade: insufficient seller base, skipping %s\n", trade.TradeID)
+		return
+	}
+	if buyerQuote.Balance.Cmp(matchQuote) < 0 {
+		fmt.Printf("applyTrade: insufficient buyer quote, skipping %s\n", trade.TradeID)
+		return
+	}
+
 	oldRoot := tree.Root().String()
 
-	// In a real system, the maker is selling TokenA for TokenB, and the taker is selling TokenB for TokenA.
-	makerBaseToken := trade.MakerOrder.TokenID // Token being sold by Maker
-	takerBaseToken := trade.TakerOrder.TokenID // Token being sold by Taker (Maker's Quote token)
-
-	// Maker State
-	makerBaseAcc, _ := getOrCreateBalance(tree, trade.MakerOrder.MakerAddress, makerBaseToken)
-	makerQuoteAcc, _ := getOrCreateBalance(tree, trade.MakerOrder.MakerAddress, takerBaseToken)
-
-	// Taker State
-	takerBaseAcc, _ := getOrCreateBalance(tree, trade.TakerOrder.MakerAddress, takerBaseToken)
-	takerQuoteAcc, _ := getOrCreateBalance(tree, trade.TakerOrder.MakerAddress, makerBaseToken)
-
-	// 1. Fetch paths before updates
-	makerBaseIndex := (makerBaseAcc.AccountID * 256) + uint64(makerBaseAcc.TokenID)
-	makerBasePath, makerBaseBits := tree.GetPath(makerBaseIndex)
-	var makerBasePathStr [28]string
-	for i := 0; i < 28; i++ { makerBasePathStr[i] = makerBasePath[i].String() }
-	makerBaseUpdate := types.StateUpdate{
-		Index: makerBaseIndex, Balance: makerBaseAcc.Balance.String(), Nonce: makerBaseAcc.Nonce, Path: makerBasePathStr, PathBits: makerBaseBits,
+	// Paths must be taken in the same order the circuit updates leaves.
+	makerBaseUpdate := snapshotUpdate(tree, sellerBase)
+	sellerBase.Balance.Sub(sellerBase.Balance, matchAmount)
+	if err := tree.SetBalance(sellerBase); err != nil {
+		fmt.Printf("applyTrade: set seller base: %v\n", err)
+		return
 	}
 
-	// 2. Perform updates
-	makerBaseAcc.Balance.Sub(makerBaseAcc.Balance, trade.MatchAmount)
-	makerBaseAcc.Nonce++
-	tree.SetBalance(makerBaseAcc)
-
-	makerQuoteIndex := (makerQuoteAcc.AccountID * 256) + uint64(makerQuoteAcc.TokenID)
-	makerQuotePath, makerQuoteBits := tree.GetPath(makerQuoteIndex)
-	var makerQuotePathStr [28]string
-	for i := 0; i < 28; i++ { makerQuotePathStr[i] = makerQuotePath[i].String() }
-	makerQuoteUpdate := types.StateUpdate{
-		Index: makerQuoteIndex, Balance: makerQuoteAcc.Balance.String(), Nonce: makerQuoteAcc.Nonce, Path: makerQuotePathStr, PathBits: makerQuoteBits,
+	makerQuoteUpdate := snapshotUpdate(tree, sellerQuote)
+	sellerQuote.Balance.Add(sellerQuote.Balance, matchQuote)
+	if err := tree.SetBalance(sellerQuote); err != nil {
+		fmt.Printf("applyTrade: set seller quote: %v\n", err)
+		return
 	}
 
-	matchQuoteAmount := new(big.Int).Mul(trade.MatchAmount, trade.MatchPrice)
-	makerQuoteAcc.Balance.Add(makerQuoteAcc.Balance, matchQuoteAmount)
-	tree.SetBalance(makerQuoteAcc)
-
-	takerBaseIndex := (takerBaseAcc.AccountID * 256) + uint64(takerBaseAcc.TokenID)
-	takerBasePath, takerBaseBits := tree.GetPath(takerBaseIndex)
-	var takerBasePathStr [28]string
-	for i := 0; i < 28; i++ { takerBasePathStr[i] = takerBasePath[i].String() }
-	takerBaseUpdate := types.StateUpdate{
-		Index: takerBaseIndex, Balance: takerBaseAcc.Balance.String(), Nonce: takerBaseAcc.Nonce, Path: takerBasePathStr, PathBits: takerBaseBits,
+	takerBaseUpdate := snapshotUpdate(tree, buyerBase)
+	buyerBase.Balance.Add(buyerBase.Balance, matchAmount)
+	if err := tree.SetBalance(buyerBase); err != nil {
+		fmt.Printf("applyTrade: set buyer base: %v\n", err)
+		return
 	}
 
-	takerBaseAcc.Balance.Sub(takerBaseAcc.Balance, matchQuoteAmount)
-	takerBaseAcc.Nonce++
-	tree.SetBalance(takerBaseAcc)
-
-	takerQuoteIndex := (takerQuoteAcc.AccountID * 256) + uint64(takerQuoteAcc.TokenID)
-	takerQuotePath, takerQuoteBits := tree.GetPath(takerQuoteIndex)
-	var takerQuotePathStr [28]string
-	for i := 0; i < 28; i++ { takerQuotePathStr[i] = takerQuotePath[i].String() }
-	takerQuoteUpdate := types.StateUpdate{
-		Index: takerQuoteIndex, Balance: takerQuoteAcc.Balance.String(), Nonce: takerQuoteAcc.Nonce, Path: takerQuotePathStr, PathBits: takerQuoteBits,
+	takerQuoteUpdate := snapshotUpdate(tree, buyerQuote)
+	buyerQuote.Balance.Sub(buyerQuote.Balance, matchQuote)
+	if err := tree.SetBalance(buyerQuote); err != nil {
+		fmt.Printf("applyTrade: set buyer quote: %v\n", err)
+		return
 	}
-
-	takerQuoteAcc.Balance.Add(takerQuoteAcc.Balance, trade.MatchAmount)
-	tree.SetBalance(takerQuoteAcc)
 
 	newRoot := tree.Root().String()
 
 	st := types.StateTransition{
-		OpType:       0, // OpTrade
-		Amount:       trade.MatchAmount.String(),
-		QuoteAmount:  matchQuoteAmount.String(),
+		OpType:      0,
+		Amount:      matchAmount.String(),
+		QuoteAmount: matchQuote.String(),
 
-		MakerPubKeyX: makerBaseAcc.PubKeyX.String(),
-		MakerPubKeyY: makerBaseAcc.PubKeyY.String(),
-		MakerSig:     trade.MakerOrder.Signature,
+		MakerPubKeyX: sellerBase.PubKeyX.String(),
+		MakerPubKeyY: sellerBase.PubKeyY.String(),
+		MakerSig:     sellOrder.CircuitSignature,
 		MakerBase:    makerBaseUpdate,
 		MakerQuote:   makerQuoteUpdate,
 
-		TakerPubKeyX: takerBaseAcc.PubKeyX.String(),
-		TakerPubKeyY: takerBaseAcc.PubKeyY.String(),
-		TakerSig:     trade.TakerOrder.Signature,
+		TakerPubKeyX: buyerBase.PubKeyX.String(),
+		TakerPubKeyY: buyerBase.PubKeyY.String(),
+		TakerSig:     buyOrder.CircuitSignature,
 		TakerBase:    takerBaseUpdate,
 		TakerQuote:   takerQuoteUpdate,
 	}
 
 	batch.AddTransition(st, oldRoot, newRoot)
-}
-
-func applyDummyTrade(tree *state.LevelDBMerkleTree, batch *batcher.Batcher) {
-	oldRoot := tree.Root().String()
-
-	acc, _ := getOrCreateBalance(tree, "0x0000000000000000000000000000000000000000", 0)
-	leafIndex := (acc.AccountID * 256) + uint64(acc.TokenID)
-	
-	makerBaseUpdate := getEmptyStateUpdate(tree, leafIndex)
-	makerBaseUpdate.Balance = acc.Balance.String()
-	makerBaseUpdate.Nonce = acc.Nonce
-
-	// A dummy transfer is just OpType=1, Amount=0. We use makerBaseUpdate.
-	st := types.StateTransition{
-		OpType: 1, // OpTransfer
-		Amount: "0",
-		QuoteAmount: "0",
-
-		MakerPubKeyX: acc.PubKeyX.String(),
-		MakerPubKeyY: acc.PubKeyY.String(),
-		MakerSig:     "0x0000000000000000000000000000000000000000000000000000000000000000",
-		MakerBase:    makerBaseUpdate,
-		MakerQuote:   getEmptyStateUpdate(tree, 99),
-
-		TakerPubKeyX: acc.PubKeyX.String(),
-		TakerPubKeyY: acc.PubKeyY.String(),
-		TakerSig:     "0x0000000000000000000000000000000000000000000000000000000000000000",
-		TakerBase:    getEmptyStateUpdate(tree, leafIndex),
-		TakerQuote:   getEmptyStateUpdate(tree, 99),
-	}
-
-	batch.AddTransition(st, oldRoot, oldRoot) // root doesn't change
+	fmt.Printf("applyTrade: applied fill %s amount=%s quote=%s (sealed batches=%d)\n",
+		trade.TradeID, matchAmount.String(), matchQuote.String(), batch.GetBatchCount())
 }

@@ -177,13 +177,13 @@ func TestStateCircuit_ValidTransfer(t *testing.T) {
 	newRoot := smt.Root()
 	
 	// Build MsgHash and Sign
-	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99), big.NewInt(200), big.NewInt(0), big.NewInt(1))
+	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99))
 	var makerMsgHashFr fr.Element
 	makerMsgHashFr.SetBigInt(makerMsgHashBig)
 	makerMsgHashBytes := makerMsgHashFr.Bytes()
 	sig, _ := privKey.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
 	
-	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99), big.NewInt(200), big.NewInt(0), big.NewInt(0))
+	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99))
 	var takerMsgHashFr fr.Element
 	takerMsgHashFr.SetBigInt(takerMsgHashBig)
 	takerMsgHashBytes := takerMsgHashFr.Bytes()
@@ -271,14 +271,14 @@ func TestStateCircuit_ValidDeposit(t *testing.T) {
 	newRoot := smt.Root()
 	
 	// Build MsgHash and Sign for Sequencer (Maker)
-	makerMsgHashBig := hashGo(big.NewInt(3), seqX, seqY, big.NewInt(0), big.NewInt(99), big.NewInt(200), big.NewInt(0), big.NewInt(1))
+	makerMsgHashBig := hashGo(big.NewInt(3), seqX, seqY, big.NewInt(0), big.NewInt(99))
 	var makerMsgHashFr fr.Element
 	makerMsgHashFr.SetBigInt(makerMsgHashBig)
 	makerMsgHashBytes := makerMsgHashFr.Bytes()
 	seqSig, _ := seqPriv.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
 	
-	// Build MsgHash and Sign for Taker (Dummy valid signature for deposits)
-	takerMsgHashBig := hashGo(big.NewInt(3), takerX, takerY, big.NewInt(1), big.NewInt(99), big.NewInt(200), big.NewInt(0), big.NewInt(0))
+	// Build MsgHash and Sign for Taker (valid signature for deposits)
+	takerMsgHashBig := hashGo(big.NewInt(3), takerX, takerY, big.NewInt(1), big.NewInt(99))
 	var takerMsgHashFr fr.Element
 	takerMsgHashFr.SetBigInt(takerMsgHashBig)
 	takerMsgHashBytes := takerMsgHashFr.Bytes()
@@ -365,13 +365,19 @@ func TestStateCircuit_InvalidSignature(t *testing.T) {
 	newRoot := smt.Root()
 	
 	// Generate INVALID signature (sign different amount)
-	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99), big.NewInt(99999), big.NewInt(0), big.NewInt(1))
+	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99))
 	var makerMsgHashFr fr.Element
 	makerMsgHashFr.SetBigInt(makerMsgHashBig)
 	makerMsgHashBytes := makerMsgHashFr.Bytes()
-	invalidSig, _ := privKey.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
+	// Sign a DIFFERENT payload so verification fails against the circuit message.
+	invalidMsg := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(98))
+	var invalidFr fr.Element
+	invalidFr.SetBigInt(invalidMsg)
+	invalidBytes := invalidFr.Bytes()
+	invalidSig, _ := privKey.Sign(invalidBytes[:], mimc.NewMiMC())
+	_ = makerMsgHashBytes
 	
-	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99), big.NewInt(200), big.NewInt(0), big.NewInt(0))
+	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99))
 	var takerMsgHashFr fr.Element
 	takerMsgHashFr.SetBigInt(takerMsgHashBig)
 	takerMsgHashBytes := takerMsgHashFr.Bytes()

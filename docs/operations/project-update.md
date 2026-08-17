@@ -1,292 +1,104 @@
 # Project Update & Full Reset Guide
 
-This guide covers procedures when the Nowa-ZK codes changes, most of the time it require key regeneration and contract redeployment again.
-
----
+Procedures for when the ZK circuit changes — this almost always means new keys **and**
+redeploying contracts.
 
 ## When Do You Need This?
 
-Use this guide when:
-- ✅ The ZK circuit code has changed (check release notes)
-- ✅ You're getting constraint satisfaction errors in the prover
-- ✅ Keys need to be regenerated for any reason
+- The circuit changed (`prover/circuits/state_circuit.go` — check the diff/release notes)
+- You're seeing `invalid witness size` or `constraint #N is not satisfied` from the Prover
+- Keys need regenerating for any other reason
 
 > [!CAUTION]
-> **Circuit changes require FULL contract redeployment** because the `RollupVerifier.sol` contract is cryptographically tied to the verification key. Old contracts cannot verify proofs from new keys.
+> **Circuit changes require redeploying both `Verifier.sol` and `NowaRollup.sol`.**
+> `Verifier.sol` is generated straight from the new verifying key — a fresh deploy of
+> just `Verifier` doesn't help on its own, because `NowaRollup`'s constructor pins one
+> specific `Verifier` address permanently (no setter). You need a new `NowaRollup`
+> pointed at the new `Verifier`, which means the on-chain `stateRoot`/`batchCount`
+> history resets too.
 
 ---
 
-## Quick Command Reference
+## Steps
 
 ```bash
-# 1. Stop both services
-sudo systemctl stop nowa-zk-indexer nowa-zk-prover
+# 1. Stop services
+sudo systemctl stop nowa-sequencer nowa-prover   # or Ctrl+C if running manually
 
-# 2. Navigate to project
+# 2. Get the new circuit code
 cd ~/nowa-zk
 git pull origin main
 
-# 3. Rebuild prover binary
-cd prover
-go build -o ../build/prover-bin ./cmd/prover
-cd ..
+# 3. Regenerate keys AND Verifier.sol from the new circuit
+make setup
+# writes ~/.nowa-zk/keys/{state.ccs,state.pk,state.vk} (or rollup.* names)
+# and contracts/src/generated/Verifier.sol
 
-# 4. Regenerate keys AND new RollupVerifier.sol
-./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
+# 4. Rebuild everything
+make build
 
-# 5. Rebuild contracts (with new verifier)
-cd contracts
-forge build
-cd ..
-
-# 6. Redeploy contracts to chain
-
-# Fix .env permissions (if needed)
-sudo chmod 640 /etc/nowa-zk/.env
-sudo chown $USER:$USER /etc/nowa-zk/.env
-
-# Navigate to contracts directory
-cd ~/nowa-zk/contracts
-
-# Load environment variables
-set -a  # Auto-export all variables
-source /etc/nowa-zk/.env
+# 5. Redeploy contracts (fresh Verifier + fresh NowaRollup)
+set -a
+source .env
 set +a
+make deploy
+# → writes NEW addresses to contracts/deployments/deployments.json
+#   AND copies them to ~/.nowa-zk/deployments.json automatically
 
-# Verify variables are loaded
-echo "RPC: $RPC"
-echo "Private Key loaded: ${PRIVATE_KEY:0:10}..."
+cat ~/.nowa-zk/deployments.json   # confirm both addresses changed
 
-# Deploy with correct contract name
-forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
+# 6. Re-register any ERC20 tokens (registerToken is per-deployment, not carried over)
+ROLLUP=$(jq -r '.NowaRollup' ~/.nowa-zk/deployments.json)
+cast send $ROLLUP "registerToken(address)" <TOKEN_ADDRESS> --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY
 
-cd ..
-# ⚠️ Note the CHAIN_ID and NEW CONTRACT ADDRESS from deploy output
+# 7. Reset the Prover's checkpoint (it's tied to the old contract's batch numbering)
+make clean-data
 
-# 7. Update deployments.json (prover auto-loads from this)
-# Replace CHAIN_ID with your actual chain ID from deployment output
-cp ~/nowa-zk/contracts/deployments/CHAIN_ID.json ~/nowa-zk/.nowa-zk/deployments.json
+# 8. Bootstrap the new contract's stateRoot — REQUIRED, not optional.
+#    A fresh NowaRollup always starts at stateRoot = 0, but no real Sequencer tree
+#    (even a genuinely empty one) ever roots to 0 — a depth-28 SMT's empty root is
+#    the MiMC hash of 28 levels of zero-nodes, a different specific constant. Skip
+#    this and every submitBatch() reverts with "Invalid old state root", spending
+#    real gas each attempt.
+#
+#    If keeping existing Sequencer state (circuit change is balance/logic-compatible):
+OLDROOT_DEC=$(curl -s http://localhost:8080/batch/1 | jq -r '.old_root')   # batch #1, not /batch/latest — the Prover always starts there on a fresh checkpoint
+OLDROOT_HEX=$(python3 -c "print('0x' + format(int('$OLDROOT_DEC'), '064x'))")
+cast send $ROLLUP "setStateRoot(bytes32)" $OLDROOT_HEX --rpc-url $L1_RPC_URL --private-key $PRIVATE_KEY
+#    (owner-only, only callable while batchCount == 0 on the NEW contract)
+#
+#    If starting the Sequencer from scratch instead: `make clean-sequencer-state`
+#    only deletes the on-disk DB — it has no effect while the Sequencer process is
+#    still running (it'll keep serving its already-open, unchanged state). Actually
+#    STOP the Sequencer first, run clean-sequencer-state, then restart it — and note
+#    its first real batch still won't have old_root == 0, so you'll run the same
+#    setStateRoot command above once it has at least one account/deposit in it.
 
-# Verify it updated
-cat ~/nowa-zk/.nowa-zk/deployments.json
-
-# 8. Copy new keys to persistent storage
-sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
-sudo chown -R $USER:$USER /var/lib/nowa-zk
-
-# 9. Delete prover database to start from batch 0
-find ~/nowa-zk/.nowa-zk/ -name "*.db" -delete
-find ~/nowa-zk/.nowa-zk/ -name "*.bolt" -delete
-
-# 10. Reload systemd and restart both services
-sudo systemctl daemon-reload
-sudo systemctl start nowa-zk-indexer nowa-zk-prover
-
-# 11. Monitor (check that prover uses new contract and starts from batch 0)
-sudo journalctl -u nowa-zk-prover -f
-# You should see: "Auto-loaded Contract: 0x..." (your NEW address)
-# And: "Starting from batch #0" or "No previous state found"
+# 9. Restart
+sudo systemctl start nowa-sequencer nowa-prover
+sudo journalctl -u nowa-prover -f
 ```
-
----
-
-## Full Reset Script (Nuclear Option)
-
-Use this automated script to completely **reset everything** - database, keys, and contracts.
 
 > [!WARNING]
-> This **deletes ALL chain data** and starts from block 0. Use only when necessary.
-
-### Automated Reset Script
-
-Save as `~/reset-nowa-zk.sh`:
-
-```bash
-#!/bin/bash
-set -e
-
-echo "⚠️  WARNING: This will delete all chain data, rotate keys, and redeploy contracts."
-read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 1
-fi
-
-# --- 1. Stop Services ---
-echo "🛑 Stopping services..."
-sudo systemctl stop nowa-zk-indexer nowa-zk-prover
-
-# --- 2. Cleanup Data (Reset Database) ---
-echo "🧹 Cleaning up old data..."
-# Clear Indexer State
-if [ -d "/var/lib/nowa-zk/indexer/state" ]; then
-    sudo rm -rf /var/lib/nowa-zk/indexer/state/*
-    echo "   - Indexer state cleared"
-fi
-# Clear Prover Data/Keys
-if [ -d "/var/lib/nowa-zk/prover" ]; then
-    sudo rm -rf /var/lib/nowa-zk/prover/keys/*
-    sudo rm -rf /var/lib/nowa-zk/prover/data/*
-    echo "   - Prover data & keys cleared"
-fi
-
-# --- 3. Pull & Rebuild ---
-echo "🏗️  Rebuilding..."
-cd ~/nowa-zk
-git pull origin main
-
-# Clean old artifacts
-cd prover
-go clean
-cd ../indexer
-go clean
-cd ../contracts
-forge clean
-cd ..
-
-# Build prover binary first
-cd prover
-go build -o ../build/prover-bin ./cmd/prover
-cd ..
-
-# Generate NEW prover keys and verifier contract
-echo "🔑 Generating new keys..."
-./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
-
-# Build contracts
-echo "🏗️  Building contracts..."
-cd contracts
-forge build
-cd ..
-
-# Build Go binaries
-echo "🏗️  Building binaries..."
-cd indexer
-go build -o ../build/indexer-bin ./cmd/indexer
-cd ../prover
-go build -o ../build/prover-bin ./cmd/prover
-cd ..
-
-# --- 4. Persist New Keys ---
-echo "🔑 Updating persistent keys..."
-sudo mkdir -p /var/lib/nowa-zk/prover/keys
-sudo cp -r keys/* /var/lib/nowa-zk/prover/keys/
-# Fix permissions so the service user can read them
-sudo chown -R $USER:$USER /var/lib/nowa-zk
-
-# --- 5. Redeploy Contracts ---
-echo "🚀 Redeploying contracts..."
-# Load environment variables
-if [ ! -f /etc/nowa-zk/.env ]; then
-    echo "❌ Error: /etc/nowa-zk/.env not found!"
-    exit 1
-fi
-
-set -a
-source /etc/nowa-zk/.env
-set +a
-
-cd contracts
-forge script script/Deploy.s.sol:Deploy --rpc-url $RPC --private-key $PRIVATE_KEY --broadcast
-cd ..
-
-# Save deployment info and update deployments.json
-CHAIN_ID=$(cast chain-id --rpc-url $RPC)
-cp contracts/deployments/$CHAIN_ID.json .nowa-zk/deployments.json
-echo "✅ Updated .nowa-zk/deployments.json with new contract"
-
-# Delete prover database to start from batch 0
-rm -f .nowa-zk/*.db .nowa-zk/*.bolt
-echo "✅ Deleted prover database"
-
-# --- 6. Restart Services ---
-echo "✅ Restarting services..."
-sudo systemctl daemon-reload
-sudo systemctl start nowa-zk-indexer
-sudo systemctl start nowa-zk-prover
-
-echo "🎉 Reset Complete!"
-echo "Check status:"
-echo "  sudo systemctl status nowa-zk-indexer"
-echo "  sudo systemctl status nowa-zk-prover"
-echo "  sudo journalctl -u nowa-zk-indexer -f"
-echo "  sudo journalctl -u nowa-zk-prover -f"
-```
-
-### Usage
-
-```bash
-# 1. Save the script
-nano ~/reset-nowa-zk.sh
-
-# 2. Make executable
-chmod +x ~/reset-nowa-zk.sh
-
-# 3. Run
-./reset-nowa-zk.sh
-```
+> Redeploying loses all previous on-chain batch history on the new `NowaRollup`
+> instance — the old contract still exists and still verifies its own old proofs, but
+> nothing new gets submitted to it. There is currently no migration path for L2
+> balances between the old and new deployments other than `setStateRoot()` if the
+> circuit's account/leaf layout didn't change.
 
 ---
 
-## What Happens During Circuit Update
-
-### 1. Key Regeneration
-- New `rollup.pk` (proving key)  
-- New `rollup.vk` (verification key)
-- New `RollupVerifier.sol` contract generated from verification key
-
-### 2. Contract Redeployment
-- Deploys new StateManager
-- Deploys new Verifier (from the new verification key)
-- Deploys new TradeRegistry
-- **All previous on-chain state is lost**
-
-### 3. Service Configuration
-- Prover must point to the NEW contract address
-- Indexer continues with same config
-- Keys must be copied to persistent storage
-
----
-
-## Troubleshooting
-
-### "Constraint not satisfied" error after update
-
-**Cause:** Keys don't match the circuit  
-**Solution:** Follow the full circuit update procedure above
-
-### Old contract address in systemd service
+## Quick Reference
 
 ```bash
-# Check current config
-sudo cat /etc/systemd/system/nowa-zk-prover.service | grep contract
-
-# Edit with new address
-sudo nano /etc/systemd/system/nowa-zk-prover.service
-
-# Reload
-sudo systemctl daemon-reload
-sudo systemctl restart nowa-zk-prover
+sudo systemctl stop nowa-sequencer nowa-prover
+cd ~/nowa-zk && git pull origin main
+make setup && make build
+set -a && source .env && set +a && make deploy
+make clean-data
+sudo systemctl start nowa-sequencer nowa-prover
 ```
 
-### Keys not found
-
-```bash
-# Verify keys exist
-ls -lh /var/lib/nowa-zk/prover/keys/
-
-# Should see: rollup.pk and rollup.vk
-
-# If missing, regenerate
-cd ~/nowa-zk
-./build/prover-bin setup --output-dir ./keys --contract-output ./contracts/src/generated
-sudo cp -r ./keys/* /var/lib/nowa-zk/prover/keys/
-```
-
----
-
-## See Also
-
-- [Upgrade Guide](upgrade.md) - For regular code updates without circuit changes
-- [Troubleshooting Guide](troubleshooting.md) - Common issues and solutions
+## Related
+- [Upgrade Guide](./upgrade.md) — for code changes that *don't* touch the circuit
+- [Troubleshooting](./troubleshooting.md) — for diagnosing which situation you're in

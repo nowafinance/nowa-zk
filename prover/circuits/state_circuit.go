@@ -17,7 +17,7 @@ const (
 )
 
 const MerkleDepth = 28
-const BatchSize = 5
+const BatchSize = 1 // one real matched fill per proof (no dummy padding)
 
 // StateUpdate represents the data needed to update a single leaf in the SMT.
 type StateUpdate struct {
@@ -96,8 +96,9 @@ func processOperation(api frontend.API, op *Operation, root frontend.Variable, c
 	api.AssertIsEqual(validOp, 1)
 
 	// 1. Verify Maker Signature (Trade, Transfer, Withdraw)
+	// Message omits exact fill amounts so one auth covers partial fills of a resting order.
 	h.Reset()
-	h.Write(op.OpType, op.MakerPubKey.A.X, op.MakerPubKey.A.Y, op.MakerBase.Index, op.MakerQuote.Index, op.Amount, op.QuoteAmount, op.MakerBase.Nonce)
+	h.Write(op.OpType, op.MakerPubKey.A.X, op.MakerPubKey.A.Y, op.MakerBase.Index, op.MakerQuote.Index)
 	makerMsgHash := h.Sum()
 	
 	h.Reset()
@@ -113,7 +114,7 @@ func processOperation(api frontend.API, op *Operation, root frontend.Variable, c
 
 	// 2. Verify Taker Signature (Trade Only)
 	h.Reset()
-	h.Write(op.OpType, op.TakerPubKey.A.X, op.TakerPubKey.A.Y, op.TakerBase.Index, op.TakerQuote.Index, op.Amount, op.QuoteAmount, op.TakerBase.Nonce)
+	h.Write(op.OpType, op.TakerPubKey.A.X, op.TakerPubKey.A.Y, op.TakerBase.Index, op.TakerQuote.Index)
 	takerMsgHash := h.Sum()
 	
 	h.Reset()
@@ -146,7 +147,8 @@ func processOperation(api frontend.API, op *Operation, root frontend.Variable, c
 
 	api.AssertIsLessOrEqual(api.Select(makerBaseActive, op.Amount, 0), op.MakerBase.Balance)
 	newMakerBaseBal := api.Sub(op.MakerBase.Balance, api.Select(makerBaseActive, op.Amount, 0))
-	newMakerBaseNonce := api.Add(op.MakerBase.Nonce, makerBaseActive)
+	// Trades do not bump nonce (allows partial fills under one circuit auth). Transfers/withdrawals do.
+	newMakerBaseNonce := api.Add(op.MakerBase.Nonce, api.Sub(makerBaseActive, api.Mul(makerBaseActive, isTrade)))
 	
 	newMakerBaseLeaf := accountLeaf(h, op.MakerBase.Index, op.MakerPubKey.A.X, op.MakerPubKey.A.Y, newMakerBaseBal, newMakerBaseNonce)
 	root = api.Select(makerBaseActive, merkleRoot(h, api, newMakerBaseLeaf, op.MakerBase.Path, op.MakerBase.PathBits), root)
@@ -182,7 +184,8 @@ func processOperation(api frontend.API, op *Operation, root frontend.Variable, c
 
 	api.AssertIsLessOrEqual(api.Select(takerQuoteActive, op.QuoteAmount, 0), op.TakerQuote.Balance)
 	newTakerQuoteBal := api.Sub(op.TakerQuote.Balance, api.Select(takerQuoteActive, op.QuoteAmount, 0))
-	newTakerQuoteNonce := api.Add(op.TakerQuote.Nonce, takerQuoteActive) // Taker signed a trade, nonce increments!
+	// Trades: nonce unchanged so resting leftovers keep a valid circuit auth across partial fills.
+	newTakerQuoteNonce := op.TakerQuote.Nonce
 
 	newTakerQuoteLeaf := accountLeaf(h, op.TakerQuote.Index, op.TakerPubKey.A.X, op.TakerPubKey.A.Y, newTakerQuoteBal, newTakerQuoteNonce)
 	root = api.Select(takerQuoteActive, merkleRoot(h, api, newTakerQuoteLeaf, op.TakerQuote.Path, op.TakerQuote.PathBits), root)

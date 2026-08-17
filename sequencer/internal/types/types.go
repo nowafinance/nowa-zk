@@ -23,9 +23,11 @@ type Order struct {
 	Price        *big.Int `json:"price"`
 	IsBuy        bool     `json:"is_buy"`
 	Nonce        uint64   `json:"nonce"`
-	
-	// EdDSA Signature (64 bytes in hex)
+
+	// EdDSA Signature over the order-book message (matching engine).
 	Signature string `json:"signature"`
+	// EdDSA Signature over the circuit auth message (ZK state transition).
+	CircuitSignature string `json:"circuit_signature"`
 }
 
 // Trade represents a matched buy and sell order.

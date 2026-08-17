@@ -28,8 +28,15 @@ contract Deploy is Script {
         console.log("");
 
         console.log("2. Deploying NowaRollup...");
-        nowaRollup = new NowaRollup(address(verifier));
+        // Start at 0; owner must call setStateRoot(sequencer oldRoot) before the first submitBatch
+        // once the off-chain SMT has been opened (lab credits / deposits).
+        bytes32 initialRoot = bytes32(0);
+        try vm.envBytes32("INITIAL_STATE_ROOT") returns (bytes32 r) {
+            initialRoot = r;
+        } catch {}
+        nowaRollup = new NowaRollup(address(verifier), initialRoot);
         console.log("   NowaRollup deployed at:", address(nowaRollup));
+        console.log("   initial stateRoot:", vm.toString(initialRoot));
         console.log("");
 
         vm.stopBroadcast();

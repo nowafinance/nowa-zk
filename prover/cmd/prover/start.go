@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,31 +16,37 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	bn254 "github.com/consensys/gnark/backend/groth16/bn254"
 	"github.com/consensys/gnark/backend/witness"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
+	gnarkeddsa "github.com/consensys/gnark/std/signature/eddsa"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/joho/godotenv"
 	"github.com/nowafinance/nowa-zk/prover/circuits"
+	"github.com/nowafinance/nowa-zk/prover/internal/da"
 	"github.com/nowafinance/nowa-zk/prover/internal/storage"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/sha3"
 )
 
 type StateUpdate struct {
-	Index    uint64   `json:"index"`
-	Balance  string   `json:"balance"`
-	Nonce    uint64   `json:"nonce"`
+	Index    uint64     `json:"index"`
+	Balance  string     `json:"balance"`
+	Nonce    uint64     `json:"nonce"`
 	Path     [28]string `json:"path"`
-	PathBits []bool   `json:"pathBits"`
+	PathBits [28]uint64 `json:"path_bits"` // was []bool — fixed to match sequencer JSON
 }
 
 type StateTransition struct {
@@ -124,19 +131,37 @@ func start(cmd *cobra.Command, args []string) {
 	}
 
 	var loadedDeployments map[string]string
-	localDeployPath := ".nowa-zk/deployments.json"
-	if data, err := os.ReadFile(localDeployPath); err == nil {
-		if err := json.Unmarshal(data, &loadedDeployments); err == nil {
-			if contractAddr == "" {
-				if addr, ok := loadedDeployments["NowaRollup"]; ok {
-					contractAddr = addr
-				}
+	if contractAddr == "" {
+		if env := os.Getenv("ROLLUP_CONTRACT_ADDRESS"); env != "" {
+			contractAddr = env
+		} else if env := os.Getenv("CONTRACT_ADDRESS"); env != "" {
+			contractAddr = env
+		}
+	}
+	if contractAddr == "" {
+		home, _ := os.UserHomeDir()
+		for _, path := range []string{
+			".nowa-zk/deployments.json",
+			filepath.Join(home, ".nowa-zk", "deployments.json"),
+			"contracts/deployments/deployments.json",
+		} {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			if err := json.Unmarshal(data, &loadedDeployments); err != nil {
+				continue
+			}
+			if addr, ok := loadedDeployments["NowaRollup"]; ok && addr != "" && addr != "null" {
+				contractAddr = addr
+				log.Printf("📄 Loaded NowaRollup from %s", path)
+				break
 			}
 		}
 	}
 
 	if contractAddr == "" {
-		log.Fatal("❌ Contract address required.")
+		log.Fatal("❌ Contract address required. Pass --contract, set ROLLUP_CONTRACT_ADDRESS, or deploy so ~/.nowa-zk/deployments.json exists.")
 	}
 	if privateKeyHex == "" {
 		log.Fatal("❌ Private key required.")
@@ -150,7 +175,7 @@ func start(cmd *cobra.Command, args []string) {
 		log.Fatalf("❌ Failed to load circuit/keys: %v", err)
 	}
 
-	client, auth, err := connectEthereum(rpcURL, privateKeyHex)
+	client, auth, privKey, err := connectEthereum(rpcURL, privateKeyHex)
 	if err != nil {
 		log.Fatalf("❌ Failed to connect to Ethereum: %v", err)
 	}
@@ -192,14 +217,15 @@ func start(cmd *cobra.Command, args []string) {
 
 		nextBatchNum := lastProcessedBatch + 1
 		if nextBatchNum > latestBatch.BatchID {
+			// No new batch yet
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
 
 		log.Printf("📦 Processing batch #%d\n", nextBatchNum)
-		batch, err := fetchLatestBatch(indexerURL) // We just fetch the latest for now in this demo since it's 1-by-1
-		if err != nil {
-			log.Printf("⚠️  Failed to fetch batch: %v\n", err)
+		batch, err := fetchBatchByID(indexerURL, nextBatchNum)
+		if err != nil || batch == nil {
+			log.Printf("⚠️  Failed to fetch batch #%d: %v\n", nextBatchNum, err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
@@ -227,13 +253,19 @@ func start(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		log.Println("   📤 Submitting proof to L1...")
-		_, _, err = submitProof(client, auth, contractAddr, batch, proof, publicWitness)
+		log.Println("   📤 Submitting proof + EIP-4844 DA blob to L1...")
+		tx, receipt, err := submitProofWithBlob(client, auth, privKey, contractAddr, batch, proof)
 		if err != nil {
 			log.Printf("   ❌ Failed to submit to L1: %v\n", err)
 			time.Sleep(time.Duration(pollInterval) * time.Second)
 			continue
 		}
+		if receipt != nil && receipt.Status == 0 {
+			log.Printf("   ❌ L1 tx reverted: %s\n", tx.Hash().Hex())
+			time.Sleep(time.Duration(pollInterval) * time.Second)
+			continue
+		}
+		log.Printf("   📎 L1 tx %s (blob DA included)\n", tx.Hash().Hex())
 
 		log.Printf("   ✅ Batch #%d successfully proven and submitted!\n", batch.BatchID)
 		_ = store.SaveLastProcessedBatch(batch.BatchID)
@@ -242,44 +274,76 @@ func start(cmd *cobra.Command, args []string) {
 }
 
 func loadCircuitAndKeys() (constraint.ConstraintSystem, groth16.ProvingKey, groth16.VerifyingKey, error) {
-	ccsFile, err := os.Open(keysDir + "/state.ccs")
-	if err != nil { return nil, nil, nil, err }
+	// Load compiled R1CS constraint system.
+	// The setup command writes these as rollup.r1cs / rollup.pk / rollup.vk.
+	ccsFile, err := os.Open(keysDir + "/rollup.r1cs")
+	if err != nil {
+		// Fallback to legacy name produced by older setup runs.
+		ccsFile, err = os.Open(keysDir + "/state.ccs")
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("cannot open circuit file (tried rollup.r1cs and state.ccs): %w", err)
+		}
+	}
 	defer ccsFile.Close()
 	ccs := groth16.NewCS(ecc.BN254)
-	if _, err := ccs.ReadFrom(ccsFile); err != nil { return nil, nil, nil, err }
+	if _, err := ccs.ReadFrom(ccsFile); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read constraint system: %w", err)
+	}
 
-	pkFile, err := os.Open(keysDir + "/state.pk")
-	if err != nil { return nil, nil, nil, err }
+	pkFile, err := os.Open(keysDir + "/rollup.pk")
+	if err != nil {
+		pkFile, err = os.Open(keysDir + "/state.pk")
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("cannot open proving key (tried rollup.pk and state.pk): %w", err)
+		}
+	}
 	defer pkFile.Close()
 	pk := groth16.NewProvingKey(ecc.BN254)
-	if _, err := pk.ReadFrom(pkFile); err != nil { return nil, nil, nil, err }
+	if _, err := pk.ReadFrom(pkFile); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read proving key: %w", err)
+	}
 
-	vkFile, err := os.Open(keysDir + "/state.vk")
-	if err != nil { return nil, nil, nil, err }
+	vkFile, err := os.Open(keysDir + "/rollup.vk")
+	if err != nil {
+		vkFile, err = os.Open(keysDir + "/state.vk")
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("cannot open verifying key (tried rollup.vk and state.vk): %w", err)
+		}
+	}
 	defer vkFile.Close()
 	vk := groth16.NewVerifyingKey(ecc.BN254)
-	if _, err := vk.ReadFrom(vkFile); err != nil { return nil, nil, nil, err }
+	if _, err := vk.ReadFrom(vkFile); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read verifying key: %w", err)
+	}
 
 	return ccs, pk, vk, nil
 }
 
-func connectEthereum(rpcURL, privateKeyHex string) (*ethclient.Client, *bind.TransactOpts, error) {
+func connectEthereum(rpcURL, privateKeyHex string) (*ethclient.Client, *bind.TransactOpts, *ecdsa.PrivateKey, error) {
 	client, err := ethclient.Dial(rpcURL)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	if len(privateKeyHex) > 2 && privateKeyHex[:2] == "0x" {
 		privateKeyHex = privateKeyHex[2:]
 	}
 	privateKey, err := crypto.HexToECDSA(privateKeyHex)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	chainID, err := client.NetworkID(context.Background())
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
-	return client, auth, nil
+	return client, auth, privateKey, nil
 }
 
 func fetchLatestBatch(indexerURL string) (*ZKBatch, error) {
@@ -302,31 +366,73 @@ func fetchLatestBatch(indexerURL string) (*ZKBatch, error) {
 	return &batch, nil
 }
 
-func assignPath(target *[28]frontend.Variable, targetBits *[28]frontend.Variable, pathStr [28]string, bits []bool) {
+// fetchBatchByID fetches a specific batch from the sequencer by its ID.
+func fetchBatchByID(indexerURL string, id uint64) (*ZKBatch, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/batch/%d", indexerURL, id))
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("sequencer API error for batch %d: %s", id, string(body))
+	}
+
+	var batch ZKBatch
+	if err := json.NewDecoder(resp.Body).Decode(&batch); err != nil {
+		return nil, err
+	}
+	return &batch, nil
+}
+
+// assignPath copies a Merkle path and its direction bits into circuit variables.
+func assignPath(target *[28]frontend.Variable, targetBits *[28]frontend.Variable, pathStr [28]string, bits [28]uint64) {
 	for j := 0; j < 28; j++ {
 		b, _ := new(big.Int).SetString(pathStr[j], 10)
 		target[j] = b
-		if bits[j] {
-			targetBits[j] = 1
-		} else {
-			targetBits[j] = 0
-		}
+		targetBits[j] = bits[j] // uint64 is directly assignable to frontend.Variable
 	}
+}
+
+// assignEdDSASig decodes a 64-byte compressed EdDSA signature (R||S) into circuit vars.
+// Critical: R is a compressed twisted-Edwards point — must decompress Y, not set RY=0.
+func assignEdDSASig(dst *gnarkeddsa.Signature, sigHex string) error {
+	clean := strings.TrimPrefix(sigHex, "0x")
+	sigBytes, err := hex.DecodeString(clean)
+	if err != nil {
+		return err
+	}
+	if len(sigBytes) != 64 && len(sigBytes) != 96 {
+		return fmt.Errorf("unexpected signature length %d", len(sigBytes))
+	}
+	dst.Assign(twistededwards.BN254, sigBytes)
+	return nil
 }
 
 func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.ProvingKey) (groth16.Proof, witness.Witness, error) {
 	var circuit circuits.StateTransitionCircuit
 
-	oldRootHex := strings.TrimPrefix(batch.OldRoot, "0x")
-	oldRoot, _ := new(big.Int).SetString(oldRootHex, 16)
-	if oldRoot == nil { oldRoot, _ = new(big.Int).SetString(batch.OldRoot, 10) }
-
-	newRootHex := strings.TrimPrefix(batch.NewRoot, "0x")
-	newRoot, _ := new(big.Int).SetString(newRootHex, 16)
-	if newRoot == nil { newRoot, _ = new(big.Int).SetString(batch.NewRoot, 10) }
+	oldRoot, _ := new(big.Int).SetString(batch.OldRoot, 10)
+	if oldRoot == nil {
+		oldRootHex := strings.TrimPrefix(batch.OldRoot, "0x")
+		oldRoot, _ = new(big.Int).SetString(oldRootHex, 16)
+	}
+	newRoot, _ := new(big.Int).SetString(batch.NewRoot, 10)
+	if newRoot == nil {
+		newRootHex := strings.TrimPrefix(batch.NewRoot, "0x")
+		newRoot, _ = new(big.Int).SetString(newRootHex, 16)
+	}
 
 	withdrawalHash, _ := new(big.Int).SetString(batch.WithdrawalHash, 10)
+	if withdrawalHash == nil {
+		withdrawalHash = big.NewInt(0)
+	}
 	depositHash, _ := new(big.Int).SetString(batch.DepositHash, 10)
+	if depositHash == nil {
+		depositHash = big.NewInt(0)
+	}
 
 	circuit.OldRoot = oldRoot
 	circuit.NewRoot = newRoot
@@ -338,18 +444,21 @@ func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.P
 		if i < len(batch.Transitions) {
 			op = batch.Transitions[i]
 		} else {
-			op = batch.Transitions[0] // Pad with first operation just to not be empty (will fail if we don't have valid padding, but for demo we just copy)
+			op = batch.Transitions[len(batch.Transitions)-1]
 		}
 
 		circuit.Ops[i].OpType = op.OpType
-		
 		circuit.Ops[i].Amount, _ = new(big.Int).SetString(op.Amount, 10)
 		circuit.Ops[i].QuoteAmount, _ = new(big.Int).SetString(op.QuoteAmount, 10)
 
-		// Maker
 		circuit.Ops[i].MakerPubKey.A.X, _ = new(big.Int).SetString(op.MakerPubKeyX, 10)
 		circuit.Ops[i].MakerPubKey.A.Y, _ = new(big.Int).SetString(op.MakerPubKeyY, 10)
-		
+		if err := assignEdDSASig(&circuit.Ops[i].MakerSig, op.MakerSig); err != nil {
+			circuit.Ops[i].MakerSig.R.X = 0
+			circuit.Ops[i].MakerSig.R.Y = 0
+			circuit.Ops[i].MakerSig.S = 0
+		}
+
 		circuit.Ops[i].MakerBase.Index = op.MakerBase.Index
 		circuit.Ops[i].MakerBase.Balance, _ = new(big.Int).SetString(op.MakerBase.Balance, 10)
 		circuit.Ops[i].MakerBase.Nonce = op.MakerBase.Nonce
@@ -360,10 +469,14 @@ func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.P
 		circuit.Ops[i].MakerQuote.Nonce = op.MakerQuote.Nonce
 		assignPath(&circuit.Ops[i].MakerQuote.Path, &circuit.Ops[i].MakerQuote.PathBits, op.MakerQuote.Path, op.MakerQuote.PathBits)
 
-		// Taker
 		circuit.Ops[i].TakerPubKey.A.X, _ = new(big.Int).SetString(op.TakerPubKeyX, 10)
 		circuit.Ops[i].TakerPubKey.A.Y, _ = new(big.Int).SetString(op.TakerPubKeyY, 10)
-		
+		if err := assignEdDSASig(&circuit.Ops[i].TakerSig, op.TakerSig); err != nil {
+			circuit.Ops[i].TakerSig.R.X = 0
+			circuit.Ops[i].TakerSig.R.Y = 0
+			circuit.Ops[i].TakerSig.S = 0
+		}
+
 		circuit.Ops[i].TakerBase.Index = op.TakerBase.Index
 		circuit.Ops[i].TakerBase.Balance, _ = new(big.Int).SetString(op.TakerBase.Balance, 10)
 		circuit.Ops[i].TakerBase.Nonce = op.TakerBase.Nonce
@@ -376,10 +489,14 @@ func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.P
 	}
 
 	witness, err := frontend.NewWitness(&circuit, ecc.BN254.ScalarField())
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 
 	publicWitness, err := witness.Public()
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 
 	proof, err := groth16.Prove(ccs, pk, witness, backend.WithProverHashToFieldFunction(sha3.NewLegacyKeccak256()))
 	return proof, publicWitness, err
@@ -389,8 +506,57 @@ func verifyLocal(proof groth16.Proof, vk groth16.VerifyingKey, publicWitness wit
 	return groth16.Verify(proof, vk, publicWitness, backend.WithVerifierHashToFieldFunction(sha3.NewLegacyKeccak256()))
 }
 
-func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr string, batch *ZKBatch, proof groth16.Proof, publicWitness witness.Witness) (*types.Transaction, *types.Receipt, error) {
-	bn254Proof, _ := proof.(*bn254.Proof)
+func rootToBytes32(root string) ([32]byte, error) {
+	var out [32]byte
+	var b *big.Int
+	var ok bool
+
+	trimmed := strings.TrimSpace(root)
+	if strings.HasPrefix(trimmed, "0x") || strings.HasPrefix(trimmed, "0X") {
+		b, ok = new(big.Int).SetString(trimmed[2:], 16)
+	} else {
+		// Sequencer emits decimal Fr elements. Digits-only strings are also valid hex,
+		// so decimal MUST be tried first or FillBytes panics on oversized values.
+		b, ok = new(big.Int).SetString(trimmed, 10)
+		if !ok {
+			b, ok = new(big.Int).SetString(trimmed, 16)
+		}
+	}
+	if !ok || b == nil {
+		return out, fmt.Errorf("invalid root %q", root)
+	}
+	if b.Sign() < 0 || b.BitLen() > 256 {
+		return out, fmt.Errorf("root out of bytes32 range (bitlen=%d): %q", b.BitLen(), root)
+	}
+	b.FillBytes(out[:])
+	return out, nil
+}
+
+func hashToBytes32(v string) [32]byte {
+	var out [32]byte
+	if v == "" || v == "0" {
+		return out
+	}
+	b, err := rootToBytes32(v)
+	if err != nil {
+		return out
+	}
+	return b
+}
+
+// submitProofWithBlob posts the batch DA payload in an EIP-4844 blob and calls submitBatch.
+func submitProofWithBlob(
+	client *ethclient.Client,
+	auth *bind.TransactOpts,
+	privKey *ecdsa.PrivateKey,
+	contractAddr string,
+	batch *ZKBatch,
+	proof groth16.Proof,
+) (*types.Transaction, *types.Receipt, error) {
+	bn254Proof, ok := proof.(*bn254.Proof)
+	if !ok {
+		return nil, nil, fmt.Errorf("unexpected proof type %T", proof)
+	}
 
 	proof8 := [8]*big.Int{
 		bn254Proof.Ar.X.BigInt(new(big.Int)), bn254Proof.Ar.Y.BigInt(new(big.Int)),
@@ -399,32 +565,118 @@ func submitProof(client *ethclient.Client, auth *bind.TransactOpts, contractAddr
 		bn254Proof.Krs.X.BigInt(new(big.Int)), bn254Proof.Krs.Y.BigInt(new(big.Int)),
 	}
 
-	const abiJSON = `[{"inputs":[{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"uint256[4]","name":"publicInputs","type":"uint256[4]"}],"name":"submitBatch","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
-	parsedABI, _ := abi.JSON(strings.NewReader(abiJSON))
-	contract := bind.NewBoundContract(common.HexToAddress(contractAddr), parsedABI, client, client, client)
-
-	auth.GasLimit = 15000000
-
-	oldRootHex := strings.TrimPrefix(batch.OldRoot, "0x")
-	oldRootBytes, _ := hex.DecodeString(fmt.Sprintf("%064s", oldRootHex))
-	var oldRoot [32]byte
-	copy(oldRoot[:], oldRootBytes)
-	
-	newRootHex := strings.TrimPrefix(batch.NewRoot, "0x")
-	newRootBytes, _ := hex.DecodeString(fmt.Sprintf("%064s", newRootHex))
-	var newRoot [32]byte
-	copy(newRoot[:], newRootBytes)
-	
-	publicInputs := [4]*big.Int{
-		new(big.Int).SetBytes(oldRoot[:]),
-		new(big.Int).SetBytes(newRoot[:]),
-		new(big.Int).SetInt64(0), // WithdrawalHash (not implemented yet)
-		new(big.Int).SetInt64(0), // DepositHash (not implemented yet)
+	wHash := batch.WithdrawalHash
+	dHash := batch.DepositHash
+	if wHash == "" {
+		wHash = "0"
+	}
+	if dHash == "" {
+		dHash = "0"
 	}
 
-	tx, err := contract.Transact(auth, "submitBatch", proof8, publicInputs)
-	if err != nil { return nil, nil, err }
+	payload, dataHash, err := da.EncodeBatchPayload(batch.BatchID, batch.OldRoot, batch.NewRoot, wHash, dHash, batch.Transitions)
+	if err != nil {
+		return nil, nil, err
+	}
+	sidecar, blobHash, err := da.BuildBlobSidecar(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("   📦 DA payload %d bytes, dataHash=%s blobHash=%s\n", len(payload), dataHash.Hex(), blobHash.Hex())
 
-	receipt, err := bind.WaitMined(context.Background(), client, tx)
-	return tx, receipt, err
+	oldRoot, err := rootToBytes32(batch.OldRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	newRoot, err := rootToBytes32(batch.NewRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	withdrawalHash := hashToBytes32(wHash)
+	depositHash := hashToBytes32(dHash)
+
+	const abiJSON = `[{"inputs":[{"internalType":"uint256[8]","name":"proof","type":"uint256[8]"},{"internalType":"bytes32","name":"_oldRoot","type":"bytes32"},{"internalType":"bytes32","name":"_newRoot","type":"bytes32"},{"internalType":"bytes32","name":"_withdrawalHash","type":"bytes32"},{"internalType":"bytes32","name":"_depositHash","type":"bytes32"},{"internalType":"bytes32","name":"_dataHash","type":"bytes32"}],"name":"submitBatch","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, nil, err
+	}
+	calldata, err := parsedABI.Pack("submitBatch", proof8, oldRoot, newRoot, withdrawalHash, depositHash, dataHash)
+	if err != nil {
+		return nil, nil, fmt.Errorf("abi pack: %w", err)
+	}
+
+	ctx := context.Background()
+	from := auth.From
+	chainID, err := client.NetworkID(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	nonce, err := client.PendingNonceAt(ctx, from)
+	if err != nil {
+		return nil, nil, err
+	}
+	tip, err := client.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	header, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	baseFee := header.BaseFee
+	if baseFee == nil {
+		baseFee = big.NewInt(1)
+	}
+	// maxFee = 2*baseFee + tip
+	gasFeeCap := new(big.Int).Mul(baseFee, big.NewInt(2))
+	gasFeeCap.Add(gasFeeCap, tip)
+
+	blobFee := big.NewInt(params.BlobTxMinBlobGasprice)
+	if header.ExcessBlobGas != nil {
+		cfg := params.MainnetChainConfig
+		if chainID.Cmp(big.NewInt(11155111)) == 0 {
+			cfg = params.SepoliaChainConfig
+		}
+		blobFee = eip4844.CalcBlobFee(cfg, header)
+	}
+	blobFeeCap := new(big.Int).Mul(blobFee, big.NewInt(2))
+	if blobFeeCap.Cmp(big.NewInt(1)) < 0 {
+		blobFeeCap = big.NewInt(1)
+	}
+
+	to := common.HexToAddress(contractAddr)
+	gasLimit := uint64(1_500_000)
+	if auth.GasLimit != 0 {
+		gasLimit = auth.GasLimit
+	}
+
+	blobTx := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(chainID),
+		Nonce:      nonce,
+		GasTipCap:  uint256.MustFromBig(tip),
+		GasFeeCap:  uint256.MustFromBig(gasFeeCap),
+		Gas:        gasLimit,
+		To:         to,
+		Value:      uint256.NewInt(0),
+		Data:       calldata,
+		BlobFeeCap: uint256.MustFromBig(blobFeeCap),
+		BlobHashes: sidecar.BlobHashes(),
+		Sidecar:    sidecar,
+	}
+
+	signer := types.NewCancunSigner(chainID)
+	signed, err := types.SignNewTx(privKey, signer, blobTx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("sign blob tx: %w", err)
+	}
+
+	if err := client.SendTransaction(ctx, signed); err != nil {
+		return nil, nil, fmt.Errorf("send blob tx: %w", err)
+	}
+
+	receipt, err := bind.WaitMined(ctx, client, signed)
+	if err != nil {
+		return signed, nil, err
+	}
+	return signed, receipt, nil
 }

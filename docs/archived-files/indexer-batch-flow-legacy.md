@@ -1,3 +1,10 @@
+> [!NOTE]
+> **Archived 2026-08-17.** Describes the legacy Cosmos-chain `indexer/`'s block-polling
+> and 25-trade batching logic. The live pipeline no longer runs through the indexer —
+> the Sequencer matches orders and seals batches directly (batch size is 1 fill/proof
+> today, not 25). See [docs/architecture/data-flow.md](../architecture/data-flow.md) for
+> the current flow.
+
 # Indexer Data Flow Architecture
 
 ## Overview

@@ -1,3 +1,11 @@
+> [!NOTE]
+> **Archived 2026-08-17.** Documents `prover/internal/api/server.go`, a Fiber-based API
+> (`/batches`, `/status/:id`, Swagger UI) bound to a legacy `BatchRegistry` contract
+> binding. Verified during a docs audit: `prover/cmd/prover` (the actual binary invoked
+> by `prover start` / `make run-prover`) never references this package — it isn't wired
+> into the live prover at all. Kept only in case it's revived; don't rely on `/batches`
+> pagination working against a running prover today.
+
 # Prover API Pagination Guide
 
 ## Endpoint
