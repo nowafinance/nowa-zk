@@ -2,6 +2,10 @@
 
 **Purpose:** This document is strictly for the internal engineering team (You and Gemini). It contains the highly technical, nuanced implementation details, edge cases, and cryptographic shortcuts required to actually build the system outlined in the public `roadmap-marketing.md`.
 
+> [!NOTE]
+> For what's actually been published as a release vs. built-but-unreleased vs.
+> genuinely incomplete right now, see [Release Status](./release-status.md).
+
 ---
 
 ## 🟢 Phase 3: Universal State Transition (Completed)
@@ -13,7 +17,7 @@
 
 ---
 
-## 🟢 Phase 4: The High-Frequency Go Sequencer
+## 🟢 Phase 4: The High-Frequency Go Sequencer (built; WebSocket API still outstanding)
 *Goal: Move execution away from a slow L2 blockchain to a high-frequency off-chain matching engine.*
 
 ### The "No L2 Blockchain" Epiphany
@@ -30,16 +34,16 @@
 
 ---
 
-## 🟢 Phase 5: The L1 Bridge & Escape Hatch
+## 🟡 Phase 5: The L1 Bridge & Escape Hatch — Bridge done, Escape Hatch NOT built
 *Goal: Guarantee users can rescue their money if the Sequencer ever crashes, and allow real money to enter the system trustlessly.*
 
-### The Bridge Mechanics (L1 -> L2)
-* **Action:** We build the `NowaRollup.sol` Canonical Bridge. When a user deposits 10 Real ETH on Ethereum, the Indexer reads the event and triggers an `OpDeposit` inside the Sequencer.
-* **Security Strategy (Forking):** Bridge security is paramount. Instead of writing the L1 vault mechanics from scratch, we will heavily base our `deposit()` and `withdraw()` functions on the open-source, battle-tested smart contracts of Loopring (`ExchangeV3.sol`) and StarkEx to ensure zero vulnerabilities.
+### The Bridge Mechanics (L1 -> L2) — ✅ Built
+* **Action:** `NowaRollup.sol` is the canonical bridge. When a user deposits, the **Sequencer's own Deposit Watcher** (`sequencer/cmd/sequencer/deposit_watcher.go`, not the Indexer — that plan changed once the Sequencer replaced the Indexer as the execution layer) reads the `Deposit` event directly and triggers an `OpDeposit` transition.
+* **Security note:** `deposit()`/`withdraw()` were not forked from Loopring/StarkEx as originally planned — they're a from-scratch, minimal implementation. `deposit()` is a straightforward `transferFrom` + event emit; `withdraw()` is currently just an owner-gated placeholder (see below), so this hasn't gone through the "battle-tested fork" hardening this section originally called for.
 
-### The Escape Hatch Mechanics (L2 -> L1)
-* **The Emergency Freeze:** We will code a 7-day timer into the Ethereum contract. If the Sequencer crashes and no ZK proofs are submitted for 7 days, the contract enters **Emergency Mode**.
-* **Trustless Rescue:** In Emergency Mode, users submit a standard Merkle Proof to Ethereum. Ethereum verifies their balance against the last proven State Root and refunds their Real ETH automatically.
+### The Escape Hatch Mechanics (L2 -> L1) — ❌ Not built
+* **Status:** None of this exists yet. `NowaRollup.withdraw()` is `onlyOwner` and explicitly ignores its `_merkleProof` parameter (see the function's own doc comment: "Not an escape hatch"). There is no emergency-freeze timer, no Emergency Mode, and no path for a user to submit a Merkle proof and self-rescue funds if the Sequencer stops operating.
+* **Why this matters:** every other phase's "trustless" framing depends on this existing. Until it's built, user funds' safety in a Sequencer-outage scenario rests entirely on the operator, not on-chain guarantees. This is the highest-priority gap in the whole project as of 2026-08-17.
 
 ---
 

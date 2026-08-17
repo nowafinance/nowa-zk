@@ -115,18 +115,31 @@ func setup(cmd *cobra.Command, args []string) {
 	log.Println()
 
 	// Step 7: Export Solidity verifier contract
+	// Contracts import generated/Verifier.sol (contract name inside is also Verifier).
 	log.Println("📝 Generating Solidity verifier contract...")
-	solidityPath := filepath.Join(contractOutput, "StateVerifier.sol")
+	solidityPath := filepath.Join(contractOutput, "Verifier.sol")
 	solidityFile, err := os.Create(solidityPath)
 	if err != nil {
 		log.Fatalf("❌ Failed to create Solidity file: %v", err)
 	}
-	defer solidityFile.Close()
 
 	if err := vk.ExportSolidity(solidityFile); err != nil {
+		solidityFile.Close()
 		log.Fatalf("❌ Failed to export Solidity verifier: %v", err)
 	}
+	solidityFile.Close()
 	log.Printf("✅ Solidity verifier saved: %s\n", solidityPath)
+
+	// Keep StateVerifier.sol as a copy for older docs/scripts.
+	legacyPath := filepath.Join(contractOutput, "StateVerifier.sol")
+	in, err := os.ReadFile(solidityPath)
+	if err != nil {
+		log.Fatalf("❌ Failed to read Verifier.sol for legacy copy: %v", err)
+	}
+	if err := os.WriteFile(legacyPath, in, 0644); err != nil {
+		log.Fatalf("❌ Failed to write StateVerifier.sol: %v", err)
+	}
+	log.Printf("✅ Legacy copy saved: %s\n", legacyPath)
 	log.Println()
 
 	// Summary
@@ -140,10 +153,11 @@ func setup(cmd *cobra.Command, args []string) {
 	log.Println("     - state.ccs (compiled circuit)")
 	log.Println()
 	log.Printf("  📁 Contract directory: %s\n", contractOutput)
-	log.Println("     - StateVerifier.sol (Solidity verifier)")
+	log.Println("     - Verifier.sol (Solidity verifier)")
+	log.Println("     - StateVerifier.sol (legacy alias)")
 	log.Println()
 	log.Println("Next steps:")
-	log.Println("  1. Deploy StateVerifier.sol to your chain")
+	log.Println("  1. Deploy Verifier.sol + NowaRollup.sol to your chain")
 	log.Println("  2. Start prover with: ./prover-bin start")
 	log.Println("========================================")
 }

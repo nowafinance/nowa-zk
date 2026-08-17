@@ -117,7 +117,7 @@ However, because Nowa-ZK is an **App-Chain**, the protocol developers have compl
 ## 12. Hardware & Cost Scaling: How much RAM and Gas is needed per batch?
 For an App-Specific ZK Rollup like Nowa-ZK, the hardware requirements scale perfectly linearly with the number of trades in a batch. 
 
-In Nowa-ZK, every single trade generates roughly `86,150` mathematical constraints (due to the heavy ECDSA signature verification). The underlying `gnark` Groth16 Prover requires approximately **2.5 GB of RAM per 1 Million constraints**.
+In Nowa-ZK, every single trade generates a highly optimized number of mathematical constraints (due to the extremely lightweight EdDSA signature verification). The underlying `gnark` Groth16 Prover requires approximately **2.5 GB of RAM per 1 Million constraints**.
 
 **Nowa-ZK Scaling Table:**
 
@@ -207,6 +207,22 @@ Because Nowa-ZK is a **ZK-Rollup**, we only submit two things to L1:
 1. The **Trade Data** (`messageHash`, `pubKeyX`, `pubKeyY`) so that the state can be reconstructed (Data Availability).
 2. The **ZK Proof**.
 
-The ZK Prover (the Go codebase) takes the user's signature as a **private input** inside the Groth16 circuit. It mathematically verifies the ECDSA signature inside the circuit, but it *never* reveals the signature to Ethereum. The Ethereum smart contract just verifies the tiny 8-element ZK Proof. Because the proof is mathematically valid, Ethereum knows with 100% certainty that valid signatures existed for every single trade in that batch.
+The ZK Prover (the Go codebase) takes the user's signature as a **private input** inside the Groth16 circuit. It mathematically verifies the EdDSA signature inside the circuit, but it *never* reveals the signature to Ethereum. The Ethereum smart contract just verifies the tiny 8-element ZK Proof. Because the proof is mathematically valid, Ethereum knows with 100% certainty that valid signatures existed for every single trade in that batch.
 
 By *not* sending the signatures to L1, the protocol saves massive amounts of gas and keeps the L1 footprint incredibly small.
+
+## 18. Why use EdDSA instead of Ethereum's default ECDSA?
+Ethereum natively uses **ECDSA** (specifically on the secp256k1 curve) for all wallet signatures. While it works perfectly on Layer 1, verifying an ECDSA signature *inside* a Zero-Knowledge circuit is incredibly expensive.
+
+Verifying a single ECDSA signature inside a ZK circuit requires roughly **1,500,000+ constraints** because the circuit has to emulate the entire secp256k1 math in a different mathematical field. If a batch contains 100 trades, that would be 150 Million constraints just for the signatures, requiring Terabytes of RAM!
+
+**The EdDSA Solution:**
+Instead of using ECDSA, modern ZK Rollups use **EdDSA (Edwards-curve Digital Signature Algorithm)** paired with a ZK-friendly hash function like **MiMC** or **Poseidon**. Verifying an EdDSA signature on the BN254 curve inside a `gnark` Groth16 circuit only takes a few thousand constraints—making it over **100x cheaper and faster** to prove than ECDSA.
+
+**Who else uses EdDSA?**
+Every major ZK Rollup that requires high-performance signature verification uses EdDSA (or similar ZK-friendly variants):
+*   **dYdX & StarkEx DEXs:** Uses STARK-friendly signatures (similar to EdDSA) derived from the user's Ethereum wallet.
+*   **Loopring:** Generates an EdDSA keypair derived from the user's MetaMask signature for all L2 trades.
+*   **zkSync:** While zkSync Era abstracts some of this away, early versions heavily relied on specific ZK-friendly signatures for cheap transaction verification.
+
+By switching to EdDSA for Nowa-ZK, the protocol ensures lightning-fast prover times, incredibly low RAM requirements, and production-level scalability.

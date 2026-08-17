@@ -6,170 +6,418 @@ import (
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
-	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
+	"github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
+	gnark_twistededwards "github.com/consensys/gnark/std/algebra/native/twistededwards"
+	gnark_mimc "github.com/consensys/gnark/std/hash/mimc"
 	"github.com/consensys/gnark/test"
 )
 
-func TestStateTransitionCircuitCompilation(t *testing.T) {
-	assert := test.NewAssert(t)
-	var circuit StateTransitionCircuit
-
-	// Just checking if the circuit compiles and is valid structurally.
-	_, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
-	assert.NoError(err)
+type SingleTransitionCircuit struct {
+	OldRoot        frontend.Variable `gnark:",public"`
+	NewRoot        frontend.Variable `gnark:",public"`
+	WithdrawalHash frontend.Variable `gnark:",public"`
+	DepositHash    frontend.Variable `gnark:",public"`
+	Op             Operation
 }
 
-func bytesToBigInt(b [32]byte) *big.Int {
-	return new(big.Int).SetBytes(b[:])
+func (c *SingleTransitionCircuit) Define(api frontend.API) error {
+	curve, _ := gnark_twistededwards.NewEdCurve(api, twistededwards.BN254)
+	h, _ := gnark_mimc.NewMiMC(api)
+	
+	root := c.OldRoot
+	wh := frontend.Variable(0)
+	dh := frontend.Variable(0)
+	
+	var err error
+	root, wh, dh, err = processOperation(api, &c.Op, root, wh, dh, curve, &h)
+	if err != nil {
+		return err
+	}
+	
+	api.AssertIsEqual(root, c.NewRoot)
+	api.AssertIsEqual(wh, c.WithdrawalHash)
+	api.AssertIsEqual(dh, c.DepositHash)
+	return nil
 }
 
-func TestValidTransfer(t *testing.T) {
+type MemorySMT struct {
+	leaves map[uint64]*big.Int
+	depth  int
+}
+
+func NewMemorySMT(depth int) *MemorySMT {
+	return &MemorySMT{
+		leaves: make(map[uint64]*big.Int),
+		depth:  depth,
+	}
+}
+
+func hashGo(items ...*big.Int) *big.Int {
+	h := mimc.NewMiMC()
+	for _, item := range items {
+		var f fr.Element
+		f.SetBigInt(item)
+		b := f.Bytes()
+		h.Write(b[:])
+	}
+	res := new(big.Int)
+	res.SetBytes(h.Sum(nil))
+	return res
+}
+
+func (smt *MemorySMT) computeNodeHash(prefix uint64, level int, zeros []*big.Int) *big.Int {
+	var matchingLeaves []uint64
+	mask := ^((uint64(1) << level) - 1)
+	cleanPrefix := prefix & mask
+	for idx := range smt.leaves {
+		if (idx & mask) == cleanPrefix {
+			matchingLeaves = append(matchingLeaves, idx)
+		}
+	}
+	
+	if len(matchingLeaves) == 0 {
+		return zeros[level]
+	}
+	if level == 0 {
+		return smt.leaves[cleanPrefix]
+	}
+	
+	leftChild := smt.computeNodeHash(cleanPrefix, level-1, zeros)
+	rightChild := smt.computeNodeHash(cleanPrefix|(1<<(level-1)), level-1, zeros)
+	return hashGo(leftChild, rightChild)
+}
+
+func (smt *MemorySMT) Root() *big.Int {
+	zeros := make([]*big.Int, smt.depth+1)
+	zeros[0] = big.NewInt(0)
+	for i := 1; i <= smt.depth; i++ {
+		zeros[i] = hashGo(zeros[i-1], zeros[i-1])
+	}
+	return smt.computeNodeHash(0, smt.depth, zeros)
+}
+
+func (smt *MemorySMT) Update(index uint64, hash *big.Int) {
+	smt.leaves[index] = hash
+}
+
+func (smt *MemorySMT) GetPath(index uint64) ([MerkleDepth]*big.Int, [MerkleDepth]uint64) {
+	var path [MerkleDepth]*big.Int
+	var bits [MerkleDepth]uint64
+	
+	zeros := make([]*big.Int, smt.depth+1)
+	zeros[0] = big.NewInt(0)
+	for i := 1; i <= smt.depth; i++ {
+		zeros[i] = hashGo(zeros[i-1], zeros[i-1])
+	}
+	
+	for i := 0; i < smt.depth; i++ {
+		bits[i] = (index >> i) & 1
+		siblingIndex := index ^ (1 << i)
+		path[i] = smt.computeNodeHash(siblingIndex, i, zeros)
+	}
+	return path, bits
+}
+
+func getPathVars(path [MerkleDepth]*big.Int, bits [MerkleDepth]uint64) ([MerkleDepth]frontend.Variable, [MerkleDepth]frontend.Variable) {
+	var p [MerkleDepth]frontend.Variable
+	var b [MerkleDepth]frontend.Variable
+	for i := 0; i < MerkleDepth; i++ {
+		p[i] = path[i]
+		b[i] = bits[i]
+	}
+	return p, b
+}
+
+func TestStateCircuit_ValidTransfer(t *testing.T) {
 	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
 
-	// 1. Initialize our Go Merkle Tree
-	tree := NewSparseMerkleTree(MerkleDepth)
-
-	// 2. Create Alice (Sender) with BabyJubJub EdDSA
-	alicePriv, _ := eddsa.GenerateKey(rand.Reader)
-	alicePub := alicePriv.PublicKey
-	aliceIndex := uint64(1)
-	aliceBal := big.NewInt(1000)
-	aliceNonce := big.NewInt(0)
+	// 1. Generate keys
+	privKey, _ := eddsa.GenerateKey(rand.Reader)
+	pubKey := privKey.PublicKey
+	pubX := new(big.Int)
+	pubKey.A.X.BigInt(pubX)
+	pubY := new(big.Int)
+	pubKey.A.Y.BigInt(pubY)
 	
-	aliceLeaf := HashAccountLeaf(big.NewInt(int64(aliceIndex)), bytesToBigInt(alicePub.A.X.Bytes()), bytesToBigInt(alicePub.A.Y.Bytes()), aliceBal, aliceNonce)
-	tree.Update(aliceIndex, aliceLeaf)
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
 
-	// 3. Create Bob (Receiver) with BabyJubJub EdDSA
-	bobPriv, _ := eddsa.GenerateKey(rand.Reader)
-	bobPub := bobPriv.PublicKey
-	bobIndex := uint64(2)
-	bobBal := big.NewInt(500)
-	bobNonce := big.NewInt(0)
+	// Maker base (Index 0)
+	makerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(1000), big.NewInt(1))
+	smt.Update(0, makerBaseLeaf)
 	
-	bobLeaf := HashAccountLeaf(big.NewInt(int64(bobIndex)), bytesToBigInt(bobPub.A.X.Bytes()), bytesToBigInt(bobPub.A.Y.Bytes()), bobBal, bobNonce)
-	tree.Update(bobIndex, bobLeaf)
+	// Taker base (Index 1)
+	takerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(500), big.NewInt(0))
+	smt.Update(1, takerBaseLeaf)
 
-	oldRoot := tree.Root()
+	oldRoot := smt.Root()
 
-	// 4. Create the Transfer (Alice sends 100 to Bob)
-	amount := big.NewInt(100)
+	// Maker paths
+	makerBasePath, makerBaseBits := smt.GetPath(0)
 	
-	msg := make([]byte, 32)
-	rand.Read(msg) // Dummy message hash for the signature
-	msg[0] = 0 // Ensure < curve order
-	msgInt := new(big.Int).SetBytes(msg)
+	// Execute Transfer (Amount: 200)
+	// Update Maker
+	newMakerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(800), big.NewInt(2))
+	smt.Update(0, newMakerBaseLeaf)
+	
+	// Update Taker
+	takerBasePath, takerBaseBits := smt.GetPath(1) // get path after maker update
+	newTakerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(700), big.NewInt(0))
+	smt.Update(1, newTakerBaseLeaf)
+	
+	newRoot := smt.Root()
+	
+	// Build MsgHash and Sign
+	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99))
+	var makerMsgHashFr fr.Element
+	makerMsgHashFr.SetBigInt(makerMsgHashBig)
+	makerMsgHashBytes := makerMsgHashFr.Bytes()
+	sig, _ := privKey.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
+	
+	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99))
+	var takerMsgHashFr fr.Element
+	takerMsgHashFr.SetBigInt(takerMsgHashBig)
+	takerMsgHashBytes := takerMsgHashFr.Bytes()
+	takerSig, _ := takerPriv.Sign(takerMsgHashBytes[:], mimc.NewMiMC())
 
-	hFunc := mimc.NewMiMC()
-	sigBin, _ := alicePriv.Sign(msg, hFunc)
-
-	// Get Merkle proofs for Alice
-	alicePath, aliceBits := tree.GetPath(aliceIndex)
-
-	// Update Alice's state in the tree
-	newAliceBal := new(big.Int).Sub(aliceBal, amount)
-	newAliceNonce := new(big.Int).Add(aliceNonce, big.NewInt(1))
-	newAliceLeaf := HashAccountLeaf(big.NewInt(int64(aliceIndex)), bytesToBigInt(alicePub.A.X.Bytes()), bytesToBigInt(alicePub.A.Y.Bytes()), newAliceBal, newAliceNonce)
-	tree.Update(aliceIndex, newAliceLeaf)
-
-	// Get Merkle proofs for Bob (Using the tree AFTER Alice's update)
-	bobPath, bobBits := tree.GetPath(bobIndex)
-
-	// Update Bob's state in the tree
-	newBobBal := new(big.Int).Add(bobBal, amount)
-	newBobLeaf := HashAccountLeaf(big.NewInt(int64(bobIndex)), bytesToBigInt(bobPub.A.X.Bytes()), bytesToBigInt(bobPub.A.Y.Bytes()), newBobBal, bobNonce)
-	tree.Update(bobIndex, newBobLeaf)
-
-	newRoot := tree.Root()
-
-	// 5. Construct the Witness
-	var witness StateTransitionCircuit
+	// Build witness
+	var witness SingleTransitionCircuit
 	witness.OldRoot = oldRoot
 	witness.NewRoot = newRoot
-	witness.WithdrawalHash = 0 // No withdrawals in this batch
-
-	// Fill the first operation
-	witness.Ops[0] = Operation{
-		OpType:          OpTransfer,
-		MessageHash:     msgInt,
-		SenderIndex:     aliceIndex,
-		SenderBalance:   aliceBal,
-		SenderNonce:     aliceNonce,
-		Amount:          amount,
-		ReceiverIndex:   bobIndex,
-		ReceiverBalance: bobBal,
-		ReceiverNonce:   bobNonce,
-	}
+	witness.WithdrawalHash = 0
+	witness.DepositHash = 0
 	
-	witness.Ops[0].PubKey.Assign(twistededwards.BN254, alicePub.Bytes())
-	witness.Ops[0].Sig.Assign(twistededwards.BN254, sigBin)
-	witness.Ops[0].ReceiverPubKey.Assign(twistededwards.BN254, bobPub.Bytes())
+	witness.Op.OpType = 1
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 0
+	
+	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
+	witness.Op.MakerSig.Assign(twistededwards.BN254, sig)
+	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.Balance = 1000
+	witness.Op.MakerBase.Nonce = 1
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
+	
+	// Taker
+	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
+	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
+	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.Balance = 500
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	
+	// Dummy paths for inactive
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+	
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
 
-	for i := 0; i < MerkleDepth; i++ {
-		witness.Ops[0].SenderPath[i] = alicePath[i]
-		witness.Ops[0].SenderPathBits[i] = aliceBits[i]
-		witness.Ops[0].ReceiverPath[i] = bobPath[i]
-		witness.Ops[0].ReceiverPathBits[i] = bobBits[i]
-	}
-
-	// Fill the rest with dummy NO-OPs (Transfer 0 from Bob to Alice to pass validation)
-	currentBobNonce := bobNonce
-	currentAliceBal := newAliceBal
-	currentAliceNonce := newAliceNonce
-
-	for i := 1; i < BatchSize; i++ {
-		msgDummy := make([]byte, 32)
-		rand.Read(msgDummy)
-		msgDummy[0] = 0
-		msgDummyInt := new(big.Int).SetBytes(msgDummy)
-
-		hFuncDummy := mimc.NewMiMC()
-		sigBinDummy, _ := bobPriv.Sign(msgDummy, hFuncDummy)
-
-		// 1. Get Sender (Bob) Path
-		bPath, bBits := tree.GetPath(bobIndex)
-		
-		// 2. Simulate Sender Update in Go Tree
-		currentBobNonce = new(big.Int).Add(currentBobNonce, big.NewInt(1))
-		bobLeafDummy := HashAccountLeaf(big.NewInt(int64(bobIndex)), bytesToBigInt(bobPub.A.X.Bytes()), bytesToBigInt(bobPub.A.Y.Bytes()), newBobBal, currentBobNonce)
-		tree.Update(bobIndex, bobLeafDummy)
-
-		// 3. Get Receiver (Alice) Path (from tree AFTER Sender update)
-		aPath, aBits := tree.GetPath(aliceIndex)
-
-		witness.Ops[i] = Operation{
-			OpType:          OpTransfer,
-			MessageHash:     msgDummyInt,
-			SenderIndex:     bobIndex,
-			SenderBalance:   newBobBal,
-			SenderNonce:     new(big.Int).Sub(currentBobNonce, big.NewInt(1)), // The nonce BEFORE the update
-			Amount:          0,
-			ReceiverIndex:   aliceIndex,
-			ReceiverBalance: currentAliceBal,
-			ReceiverNonce:   currentAliceNonce,
-		}
-		
-		witness.Ops[i].PubKey.Assign(twistededwards.BN254, bobPub.Bytes())
-		witness.Ops[i].Sig.Assign(twistededwards.BN254, sigBinDummy)
-		witness.Ops[i].ReceiverPubKey.Assign(twistededwards.BN254, alicePub.Bytes())
-		
-		for j := 0; j < MerkleDepth; j++ {
-			witness.Ops[i].SenderPath[j] = bPath[j]
-			witness.Ops[i].SenderPathBits[j] = bBits[j]
-			witness.Ops[i].ReceiverPath[j] = aPath[j]
-			witness.Ops[i].ReceiverPathBits[j] = aBits[j]
-		}
-
-		// 4. Simulate Receiver Update in Go Tree (Balance +0)
-		aliceLeafDummy := HashAccountLeaf(big.NewInt(int64(aliceIndex)), bytesToBigInt(alicePub.A.X.Bytes()), bytesToBigInt(alicePub.A.Y.Bytes()), currentAliceBal, currentAliceNonce)
-		tree.Update(aliceIndex, aliceLeafDummy)
-	}
-
-	witness.NewRoot = tree.Root() // Update NewRoot to reflect all ops!
-
-	// For gnark EdDSA test on BN254
-	assert.CheckCircuit(&StateTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
 }
+
+func TestStateCircuit_ValidDeposit(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	// Sequencer acts as Maker for Deposit
+	seqPriv, _ := eddsa.GenerateKey(rand.Reader)
+	seqPub := seqPriv.PublicKey
+	seqX := new(big.Int)
+	seqPub.A.X.BigInt(seqX)
+	seqY := new(big.Int)
+	seqPub.A.Y.BigInt(seqY)
+	
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	// Sequencer base (Index 0) - dummy balance for deposit
+	seqBaseLeaf := hashGo(big.NewInt(0), seqX, seqY, big.NewInt(0), big.NewInt(1))
+	smt.Update(0, seqBaseLeaf)
+	
+	// Taker base (Index 1) - user balance
+	takerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(500), big.NewInt(0))
+	smt.Update(1, takerBaseLeaf)
+
+	oldRoot := smt.Root()
+
+	// Maker paths
+	seqBasePath, seqBaseBits := smt.GetPath(0)
+	
+	// Execute Deposit (Amount: 200, OpType: 3)
+	// Update Taker (User gets 200)
+	takerBasePath, takerBaseBits := smt.GetPath(1) // get path before update
+	newTakerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(700), big.NewInt(0))
+	smt.Update(1, newTakerBaseLeaf)
+	
+	newRoot := smt.Root()
+	
+	// Build MsgHash and Sign for Sequencer (Maker)
+	makerMsgHashBig := hashGo(big.NewInt(3), seqX, seqY, big.NewInt(0), big.NewInt(99))
+	var makerMsgHashFr fr.Element
+	makerMsgHashFr.SetBigInt(makerMsgHashBig)
+	makerMsgHashBytes := makerMsgHashFr.Bytes()
+	seqSig, _ := seqPriv.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
+	
+	// Build MsgHash and Sign for Taker (valid signature for deposits)
+	takerMsgHashBig := hashGo(big.NewInt(3), takerX, takerY, big.NewInt(1), big.NewInt(99))
+	var takerMsgHashFr fr.Element
+	takerMsgHashFr.SetBigInt(takerMsgHashBig)
+	takerMsgHashBytes := takerMsgHashFr.Bytes()
+	takerSig, _ := takerPriv.Sign(takerMsgHashBytes[:], mimc.NewMiMC())
+
+	// Build witness
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	
+	// Deposit hash accumulator check (starts at 0)
+	depHashBig := hashGo(big.NewInt(0), big.NewInt(1), big.NewInt(200))
+	witness.DepositHash = depHashBig
+	
+	witness.Op.OpType = 3
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 0
+	
+	witness.Op.MakerPubKey.Assign(twistededwards.BN254, seqPub.Bytes())
+	witness.Op.MakerSig.Assign(twistededwards.BN254, seqSig)
+	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.Balance = 0
+	witness.Op.MakerBase.Nonce = 1
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(seqBasePath, seqBaseBits)
+	
+	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
+	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
+	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.Balance = 500
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	
+	// Dummy paths for inactive
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+	
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
+func TestStateCircuit_InvalidSignature(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	privKey, _ := eddsa.GenerateKey(rand.Reader)
+	pubKey := privKey.PublicKey
+	pubX := new(big.Int)
+	pubKey.A.X.BigInt(pubX)
+	pubY := new(big.Int)
+	pubKey.A.Y.BigInt(pubY)
+	
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	makerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(1000), big.NewInt(1))
+	smt.Update(0, makerBaseLeaf)
+	
+	takerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(500), big.NewInt(0))
+	smt.Update(1, takerBaseLeaf)
+
+	oldRoot := smt.Root()
+
+	makerBasePath, makerBaseBits := smt.GetPath(0)
+	
+	newMakerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(800), big.NewInt(2))
+	smt.Update(0, newMakerBaseLeaf)
+	
+	takerBasePath, takerBaseBits := smt.GetPath(1)
+	newTakerBaseLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(700), big.NewInt(0))
+	smt.Update(1, newTakerBaseLeaf)
+	
+	newRoot := smt.Root()
+	
+	// Generate INVALID signature (sign different amount)
+	makerMsgHashBig := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(99))
+	var makerMsgHashFr fr.Element
+	makerMsgHashFr.SetBigInt(makerMsgHashBig)
+	makerMsgHashBytes := makerMsgHashFr.Bytes()
+	// Sign a DIFFERENT payload so verification fails against the circuit message.
+	invalidMsg := hashGo(big.NewInt(1), pubX, pubY, big.NewInt(0), big.NewInt(98))
+	var invalidFr fr.Element
+	invalidFr.SetBigInt(invalidMsg)
+	invalidBytes := invalidFr.Bytes()
+	invalidSig, _ := privKey.Sign(invalidBytes[:], mimc.NewMiMC())
+	_ = makerMsgHashBytes
+	
+	takerMsgHashBig := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(1), big.NewInt(99))
+	var takerMsgHashFr fr.Element
+	takerMsgHashFr.SetBigInt(takerMsgHashBig)
+	takerMsgHashBytes := takerMsgHashFr.Bytes()
+	takerSig, _ := takerPriv.Sign(takerMsgHashBytes[:], mimc.NewMiMC())
+
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	witness.DepositHash = 0
+	
+	witness.Op.OpType = 1
+	witness.Op.Amount = 200 // Circuit enforces Amount = 200, but Sig is for 99999!
+	witness.Op.QuoteAmount = 0
+	
+	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
+	witness.Op.MakerSig.Assign(twistededwards.BN254, invalidSig) // INVALID SIG
+	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.Balance = 1000
+	witness.Op.MakerBase.Nonce = 1
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
+	
+	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
+	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
+	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.Balance = 500
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+	
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithInvalidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+

@@ -2,10 +2,14 @@ package state
 
 import (
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/nowafinance/nowa-zk/sequencer/internal/types"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -101,9 +105,9 @@ func (smt *LevelDBMerkleTree) getNode(level int, index uint64) fr.Element {
 }
 
 // GetPath retrieves the Merkle proof for a given leaf index.
-func (smt *LevelDBMerkleTree) GetPath(index uint64) ([20]*big.Int, [20]uint64) {
-	var path [20]*big.Int
-	var bits [20]uint64
+func (smt *LevelDBMerkleTree) GetPath(index uint64) ([28]*big.Int, [28]uint64) {
+	var path [28]*big.Int
+	var bits [28]uint64
 
 	for i := 0; i < smt.depth; i++ {
 		siblingIndex := index ^ 1
@@ -153,4 +157,89 @@ func HashAccountLeaf(index, pubX, pubY, balance, nonce *big.Int) *fr.Element {
 	var res fr.Element
 	res.SetBytes(h.Sum(nil))
 	return &res
+}
+
+// GetBalance retrieves the balance state by AccountID and TokenID.
+func (smt *LevelDBMerkleTree) GetBalance(accountID uint64, tokenID uint32) (*types.BalanceState, error) {
+	key := fmt.Sprintf("balance:%d:%d", accountID, tokenID)
+	data, err := smt.db.Get([]byte(key), nil)
+	if err == leveldb.ErrNotFound {
+		return nil, nil // balance not found
+	} else if err != nil {
+		return nil, err
+	}
+
+	var acc types.BalanceState
+	if err := json.Unmarshal(data, &acc); err != nil {
+		return nil, err
+	}
+	return &acc, nil
+}
+
+// SetBalance saves the balance state and automatically updates its leaf in the Merkle Tree!
+func (smt *LevelDBMerkleTree) SetBalance(acc *types.BalanceState) error {
+	key := fmt.Sprintf("balance:%d:%d", acc.AccountID, acc.TokenID)
+	
+	// 1. Save to DB
+	data, err := json.Marshal(acc)
+	if err != nil {
+		return err
+	}
+	if err := smt.db.Put([]byte(key), data, nil); err != nil {
+		return err
+	}
+
+	leafIndex := (acc.AccountID * 256) + uint64(acc.TokenID)
+
+	// 2. Hash the new balance state
+	leafHash := HashAccountLeaf(
+		new(big.Int).SetUint64(leafIndex),
+		acc.PubKeyX,
+		acc.PubKeyY,
+		acc.Balance,
+		new(big.Int).SetUint64(acc.Nonce),
+	)
+
+	// 3. Update the Merkle Tree at the leaf index
+	return smt.Update(leafIndex, leafHash)
+}
+
+// GetNextAccountID gets and increments the global account ID counter.
+func (smt *LevelDBMerkleTree) GetNextAccountID() (uint64, error) {
+	data, err := smt.db.Get([]byte("next_account_id"), nil)
+	var idx uint64 = 0
+	if err == nil {
+		idx = binary.BigEndian.Uint64(data)
+	} else if err != leveldb.ErrNotFound {
+		return 0, err
+	}
+
+	// increment and save
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, idx+1)
+	if err := smt.db.Put([]byte("next_account_id"), buf, nil); err != nil {
+		return 0, err
+	}
+	
+	return idx, nil
+}
+
+// GetAccountID retrieves an AccountID by PubKey.
+func (smt *LevelDBMerkleTree) GetAccountID(pubKeyHex string) (uint64, error) {
+	cleanPubKeyHex := strings.TrimPrefix(pubKeyHex, "0x")
+	data, err := smt.db.Get([]byte("pubkey:"+cleanPubKeyHex), nil)
+	if err == leveldb.ErrNotFound {
+		// Create new account ID
+		newID, err := smt.GetNextAccountID()
+		if err != nil {
+			return 0, err
+		}
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, newID)
+		smt.db.Put([]byte("pubkey:"+cleanPubKeyHex), buf, nil)
+		return newID, nil
+	} else if err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint64(data), nil
 }

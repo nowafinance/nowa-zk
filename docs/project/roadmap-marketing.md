@@ -13,6 +13,11 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 
 ---
 
+> [!NOTE]
+> This tracks phases going forward. For what's actually been **published as a release**
+> vs. built-but-unreleased vs. genuinely incomplete right now, see
+> [Release Status](./release-status.md).
+
 ## 📊 Development Status Matrix
 
 | Phase | Milestone | Status |
@@ -21,10 +26,12 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 | **Phase 1 (v0.1.0)** | Ethereum L1 Settlement & Integration | ✅ **Complete** |
 | **Phase 2 (v0.2.0)** | L1 Data Availability (DA) & ZK Scalability | ✅ **Complete** |
 | **Phase 3 (v0.3.0)** | Universal State Transition (The Rollup Engine) | ✅ **Complete** |
-| **Phase 4 (v0.4.0)** | The High-Frequency Go Sequencer | ⏳ **Next** |
-| **Phase 5 (v0.5.0)** | The L1 Bridge & Escape Hatch | 📅 *Planned* |
+| **Phase 4 (v0.4.0)** | The High-Frequency Go Sequencer | 🟡 **Mostly Complete** — matching engine, persistent LevelDB SMT, REST API, and ZK Batcher are built and live; WebSocket streaming is still outstanding |
+| **Phase 5 (v0.5.0)** | The L1 Bridge & Escape Hatch | 🟡 **Partially Complete** — L1 deposits + a live deposit watcher are built; the Escape Hatch (`emergencyWithdraw()`) is **not implemented** — `NowaRollup.withdraw()` is currently an owner-only placeholder |
 | **Phase 6 (v1.0.0)** | Security Audits & Mainnet Beta | 📅 *Planned* |
 | **Phase 7 (v2.0.0)** | Decentralized Provers & Ecosystem Expansion | 📅 *Planned* |
+
+*(Status last verified against code 2026-08-17. See [architecture/overview.md](../architecture/overview.md#known-gaps-as-of-2026-08-17) for the current gap list.)*
 
 ---
 
@@ -32,8 +39,8 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 
 ### ✅ Phase 0 & 1: Core ZK Circuit & L1 Settlement (Completed)
 *The foundation of cryptographic verification.*
-* **SNARK Circuit:** Built the core Groth16 circuit in Go to validate EIP-712 signatures.
-* **Smart Contracts:** Designed `TradeRegistry.sol` and generated the complex `Verifier.sol` engine to mathematically settle proofs on Ethereum.
+* **SNARK Circuit:** Built the core Groth16 circuit in Go, now verifying EdDSA (BabyJubJub) trade/transfer/withdrawal/deposit signatures — see Phase 4 for why EdDSA replaced the originally-planned EIP-712/ECDSA scheme.
+* **Smart Contracts:** `NowaRollup.sol` (renamed from `TradeRegistry.sol`) + a generated `Verifier.sol` mathematically settle proofs on Ethereum.
 
 ### ✅ Phase 2: L1 Data Availability (DA) (Completed)
 *Securing transaction history natively on Ethereum.*
@@ -44,17 +51,17 @@ Welcome to the official engineering roadmap for **Nowa-ZK**, a cutting-edge ZK-R
 * **Sparse Merkle Trees:** Implemented Depth-20 SMTs inside the circuit to mathematically track user balances and nonces.
 * **Unified Operations:** A single circuit that seamlessly processes Deposits, Trades, Transfers, and Withdrawal Requests while strictly enforcing balance constraints.
 
-### 📅 Phase 4: The High-Frequency Go Sequencer (v0.4.0)
+### 🟡 Phase 4: The High-Frequency Go Sequencer (v0.4.0) — Mostly Complete
 *Replacing slow blockchain consensus with a lightning-fast matching engine.*
-* **The Trading Engine:** Build a centralized, high-frequency orderbook matching engine in Go.
-* **Persistent Merkle DB:** Migrate the in-memory Sparse Merkle Tree to a persistent database (LevelDB) to guarantee state survival across crashes.
-* **High-Frequency API:** Expose WebSocket and REST APIs for users and algorithmic traders to stream real-time orderbook data and submit trades.
-* **The ZK Batcher:** Continuously chunk matched trades into fixed-size batches and hand them off to the Prover for ZK-SNARK generation.
+* ✅ **The Trading Engine:** A centralized, high-frequency orderbook matching engine in Go (`sequencer/internal/engine`), live.
+* ✅ **Persistent Merkle DB:** The Sparse Merkle Tree is persisted in LevelDB (`sequencer/internal/state`), depth 28.
+* 🔲 **High-Frequency API:** REST is live (`/order`, `/orderbook`, `/balance`, `/account`, `/batch/*`); **WebSocket streaming is not yet built.**
+* ✅ **The ZK Batcher:** Matched trades are batched (`sequencer/internal/batcher`) and handed to the Prover — current `BatchSize = 1` (one fill per proof), not the fixed multi-trade batches originally envisioned; see the recursive-proving discussion in `FAQ-ZK.md` for the scaling plan.
 
-### 📅 Phase 5: The L1 Bridge & Escape Hatch (v0.5.0)
+### 🟡 Phase 5: The L1 Bridge & Escape Hatch (v0.5.0) — Partially Complete
 *Connecting the Rollup to real Ethereum value while guaranteeing self-custody.*
-* **L1 Deposit Vaults:** Build the canonical Ethereum bridge contracts to map real ETH to L2 balances trustlessly, modeled after battle-tested protocols like Loopring.
-* **Trustless Withdrawals (The Escape Hatch):** Build an `emergencyWithdraw()` function on L1. If the Sequencer ever goes offline, users can submit standard Merkle proofs directly to L1 to rescue their funds.
+* ✅ **L1 Deposit Vaults:** `NowaRollup.deposit()` locks ERC20 tokens; a live Deposit Watcher (`sequencer/cmd/sequencer/deposit_watcher.go`) mints the corresponding L2 balance automatically.
+* ❌ **Trustless Withdrawals (The Escape Hatch):** **Not implemented.** `NowaRollup.withdraw()` today is an explicit placeholder — `onlyOwner`, and it ignores the Merkle proof parameter entirely. There is currently no `emergencyWithdraw()` and no way for a user to self-rescue funds if the Sequencer goes offline. This is the top-priority remaining item in this phase.
 
 ### 📅 Phase 6: Security Audits & Mainnet Beta (v1.0.0)
 *Hardening the protocol for production.*

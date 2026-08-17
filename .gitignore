@@ -60,6 +60,12 @@ indexer/data/
 prover/keys/
 prover/prover-bin
 
+# --- Sequencer Specific ---
+sequencer/nowa_state_db/
+sequencer/bin/
+sequencer/sequencer
+
+
 # --- Smart Contracts Specific ---
 contracts/lib/*
 contracts/broadcast/*
