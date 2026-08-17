@@ -15,21 +15,16 @@ track phases going forward) because this tracks what's *shipped* right now.
 | `v0.0.1` | Initial Alpha | Initial project structure only — no feature list. |
 | `v0.0.2` | Genesis Release | First working system: old-model `nowa-sequencer` (the Cosmos indexer, not today's Sequencer), Gnark prover, `StateManager`/`BatchRegistry`/`VerifierAdapter` contracts, systemd deployment docs. |
 | `v0.1.0` | End-to-End App-Specific ZK Rollup & MiMC Integration | Pivoted from generic rollup to trade-specific. MiMC hashing, `TradeRegistry.sol` (replacing `BatchRegistry`), Foundry E2E tests, automated trusted setup. |
-| `v0.2.0` | L1 Data Availability & ZK Trade Signatures | **Currently "Latest" on GitHub.** Closes Phase 1+2: L1 DA (raw payloads on-chain), finalized MiMC trade signature circuit, `TradeRegistry.sol` + `Verifier.sol` deployed, modular circuits + fuzz tests. |
+| `v0.2.0` | L1 Data Availability & ZK Trade Signatures | Closes Phase 1+2: L1 DA (raw payloads on-chain), finalized MiMC trade signature circuit, `TradeRegistry.sol` + `Verifier.sol` deployed, modular circuits + fuzz tests. |
+| `v0.4.0` | The High-Frequency Sequencer & Universal State Transition | **Currently "Latest" on GitHub**, published 2026-08-17. Closes Phase 3+4: Sequencer (matching engine, LevelDB SMT, REST API, EdDSA signatures), Universal State Transition Circuit (`TradeRegistry` → `NowaRollup`), partial L1 bridge (`deposit()` + Deposit Watcher, dual-token swaps), EIP-4844 blob DA with post-Osaka cell proofs, exhaustive test suite, full docs rewrite. See §3 below for what it does *not* close. |
 
 `v0.0.3` is a bare git tag between `v0.0.2` and `v0.1.0` — never published as a GitHub
-Release, no notes.
-
-> [!WARNING]
-> **`v0.2.0` is stale.** Its own release notes end with *"What's Next: Phase 3
-> (Universal State Transition) & Phase 4 (Off-Chain Sequencer)"* — both are done in
-> code (see §2) but were never released. Anyone installing "the latest release" today
-> gets the old Cosmos-indexer/`TradeRegistry` architecture, not what's actually in
-> `main`.
+Release, no notes. There is no `v0.3.0` — Phase 3 (the SMT circuit) was folded into
+`v0.4.0` since it was never independently shippable on its own.
 
 ---
 
-## 2. Shipped but unreleased (since `v0.2.0`)
+## 2. Shipped in `v0.4.0` (previously unreleased since `v0.2.0`)
 
 ```
 5baa928  feat(phase-3): integrate Universal State Circuit with Sparse Merkle Trees
@@ -37,9 +32,9 @@ a05a620  feat(sequencer): migrate to EdDSA, implement LevelDB SMT, high-frequenc
 0aaf75a  feat: implement dual-token swaps and L1 deposit watcher for production ZK-rollup
 5fbf3dc  test: implement exhaustive production-grade test suite and edge case handling
 ```
-Plus this round of uncommitted work (docs overhaul, an EIP-4844 post-Osaka DA fix,
-`test_client.go` rewrite) — not yet committed, let alone released. See
-[Suggested next release](#4-suggested-next-release) below.
+Plus the docs overhaul, the EIP-4844 post-Osaka DA fix, and the `test_client.go`
+`--count`/lock rewrite from this session — all merged to `main` and included in
+`v0.4.0`. Nothing currently sitting unreleased.
 
 ---
 
@@ -100,40 +95,19 @@ Plus this round of uncommitted work (docs overhaul, an EIP-4844 post-Osaka DA fi
 
 ## 4. Suggested next release
 
-**`v0.4.0`** — bundles Phase 3 (SMT) + Phase 4 (Sequencer), since the SMT circuit was
-never independently shippable on its own; it only became a real system once wired
-into the Sequencer. Skip a standalone `v0.3.0` for that reason.
+**`v0.5.0`** — completes Phase 5 (The L1 Bridge & Escape Hatch). `v0.4.0` shipped the
+"happy path" half (`deposit()` + Deposit Watcher); the half that actually matters for
+calling this trustless is still unbuilt:
 
-Draft description:
+- Rewrite `withdraw()` to accept `(tokenId, amount, merkleProof)` from **any caller**
+  and verify it against the current `stateRoot` — not `onlyOwner`.
+- A timeout/liveness check (e.g. "usable only if no `submitBatch()` in N days") so
+  this stays a fallback, not the primary withdrawal path.
+- Update [architecture/overview.md](../architecture/overview.md#known-gaps-as-of-2026-08-17)'s
+  Known Gaps list once it lands — this is currently the top entry there.
 
-```markdown
-## v0.4.0: The High-Frequency Sequencer & Universal State Transition
-
-Replaces the Cosmos-indexer execution model with a real off-chain matching engine,
-and upgrades the circuit from a stateless trade verifier into a full stateful
-rollup engine.
-
-### ✨ What's New
-- **Sequencer** (new component): in-memory matching engine, persistent depth-28
-  Sparse Merkle Tree, REST API, EdDSA signatures (replacing ECDSA/EIP-712).
-- **Universal State Transition Circuit**: one circuit now handles Trade, Transfer,
-  Withdrawal, and Deposit. Contract renamed TradeRegistry → NowaRollup.
-- **L1 Bridge (partial)**: deposit() + a live Deposit Watcher, dual-token swaps.
-- **Data Availability**: EIP-4844 blobs with KZG cell proofs (post-Osaka compatible).
-- **Hardening**: exhaustive test suite, full documentation rewrite.
-
-### ⚠️ Known Gaps (documented, not hidden)
-- No escape hatch — withdraw() is owner-gated, not trustless yet.
-- Batch size is 1 — one proof per fill.
-- No WebSocket API.
-
-### Upgrade Notes
-Circuit changed → requires new keys and a fresh contract deployment
-(`make setup && make deploy`) — old deployments cannot verify proofs from this circuit.
-```
-
-Before tagging: commit the current working-tree changes (docs, the DA fix,
-`test_client.go`) first — a release should point at a committed state.
+No draft release notes yet — unlike `v0.4.0`, this work doesn't exist in code yet, so
+there's nothing to bundle into a release description until it's actually built.
 
 ## Related
 - [Marketing Roadmap](./roadmap-marketing.md) — forward-looking phase tracking
