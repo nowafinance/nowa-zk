@@ -36,7 +36,7 @@ library MiMC {
 		hash.Write(rnd)
 	}
 
-	fmt.Println(`        return roundConstants;
+	fmt.Print(`        return roundConstants;
     }
 
     function encrypt(uint256 m, uint256 k) internal pure returns (uint256) {

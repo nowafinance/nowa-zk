@@ -20,7 +20,7 @@ import (
 // APIServer serves the Prover API
 type APIServer struct {
 	app      *fiber.App
-	registry    *bindings.BatchRegistry
+	registry    *bindings.TradeRegistry
 	store       *storage.ProverStore
 	deployments map[string]string
 	port        int
@@ -47,7 +47,7 @@ type StatusResponse struct {
 }
 
 // NewAPIServer creates a new API server
-func NewAPIServer(registry *bindings.BatchRegistry, store *storage.ProverStore, deployments map[string]string, port int) *APIServer {
+func NewAPIServer(registry *bindings.TradeRegistry, store *storage.ProverStore, deployments map[string]string, port int) *APIServer {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               "Nowa-ZK Prover",
@@ -132,7 +132,7 @@ func (api *APIServer) handleGetContracts(c *fiber.Ctx) error {
 
 // handleLatestBatch godoc
 // @Summary Get latest verified batch
-// @Description Get details of the latest verified batch from the contract
+// @Description Get details of the most recently proven batch from local storage
 // @Tags Batches
 // @Produce json
 // @Success 200 {object} BatchResponse
@@ -140,37 +140,32 @@ func (api *APIServer) handleGetContracts(c *fiber.Ctx) error {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /batches/latest [get]
 func (api *APIServer) handleLatestBatch(c *fiber.Ctx) error {
-	totalBatches, err := api.registry.TotalBatches(&bind.CallOpts{})
+	// TradeRegistry only exposes per-chunk verification state (isChunkVerified/chunkBatchRoot),
+	// not a batch registry we can enumerate on-chain, so the latest batch comes from local storage
+	// (populated once a batch's chunks have all been proven and submitted).
+	latest, err := api.store.GetBatches(0, 1)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get total batches: %v", err))
+		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get latest batch: %v", err))
 	}
-
-	if totalBatches.Cmp(big.NewInt(0)) == 0 {
+	if len(latest) == 0 {
 		return c.Status(fiber.StatusNotFound).SendString("No batches found")
 	}
+	proofData := latest[0]
 
-	batch, err := api.registry.GetBatch(&bind.CallOpts{}, totalBatches)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("Failed to get batch: %v", err))
-	}
-
-	// Try to get tx hash and tx hashes from local storage
-	txHash := ""
-	var txHashes []string
-	if proofData, err := api.store.GetProof(totalBatches.Uint64()); err == nil && proofData != nil {
-		txHash = proofData.TxHash
-		txHashes = proofData.TxHashes
+	stateRootHex := proofData.NewStateRoot
+	if val, ok := new(big.Int).SetString(proofData.NewStateRoot, 10); ok {
+		stateRootHex = common.BigToHash(val).Hex()
 	}
 
 	resp := BatchResponse{
-		BatchNumber:  totalBatches.Uint64(),
-		BatchHash:    common.BytesToHash(batch.BatchHash[:]).Hex(),
-		NewStateRoot: common.BytesToHash(batch.NewStateRoot[:]).Hex(),
-		Submitter:    batch.Submitter.Hex(),
-		Timestamp:    batch.Timestamp.Uint64(),
-		Status:       batch.Status,
-		TxHash:       txHash,
-		TxHashes:     txHashes,
+		BatchNumber:  proofData.BatchNumber,
+		BatchHash:    proofData.BatchHash,
+		NewStateRoot: stateRootHex,
+		Submitter:    proofData.Submitter,
+		Timestamp:    uint64(proofData.Timestamp),
+		Status:       proofData.Status,
+		TxHash:       proofData.TxHash,
+		TxHashes:     proofData.TxHashes,
 	}
 
 	return c.JSON(resp)
@@ -247,14 +242,15 @@ func (api *APIServer) handleGetStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// If not found in local store, check contract
-	batchID := new(big.Int).SetUint64(batchNumber)
-	batch, err := api.registry.GetBatch(&bind.CallOpts{}, batchID)
-	if err == nil && batch.VerifiedAt.Uint64() > 0 {
+	// If not found in local store, check whether the contract has verified its first chunk.
+	// TradeRegistry tracks verification per (batchNumber, chunkIndex), not per whole batch,
+	// so this only confirms chunk 0 was accepted on-chain, not that every chunk was.
+	verified, err := api.registry.IsChunkVerified(&bind.CallOpts{}, new(big.Int).SetUint64(batchNumber), big.NewInt(0))
+	if err == nil && verified {
 		return c.JSON(StatusResponse{
 			Status:      "VERIFIED_ON_CHAIN",
 			BatchNumber: batchNumber,
-			Note:        "Proof verified but local proof data not found",
+			Note:        "Chunk 0 verified on-chain but local proof data not found",
 		})
 	}
 

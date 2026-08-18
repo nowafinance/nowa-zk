@@ -19,7 +19,7 @@ This repository contains the official implementation of the **Indexer** (formerl
 
 ## 🌟 Key Features
 
-- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches trades (e.g. 25 trades/batch) for efficient proof generation.
+- **High-Performance Indexer:** Continuously indexes blocks from the decentralized Cosmos L2 Indexer and batches trades (125 trades/batch, proved in chunks of 25) for efficient proof generation.
 - **Succinct ZK Proofs:** Utilizes Groth16 to compress and verify EIP-712 trade signatures with minimal L1 footprint (~4KB per batch).
 - **EVM Compatibility:** Built alongside a Cosmos EVM L2, allowing seamless deployment of Ethereum smart contracts.
 - **Fast Finality:** Achieves ~1 second block times on L2 while maintaining Ethereum-grade security.

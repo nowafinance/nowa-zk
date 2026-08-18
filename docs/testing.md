@@ -8,7 +8,7 @@ Quick reference for testing all components of the Nowa-ZK system with terminal c
 
 ```bash
 # Full clean setup
-make clean
+make clean-global
 make setup
 make build
 make test
@@ -262,7 +262,7 @@ go version  # Need 1.24.10+
 forge --version
 
 # Clean and retry
-make clean
+make clean-global
 make setup
 ```
 
@@ -430,7 +430,7 @@ go test -bench=BenchmarkProve -benchmem -cpuprofile=cpu.prof
 
 ```bash
 # Full CI test suite
-make clean
+make clean-global
 make deps
 make build  
 make test
@@ -460,7 +460,7 @@ make test
 ## Test Checklist
 
 Before deployment:
-- [ ] `make clean && make setup && make build && make test` passes
+- [ ] `make clean-global && make setup && make build && make test` passes
 - [ ] Contracts deploy successfully
 - [ ] Indexer creates batches from transactions
 - [ ] Prover processes batches and submits proofs
@@ -475,5 +475,5 @@ Before deployment:
 - Check logs for ERROR/WARN messages
 - Verify all environment variables in `.env`
 - Ensure all binaries are latest version: `make build`
-- Reset state if corrupted: `make clean && make setup`
+- Reset state if corrupted: `make clean-global && make setup`
 - Join Discord/GitHub issues for support

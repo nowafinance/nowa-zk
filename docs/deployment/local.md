@@ -46,8 +46,8 @@ git submodule update --init --recursive
 
 It will delete any old build data and ZK keys.
 
-```bash 
-make clean
+```bash
+make clean-global
 ```
 
 ### Key Generation & Build

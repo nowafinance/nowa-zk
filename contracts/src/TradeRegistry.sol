@@ -47,24 +47,25 @@ contract TradeRegistry {
         Trade[] calldata trades
     ) external {
         require(!isChunkVerified[batchNumber][chunkIndex], "Chunk already verified");
-        require(trades.length == 25, "Invalid trades length");
+        require(trades.length > 0 && trades.length <= 25, "Invalid trades length");
 
         // Compute the Expected Batch Root using MiMC on L1
         uint256[] memory hashData = new uint256[](150);
         for(uint i = 0; i < 25; i++) {
-            uint256 hashInt = uint256(trades[i].messageHash);
+            Trade memory currentTrade = i < trades.length ? trades[i] : trades[0];
+            uint256 hashInt = uint256(currentTrade.messageHash);
             
             // Hash: part 1 and 2
             hashData[i*6] = hashInt & ((1 << 128) - 1);
             hashData[i*6 + 1] = hashInt >> 128;
             
             // PubKeyX: part 1 and 2
-            hashData[i*6 + 2] = trades[i].pubKeyX & ((1 << 128) - 1);
-            hashData[i*6 + 3] = trades[i].pubKeyX >> 128;
+            hashData[i*6 + 2] = currentTrade.pubKeyX & ((1 << 128) - 1);
+            hashData[i*6 + 3] = currentTrade.pubKeyX >> 128;
             
             // PubKeyY: part 1 and 2
-            hashData[i*6 + 4] = trades[i].pubKeyY & ((1 << 128) - 1);
-            hashData[i*6 + 5] = trades[i].pubKeyY >> 128;
+            hashData[i*6 + 4] = currentTrade.pubKeyY & ((1 << 128) - 1);
+            hashData[i*6 + 5] = currentTrade.pubKeyY >> 128;
         }
 
 

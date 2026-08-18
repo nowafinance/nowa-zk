@@ -174,10 +174,10 @@ See [Cleanup System](./cleanup-system.md) for detailed implementation.
 
 **Example: 100 TPS sustained**
 ```
-Batches per hour: 100 TPS ÷ 25 trades/batch × 3600s = ~14400 batches/hour
+Batches per hour: 100 TPS ÷ 125 trades/batch × 3600s = ~2880 batches/hour
 
 Without cleanup:
-  2812 batches × 11 MB = ~31 GB/hour
+  2880 batches × 11 MB = ~31 GB/hour
   
 With cleanup (keeping 2-3 hours):
   ~100 batches × 11 MB = ~1.1 GB steady state

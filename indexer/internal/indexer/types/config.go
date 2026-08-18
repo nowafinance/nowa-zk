@@ -18,7 +18,7 @@ type Config struct {
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		BatchSize:     128,                       // 128 transactions per batch
+		BatchSize:     125,                       // 125 transactions per batch
 		BatchInterval: 5 * time.Second,           // Check/create batch every 5 seconds (reduced from 10s)
 		APIPort:       8080,                      // REST API port
 		StateDBPath:    ".nowa-zk/indexer/data", // Local storage path

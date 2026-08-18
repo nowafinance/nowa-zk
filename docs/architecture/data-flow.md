@@ -4,6 +4,8 @@
 
 The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-safe manner by fetching blocks in batches and creating fixed-size trade batches.
 
+Note: this document covers the **indexer's** batch (125 trades). The **prover** further splits each indexer batch into 6 chunks of 25 trades — one Groth16 proof per chunk — before submitting to L1. That chunking is a prover-side concern and isn't shown here; see `docs/architecture/overview.md`.
+
 ---
 
 ## Flow Diagram
@@ -46,21 +48,21 @@ The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-
     [trade1, trade2, trade3, trade4, trade5, trade6, trade7, trade8, ...]
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. BATCH CREATION (Exactly 25 trades)                       │
+│ 4. BATCH CREATION (Exactly 125 trades)                       │
 └─────────────────────────────────────────────────────────────┘
                            ↓
     Check for incomplete batch first:
     
-    IF incomplete batch exists (e.g., 10/25):
-       ├─ Fill it with next trades (15 more)
-       └─ Mark as complete at 25
+    IF incomplete batch exists (e.g., 40/125):
+       ├─ Fill it with next trades (85 more)
+       └─ Mark as complete at 125
     
     ELSE create new batch:
-       ├─ Take next 25 trades
+       ├─ Take next 125 trades
        ├─ Compute batch hash
        └─ Save to database
        
-    IF < 25 trades left:
+    IF < 125 trades left:
        └─ Create incomplete batch, wait for more blocks
                            ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -85,82 +87,79 @@ The Nowa-ZK indexer processes blockchain transactions in a deterministic, crash-
 
 ### Step 1: Fetch 100 Blocks
 ```
-Block #7501: 14 trades
-Block #7502: 16 trades  
-Block #7503: 12 trades
+Block #7501: 50 trades
+Block #7502: 40 trades
+Block #7503: 300 trades  ← Large block!
 Block #7504: 10 trades
-Block #7505: 500 trades  ← Large block!
-Block #7506: 15 trades
 ...
-Block #7600: 8 trades
-Total: 1,600+ trades across 100 blocks
+Block #7600: 5 trades
+Total: 1,000+ trades across 100 blocks
 ```
 
 ### Step 2: Process Trades in Order
 ```
 Queue (deterministic order):
-[7501_trade1, 7501_trade2, ..., 7502_trade1, ..., 7505_trade1, 7505_trade2, ...]
-                                     ↓ 500 trades from one block
+[7501_trade1, ..., 7502_trade1, ..., 7503_trade1, 7503_trade2, ...]
+                                     ↓ 300 trades from one block
 ```
 
-### Step 3: Create Batches (25 each)
+### Step 3: Create Batches (125 each)
 ```
-Batch #1:  25 trades from blocks 7501-7504
-Batch #2:  25 trades from blocks 7504-7505 (partial)
-Batch #3:  25 trades from block 7505
-Batch #4:  25 trades from block 7505
-Batch #5:  25 trades from block 7505 (remainder)
+Batch #1:  125 trades = 50 (block 7501) + 40 (block 7502) + 35 (partial, block 7503)
+Batch #2:  125 trades from block 7503 (partial)
+Batch #3:  125 trades from block 7503 (remainder: 265 - 125 - 125 = 15 left over)
+Batch #4:  25 trades so far (15 from block 7503 + 10 from block 7504), incomplete, waiting for more blocks
 ...
-Batch #20: 15 trades (incomplete, waiting for more blocks)
 ```
 
 ### Step 4: Save Progress
 ```
 Database state:
 - last_processed_block: 7600
-- batch_1 through batch_19: Complete (25 trades each)
-- batch_20: Incomplete (15/25 trades)
+- batch_1 through batch_3: Complete (125 trades each)
+- batch_4: Incomplete (25/125 trades, growing as later blocks are processed)
 - block_7501_hash through block_7600_hash: Saved
 ```
 
 ---
 
-## Handling Large Blocks (25+ or 1000s of Trades)
+## Handling Large Blocks (125+ or 1000s of Trades)
 
 ### ✅ **YES, the system handles this properly!**
 
-**Example: Block with 1,000 trades**
+**Example: Block with 1,030 trades**
 
 ```go
 // Processing loop in process_block_range.go
-remainingTrades := block.trades // 1000 trades
+remainingTrades := block.trades // 1030 trades
 
 while len(remainingTrades) > 0 {
     if incomplete_batch exists {
         // Fill incomplete batch first
-        fill_to_25()
+        fill_to_125()
     }
     
-    if len(remainingTrades) >= 25 {
+    if len(remainingTrades) >= 125 {
         // Create full batch
-        batch = create_batch(remainingTrades[0:25])
-        remainingTrades = remainingTrades[25:]
+        batch = create_batch(remainingTrades[0:125])
+        remainingTrades = remainingTrades[125:]
     } else {
-        // Less than 25 left
+        // Less than 125 left
         create_incomplete_batch(remainingTrades)
         remainingTrades = []  // Done
     }
 }
 ```
 
-**Result for 1000-trade block:**
-- Batch #1: 25 trades (from this block)
-- Batch #2: 25 trades (from this block)
-- Batch #3: 25 trades (from this block)
+**Result for 1030-trade block:**
+- Batch #1: 125 trades (from this block)
+- Batch #2: 125 trades (from this block)
+- Batch #3: 125 trades (from this block)
 ...
-- Batch #40: 25 trades (from this block)
+- Batch #8: 125 trades (from this block) — 1000 trades used, 30 remain
+- Batch #9: 30 trades (from this block), incomplete
 
-**Then next block's trades continue filling Batch #41!**
+**Then next block's trades continue filling Batch #9!**
 
 ---
 
@@ -187,8 +186,8 @@ On restart:
 - Batches never skip trades
 - Even if block fetch fails, entire 100-block range retries
 
-### 4. **Exactly 25 Trades Per Batch**
-- No batch ever has more than 25 trades
+### 4. **Exactly 125 Trades Per Batch**
+- No batch ever has more than 125 trades
 - Incomplete batches wait for more blocks
 - One block can create multiple batches
 
@@ -205,7 +204,7 @@ block_<N>_hash:         string              // For reorg detection
 
 batch_<N>:              {                   // Complete batch
   Number: uint64
-  Trades: [25]ParsedTrade
+  Trades: [125]ParsedTrade
   Hash: string
   OldStateRoot: string  // Hardcoded 0x0
   NewStateRoot: string  // Hardcoded 0x0
@@ -214,7 +213,7 @@ batch_<N>:              {                   // Complete batch
 
 batch_<N>_incomplete:   {                   // Incomplete batch
   Number: uint64
-  Trades: [1-24]ParsedTrade  // Less than 25
+  Trades: [1-124]ParsedTrade  // Less than 125
   ...
 }
 ```
@@ -259,7 +258,7 @@ Actions:
 |--------|-------|-------|
 | Blocks per fetch | 100 | Configurable |
 | Poll interval | 2 seconds | Constant |
-| Batch size | 25 trades | Fixed |
+| Batch size | 125 trades | Fixed |
 | Retry attempts | 3 per block | 2s, 4s, 6s backoff |
 | Processing speed | ~5-6 blocks/sec | Depends on RPC |
 

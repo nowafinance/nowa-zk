@@ -78,7 +78,7 @@ const docTemplate = `{
         },
         "/batches/latest": {
             "get": {
-                "description": "Get details of the latest verified batch from the contract",
+                "description": "Get details of the most recently proven batch from local storage",
                 "produces": [
                     "application/json"
                 ],

@@ -23,7 +23,7 @@ In Nowa-ZK, the **Cosmos chain itself acts as the Data Availability layer**. The
 
 ### 2.3 The Prover & Sequencer (Off-Chain Engine)
 The Indexer and Prover (the core of this repository) act as the bridge between Cosmos and Ethereum.
-*   **Indexer**: Continuously reads the Cosmos RPC, parsing new blocks and batching executed trades (e.g., 25 trades per batch).
+*   **Indexer**: Continuously reads the Cosmos RPC, parsing new blocks and batching executed trades (125 trades per batch; the Prover proves each batch in chunks of 25).
 *   **Prover**: A computational daemon that takes these batched trades and generates a succinct Groth16 Zero-Knowledge Proof (zk-SNARK). This proof mathematically guarantees that the trades were executed correctly and signatures are valid.
 
 ### 2.4 The Settlement Layer (Ethereum L1)
