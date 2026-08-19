@@ -1,7 +1,12 @@
 # Nowa-ZK Architecture Documentation
 
-This directory contains architecture documentation for the Nowa-ZK Sequencer/Prover ZK
-Validium.
+> [!IMPORTANT]
+> This directory describes `main`'s Sequencer/Prover architecture — built groundwork,
+> **on hold** pending prioritization, not the current operated flow. Nowa-ZK's current
+> flow is [`v0.3.0`](../project/testnet-v0.3.0-flow.md).
+
+This directory contains architecture documentation for `main`'s Sequencer/Prover
+design.
 
 ## Documents
 
@@ -10,15 +15,6 @@ Validium.
 - **[Data Flow](./data-flow.md)** — Order → match → batch → proof → L1 settlement, step
   by step, with code references.
 - **[Storage](./storage.md)** — What each component persists, where, and why.
-
-## Legacy / Archived
-
-An earlier design ran execution on a Cosmos-chain Indexer instead of the off-chain
-Sequencer. That subsystem still builds (`indexer/`) but isn't wired into the live
-pipeline. Its docs are preserved for reference:
-- [Architecture Evolution: Cosmos → Sequencer](../archived-files/architecture-evolution-cosmos-to-sequencer.md) — why the migration happened
-- [Indexer Batch Flow (legacy)](../archived-files/indexer-batch-flow-legacy.md)
-- [Indexer Cleanup System (legacy)](../archived-files/cleanup-system-legacy-indexer.md)
 
 ## Quick Links
 

@@ -1,14 +1,14 @@
 # Nowa-ZK Litepaper
 
 ## Abstract
-Nowa-ZK is a cutting-edge App-Specific Zero-Knowledge (ZK) Rollup (Validium architecture) designed specifically for a high-frequency trading Decentralized Exchange (DEX). Built on a modular architecture involving a Cosmos SDK-based chain as the Execution & Data Availability Layer and Ethereum Sepolia as the L1 Settlement Layer, Nowa-ZK offers a high-performance execution environment without compromising cryptographic security.
+Nowa-ZK is an App-Specific, ZK-verified Decentralized Exchange (DEX) built on a modular architecture: a Cosmos SDK-based chain as the Execution & Data Availability Layer, and Ethereum Sepolia as an L1 anchor that verifies trade-signature validity via Groth16 proofs. Nowa-ZK offers a high-performance execution environment secured by zero-knowledge cryptography.
 
 ---
 
 ## 1. Introduction
 The demand for scalable blockchain solutions has never been higher, especially for orderbook-based trading platforms where users require lightning-fast execution and zero gas fees. General Purpose Rollups address some scalability issues but often require users to pay network gas fees and inherit bulky L1 DA costs.
 
-Nowa-ZK introduces an **App-Specific ZK Validium** approach. By executing trades on a fast, specialized Cosmos chain and submitting only ZK proofs of validity to Ethereum, Nowa-ZK ensures that all state transitions are mathematically verifiable on-chain while keeping transaction costs essentially at zero for end users.
+Nowa-ZK introduces an **App-Specific, ZK-verified** approach. By executing trades on a fast, specialized Cosmos chain and submitting ZK proofs of trade-signature validity to Ethereum, Nowa-ZK anchors trade authenticity on-chain while keeping transaction costs essentially at zero for end users.
 
 ## 2. Architecture Overview
 
@@ -28,8 +28,8 @@ The Indexer and Prover (the core of this repository) act as the bridge between C
 
 ### 2.4 The Settlement Layer (Ethereum L1)
 The Prover submits the final ZK Proof to the `TradeRegistry.sol` smart contract on Ethereum Sepolia.
-*   **Trustless ZK-Bridge**: Ethereum acts as the ultimate anchor. The `TradeVerifier.sol` mathematically verifies the proof. Once verified, Ethereum updates its view of the Cosmos chain's state root.
-*   **Vaults (Planned)**: Because Ethereum securely tracks the state of the Cosmos chain via ZK proofs, users can deposit real assets (like USDC) into a Smart Contract Vault on Ethereum, trade on the Cosmos chain, and withdraw back to Ethereum completely trustlessly.
+*   **Signature Anchor**: `TradeVerifier.sol` mathematically verifies that each batch's trades carried valid signatures. This anchors trade authenticity to Ethereum; it does not track account balances or a state root on L1 — the Cosmos chain remains the source of truth for exchange state.
+*   **Vaults**: A Smart Contract Vault on Ethereum for deposits/withdrawals is a standard pattern this architecture supports, distinct from the trade-verification path above.
 
 ---
 

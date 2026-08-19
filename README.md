@@ -12,17 +12,25 @@
 
 ---
 
-**Nowa-ZK** is an app-specific ZK-rollup orderbook DEX. Trades are matched off-chain by
-a high-frequency Go **Sequencer**, and every state transition is proven correct with a
-Groth16 zk-SNARK and settled on Ethereum (Sepolia) via a **Prover** and a set of L1
-**Contracts**.
+**Nowa-ZK** is an app-specific, ZK-verified orderbook DEX.
+
+## Current Flow
+
+Nowa-ZK runs two aligned tracks today: **Nowa Chain**, our EVM-compatible Cosmos
+blockchain (first outlined in `v0.0.1`); and **Nowa DEX**, live on testnet via the
+**[`v0.3.0`](https://github.com/nowafinance/nowa-zk/releases/tag/v0.3.0)** flow (Cosmos
+L2 execution + Ethereum L1 trade-signature anchoring, branch `release/v0.3.0`). These
+reflect where the project stands today. We remain open to evolving either further —
+subject to joint decision by tech, marketing, and company leadership.
+
+See **[docs/project/testnet-v0.3.0-flow.md](docs/project/testnet-v0.3.0-flow.md)** for
+the Nowa DEX flow written out in full.
 
 > [!NOTE]
-> **Project status**: core matching, proving, and L1 settlement work end-to-end today —
-> including EIP-4844 blob data availability, verified live on Sepolia. Self-custody is
-> **not** trustless yet: `withdraw()` is currently owner-gated with no escape hatch. See
-> **[Release Status](docs/project/release-status.md)** for the full completed-vs-incomplete
-> breakdown before treating any deployment as holding real funds.
+> This README and most of `docs/` also describe `main` — built groundwork toward a
+> more complete ZK rollup (Sequencer, `NowaRollup.sol` with a full on-chain state root,
+> EIP-4844 blob DA, an escape hatch), on hold pending prioritization. See
+> **[Release Status](docs/project/release-status.md)** for what's built there.
 
 ---
 
@@ -133,17 +141,19 @@ curl http://localhost:8080/batch/latest
 
 ## 📚 Documentation & Resources
 
+- 🟢 **[Current Flow — `v0.3.0`](docs/project/testnet-v0.3.0-flow.md)** — what's actually deployed and operated today.
 - 📊 **[Release Status](docs/project/release-status.md)** — what's released, what's shipped-but-unreleased, and what's genuinely incomplete.
 - 📐 **[Architecture Overview](docs/architecture/overview.md)** — components, data flow, storage, and known gaps.
 - 🧪 **[Testing Guide](docs/testing.md)** — unit tests per component plus a live end-to-end drill.
-- ❓ **[Architecture FAQ](FAQ-ZK.md)** — ZK-Rollup vs. Validium, DA, public input hashing, why Groth16, why EdDSA.
-- 🗺️ **[Roadmap](docs/project/roadmap-marketing.md)** — development phases and milestone status.
+- ❓ **[Architecture FAQ](docs/FAQ-ZK.md)** — ZK-Rollup vs. Validium, DA, public input hashing, why Groth16, why EdDSA.
 - 🛡️ **[Security Policy](SECURITY.md)** — vulnerability reporting and security guidelines.
 
 > [!NOTE]
-> `litepaper.md` describes an earlier Cosmos-execution-layer design and hasn't been
-> updated for the current Sequencer-based architecture — treat the docs above as the
-> current source of truth in the meantime.
+> **[docs/litepaper.md](docs/litepaper.md)** describes the Cosmos-execution-layer
+> design — closer to what's actually live today (`v0.3.0`) than the Sequencer-based
+> docs above, which describe `main`'s on-hold work. See
+> [docs/project/testnet-v0.3.0-flow.md](docs/project/testnet-v0.3.0-flow.md) for the
+> current, verified flow.
 
 **Component READMEs:**
 - [Prover Documentation](prover/README.md)

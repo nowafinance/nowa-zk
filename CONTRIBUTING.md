@@ -301,7 +301,7 @@ go test -v ./...
 ### Project Documentation
 
 - Update README.md for user-facing changes
-- Update ROADMAP.md for milestone changes
+- Update [docs/project/release-status.md](docs/project/release-status.md) for shipped/unreleased status changes
 - Add architecture docs in `docs/` for major features
 - Include examples in documentation
 

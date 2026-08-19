@@ -1,16 +1,15 @@
 # Sequencer → Prover → L1 Data Flow
 
+> [!IMPORTANT]
+> This describes `main`'s Sequencer pipeline — on hold, not the current operated flow.
+> Nowa-ZK's current flow is [`v0.3.0`](../project/testnet-v0.3.0-flow.md).
+
 ## Overview
 
-The live pipeline has three hops: a user's order reaches the **Sequencer**, a matched
+This pipeline has three hops: a user's order reaches the **Sequencer**, a matched
 fill becomes a sealed **batch**, and the **Prover** turns that batch into a proof settled
 on L1. There is no blockchain in the middle — the Sequencer is a single Go process with
 an in-memory orderbook and a LevelDB-backed Merkle tree.
-
-(This replaces an earlier design where a Cosmos-chain Indexer polled blocks and built
-25-trade batches. That flow is archived at
-[indexer-batch-flow-legacy.md](../archived-files/indexer-batch-flow-legacy.md) — it still
-builds and runs, but nothing in the current pipeline calls it.)
 
 ---
 

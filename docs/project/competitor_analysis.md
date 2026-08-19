@@ -115,19 +115,16 @@ This document provides a deep, technical comparison between **Nowa-ZK** and the 
 ---
 
 ## 9. Nowa-ZK (Our Architecture)
-*The perfect blend of Web2 speed and Web3 ZK security.*
+*Web2 speed with ZK-verified trade authenticity.*
 
-* **Architecture:** Off-Chain Centralized Sequencer + ZK-Rollup.
-* **Underlying Tech:** Go Sequencer + `gnark` (Groth16 SNARKs).
-* **Settlement Layer:** Ethereum L1.
-* **Data Availability (DA):** True Rollup (EIP-4844 Blobs posted to Ethereum).
-* **Hardware/RAM:** 
-  * **Sequencer:** ~8GB RAM (Very lightweight, handles LevelDB and WebSocket matching).
-  * **Prover:** **~2GB to 5GB RAM.** Because we use Groth16 SNARKs instead of STARKs, our prover is incredibly lightweight. You can run the Nowa-ZK prover on a standard consumer laptop (unlike StarkWare).
-* **Pros:** 
-  * **Faster than dYdX v4:** By using an off-chain sequencer, we achieve sub-millisecond execution.
-  * **More secure than Aevo & Immutable X:** We are a True Rollup posting DA to Ethereum (no 7-day withdrawal delays, no off-chain DACs).
-  * **Cheaper than dYdX v3:** SNARKs cost significantly less gas to verify on Ethereum than STARKs.
-  * **Hardware Efficient:** Generating proofs doesn't require a 64GB RAM super-computer.
-* **Cons:** 
-  * **Centralized Sequencer (Initially):** Like dYdX v3 and Loopring, our sequencer is centralized at launch (Phase 4), meaning we must rely on the ZK math to prevent theft, and the Escape Hatch to prevent censorship, until we decentralize the sequencer in Phase 12.
+* **Architecture:** Cosmos L2 execution (Nowa Chain) + Groth16 signature-validity anchor on Ethereum L1.
+* **Underlying Tech:** Cosmos SDK execution chain, Indexer, Go Prover + `gnark` (Groth16 SNARKs).
+* **Settlement Layer:** Ethereum L1 (`TradeRegistry.sol`) anchors trade-signature validity; Nowa Chain remains the source of truth for account balances.
+* **Data Availability:** Trade data (`messageHash`, `pubKeyX`, `pubKeyY`) submitted to Ethereum L1 alongside each proof.
+* **Hardware/RAM:**
+  * **Prover:** Groth16 SNARKs are lightweight to generate compared to STARKs — no specialized cloud clusters required.
+* **Pros:**
+  * **Fast execution** via a dedicated Cosmos execution chain, sub-second block times.
+  * **Cheaper proof verification than dYdX v3/StarkEx:** Groth16 costs significantly less gas to verify on Ethereum than STARKs.
+  * **Hardware efficient:** proof generation doesn't require a supercomputer.
+* **Honest limitation:** unlike dYdX v3/StarkEx or Loopring, L1 here doesn't track a state root or account balances — it only anchors that trade signatures were valid. That means there's no L1-enforced forced-withdrawal path today; Nowa Chain remains the sole source of truth for balances. See [testnet-v0.3.0-flow.md](testnet-v0.3.0-flow.md) for the full flow.

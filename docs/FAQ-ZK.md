@@ -5,7 +5,7 @@ This document outlines the high-level architecture decisions, cryptographic tech
 ---
 
 ## 1. Is this a ZK Rollup or a Validium?
-This project is currently operating as a **ZK Validium**, but is actively transitioning into a **True ZK-Rollup**. 
+Neither cleanly, as things stand today — and it's worth being precise about why, since both terms carry specific technical promises.
 
 To understand the difference, look at how the industry classifies the largest DEXs in the world based on **Data Availability (DA)**:
 
@@ -24,7 +24,7 @@ These DEXs post their raw trade data directly to Ethereum (`calldata` or `blobs`
 *   **QuickSwap:** Built on **Polygon zkEVM** (pure ZK-Rollup).
 
 **Where does Nowa-ZK fit?**
-Currently, Nowa-ZK is in the **dYdX (v3)** category (Validium). Once Data Availability (Phase 2) is implemented to post trade data to L1 `calldata`, Nowa-ZK will instantly graduate into the **Loopring** category (True ZK-Rollup).
+Today's live flow settles trade data and a Groth16 proof to Ethereum L1 (`TradeRegistry.sol`), which is closer to the on-chain-data end of this spectrum than a pure off-chain-DA Validium. But neither category fully applies: both Validiums and true ZK-Rollups anchor an on-chain **state root** — a running record of every account's balance that L1 itself tracks and can be forced open. `TradeRegistry.sol` doesn't do that; it verifies that a batch of trades carried valid signatures, not that account balances were computed correctly. Actual exchange state lives entirely on the Cosmos execution chain. That makes this, honestly, closer to a **ZK-anchored appchain** — a real, useful cryptographic guarantee (trades weren't forged or tampered with after the fact), but not the same guarantee "ZK Rollup" or "Validium" implies. See [docs/project/testnet-v0.3.0-flow.md](project/testnet-v0.3.0-flow.md) for the full flow.
 
 ## 2. Tokenomics and Gas: If users pay gas on the Nowa Blockchain, is this still a ZK Rollup?
 Yes, absolutely! To understand why, we need to clarify what a **"Native Token"** is and how gas works in different Rollup models.
@@ -50,7 +50,7 @@ For an App-Specific ZK DEX, the "bridge" is simply a **Vault Contract** on Ether
 3. Users trade at lightning speed using this ZK engine.
 4. Users request a withdrawal to pull their USDC back out of the Vault.
 
-Currently, this repository contains the hardest part: **The Sequencer and Cryptographic Prover Engine**. The Vault/Bridge is a standard Solidity smart contract that can be added later.
+This repository contains the hardest part: **the Cryptographic Prover Engine**. The Vault/Bridge is a standard Solidity smart contract pattern — straightforward relative to the proving system, not the bottleneck.
 
 ## 4. What about Data Availability (DA)?
 A "True ZK Rollup" posts every single trade and balance change directly to Ethereum L1 `calldata` so anyone can reconstruct the state. However, for a high-frequency DEX, this is far too expensive.
@@ -86,10 +86,10 @@ Instead, they rely heavily on state roots and Public Input Hashing from the begi
 
 By implementing Public Input Hashing in Nowa-ZK, the protocol utilizes the exact same advanced cryptographic techniques that the largest general purpose rollups use to scale efficiently.
 
-## 7. If the Cosmos chain halts or goes offline, what happens to user funds?
-A true ZK Rollup guarantees **self-custody** by implementing an "Escape Hatch" (or Forced Withdrawal) on the L1 Smart Contract. 
+## 7. If the execution layer halts or goes offline, what happens to user funds?
+On today's live flow — see [docs/project/testnet-v0.3.0-flow.md](project/testnet-v0.3.0-flow.md) — there isn't an L1-enforced forced-withdrawal path. `TradeRegistry.sol` anchors trade-signature validity per chunk; it doesn't track account balances, so there's no L1 state to force an exit against. Actual balances live on the Cosmos execution chain, which remains the source of truth.
 
-If the Nowa Cosmos network experiences a catastrophic failure or the validators go offline, the L1 Ethereum contract is designed to detect that it hasn't received a ZK Proof within a specified timeout period. When this happens, the contract enters an "Emergency Mode." In this mode, users can bypass the Cosmos chain entirely and submit a Merkle proof of their L2 balance directly to the Ethereum smart contract to withdraw their USDC. This ensures that user funds can never be frozen or stolen by the rollup operators.
+A true ZK Rollup guarantees self-custody through an on-chain "Escape Hatch" (Forced Withdrawal) that works precisely because L1 *does* track a state root. That mechanism exists as built, tested code (`NowaRollup.emergencyWithdraw()`, verified live on Sepolia via Merkle proof against an on-chain `stateRoot`, folded up with `MiMC.sol`) on a separate track, not part of the current live flow. Its scope, honestly stated: L2 accounts there are keyed by BabyJubJub public keys rather than Ethereum addresses, so eligibility is tied to `depositorOf` — whoever originally deposited into that pubkey. That covers "get back what I deposited," not balance accumulated purely through trades. See [docs/project/release-status.md](project/release-status.md) for exactly what's built.
 
 ## 8. When is a trade actually final? On Cosmos or on Ethereum?
 Nowa-ZK utilizes a dual-finality structure to provide both a Web2-like trading experience and Web3 security:
@@ -127,17 +127,11 @@ In Nowa-ZK, every single trade generates a highly optimized number of mathematic
 | **50 Trades** | 4.30 Million | **~ 20.0 GB RAM** | **~ 11.0 GB RAM** | Low |
 | **100 Trades** | 8.61 Million | **~ 40.0 GB RAM** | **~ 22.0 GB RAM** | Very Low |
 | **250 Trades** | 21.5 Million | **~ 100.0 GB RAM** | **~ 54.0 GB RAM** | Ultra Low |
-| **500 Trades** *(Future-for mainnet- low gas fees on ethereum mainnet)* | 43.0 Million | **~ 200.0 GB RAM** | **~ 108.0 GB RAM** | Almost Zero |
+| **500 Trades** | 43.0 Million | **~ 200.0 GB RAM** | **~ 108.0 GB RAM** | Almost Zero |
 
 > [!NOTE]
-> **Scaling to 2000+ Trades using Recursive Proofs**
-> Currently, the system uses a "monolithic" circuit structure. We are using a batch size of 25 trades for **Testnet** to keep server RAM requirements and cloud costs low. 
-> 
-> However, to scale to massive volumes without requiring Terabytes of RAM, the protocol will transition to **Recursive Proving** (generating ZK proofs of other ZK proofs). 
-> *   **Future Testnet (256 Trades using Sequential Proving):** We will use **1 single Prover server**. It will sequentially process 8 batches of 32 trades one by one, then recursively aggregate those 8 small proofs into 1 final proof. This keeps both the RAM footprint and the server rental costs incredibly low for testing, trading a slightly slower finality time for maximum cost savings.
-> *   **Future Mainnet (1024 - 2048 Trades using Parallel Proving):** We will deploy a cluster of **8 parallel Prover servers**. They will simultaneously process 8 batches of 128 to 256 trades at once, then recursively aggregate them. This drastically speeds up Ethereum finality time for production traders while capping the maximum RAM requirement of any single server.
-> 
-> This mathematical architecture allows Nowa-ZK to process thousands of trades in a single batch, distributing the heavy Ethereum L1 gas cost across 2000 users. This drives the per-trade fee to fractions of a penny, all while maintaining low RAM requirements across a distributed cluster of standard servers!
+> **Recursive Proving (generating ZK proofs of other ZK proofs)**
+> The system today uses a monolithic circuit structure at a batch size of 25 trades. Recursive proving — aggregating many smaller batch proofs into one final proof — is the standard technique for scaling batch size without RAM growing linearly, and the constraint math above reflects why: RAM scales directly with trades-per-batch under the current monolithic approach.
 ## 13. How fast is Sequential Proving? (Time vs RAM)
 Zero-Knowledge cryptography heavily relies on algorithms like the Fast Fourier Transform (FFT). FFTs require your mathematical circuit to be exactly a **Power of 2** (e.g., $2^{20}$, $2^{21}$, $2^{22}$). If your trades generate `2,000,001` constraints, the Prover must artificially "pad" the circuit with dummy variables up to the next power of two (`4,194,304`), wasting 2 Million constraints of empty space!
 

@@ -1,8 +1,12 @@
 # Storage Architecture
 
+> [!IMPORTANT]
+> This describes `main`'s Sequencer/Prover storage — on hold, not the current operated
+> flow. Nowa-ZK's current flow is [`v0.3.0`](../project/testnet-v0.3.0-flow.md).
+
 ## Overview
 
-Three separate stores back the live pipeline, each with a different job:
+Three separate stores back this pipeline, each with a different job:
 
 | Layer | Technology | Default Path | Purpose |
 |---|---|---|---|
@@ -61,16 +65,12 @@ blobs aren't part of permanent execution-layer state (consensus clients prune th
 ~18 days per the protocol's blob retention window), so `batchDataHash` is what lets
 anyone verify a blob they've archived themselves still matches what was proven.
 
-## Legacy: Indexer storage (not on the live path)
+## Indexer storage (not on `main`'s pipeline)
 
-The Cosmos-indexer design (`indexer/`) used BadgerDB to stage full 25-trade batches
-(~11MB each) until L1-proven, then deleted them on a 5-minute cleanup cycle. None of this
-runs today — the Sequencer/Prover pipeline above doesn't call the Indexer at all. If
-you're reviving that subsystem, the old docs are preserved at
-[storage — legacy indexer cleanup](../archived-files/cleanup-system-legacy-indexer.md)
-and [indexer-batch-flow-legacy.md](../archived-files/indexer-batch-flow-legacy.md), but
-treat their specifics (ports, schema) as a starting point to re-verify against
-`indexer/internal/indexer/*.go`, not as current fact.
+The Indexer (`indexer/`) uses BadgerDB to stage trade batches until L1-proven, then
+deletes them on a cleanup cycle. `main`'s Sequencer/Prover pipeline above doesn't call
+the Indexer — that component is part of the current live `v0.3.0` flow instead, not
+this one. See [testnet-v0.3.0-flow.md](../project/testnet-v0.3.0-flow.md).
 
 ## Disaster Recovery
 

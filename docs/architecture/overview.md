@@ -1,5 +1,10 @@
 # Nowa-ZK System Overview
 
+> [!IMPORTANT]
+> This describes `main`'s rollup architecture — built groundwork beyond what's
+> currently live, **on hold** pending prioritization. Nowa-ZK's current, operated
+> flow is [`v0.3.0`](../project/testnet-v0.3.0-flow.md).
+
 ## Architecture Diagram
 
 ```text
@@ -57,7 +62,7 @@
 - **Batching**: Every matched fill becomes a `StateTransition` fed to the `Batcher` (`sequencer/internal/batcher`). Current `BatchSize = 1` — one real fill per proof, no dummy padding.
 - **Signatures**: Two independent EdDSA (BabyJubJub/BN254) signatures per order — an "order intent" signature the matching engine checks (SHA256-based), and a separate "circuit signature" over `MiMC(OpType, pubX, pubY, baseIndex, quoteIndex)`, which is what the ZK circuit actually verifies. See `sequencer/cmd/cli/test_client.go` for a worked example of producing both.
 - **Deposits**: `deposit_watcher.go` subscribes to the `NowaRollup` contract's `Deposit` event on L1 and mints the corresponding `OpDeposit` transition into the tree — set `ROLLUP_CONTRACT_ADDRESS` to enable it (`make run-sequencer` auto-loads it from `~/.nowa-zk/deployments.json`).
-- **API**: Plain `net/http` on `:8080` — `POST /order`, `GET /orderbook`, `/balance`, `/account`, `/batch/latest`, `/batch/count`, `/batch/:id`. No WebSocket streaming yet (roadmap item).
+- **API**: Plain `net/http` on `:8080` — `POST /order`, `GET /orderbook`, `/balance`, `/account`, `/batch/latest`, `/batch/count`, `/batch/:id`. No WebSocket streaming — HTTP-only today.
 
 ### Prover (`prover/`)
 - **Purpose**: Turns sealed Sequencer batches into a Groth16 proof and settles them on L1.
@@ -67,12 +72,12 @@
 - **Submission**: Signs and sends `submitBatch(proof, oldRoot, newRoot, withdrawalHash, depositHash, dataHash)` as an EIP-4844 blob transaction to `NowaRollup`.
 
 ### L1 Smart Contracts (`contracts/`) — Ethereum Sepolia
-- **`NowaRollup.sol`**: token registry (`registerToken`), `deposit`, `submitBatch` (Groth16 verification + blob DA requirement via `blobhash(0)`), and a placeholder `withdraw` (operator-gated — see Known Gaps).
+- **`NowaRollup.sol`**: token registry (`registerToken`), `deposit`, `submitBatch` (Groth16 verification + blob DA requirement via `blobhash(0)`), a placeholder `withdraw` (operator-gated), and `emergencyWithdraw` — the trustless escape hatch, verified working end-to-end on Sepolia (deposit-bound scope, see Known Gaps). To use it: fetch your proof from a running Sequencer's `GET /proof?pubkey=...&token_id=...`, then run `sequencer/cmd/claim-escape --pubkey ... --token-id ...` to submit it.
 - **`generated/Verifier.sol`**: Groth16 verifier, auto-generated from the circuit's verifying key by `prover setup` / `make setup`. **Regenerating it (because the circuit changed) requires redeploying `NowaRollup` too** — the verifying key is baked into the deployed bytecode and the two must match.
 - Deployed addresses live in `contracts/deployments/deployments.json` (per-run, via `forge script`) and are copied to `~/.nowa-zk/deployments.json`, which the Sequencer and Prover both auto-load from.
 
-### Indexer (`indexer/`) — legacy, optional
-An earlier design ran trade execution on a Cosmos-SDK EVM chain, with this Indexer polling blocks and building 25-trade batches for the Prover. That model has been replaced by the Sequencer above (see the Makefile's own `run-indexer` help text: "optional / legacy L2 indexing"). The Sequencer does **not** call the Indexer, and the Prover talks directly to the Sequencer's REST API. `indexer/` still builds and has tests, but it's off the path real trades take today. See the archived [indexer-batch-flow-legacy.md](../archived-files/indexer-batch-flow-legacy.md) and [cleanup-system-legacy-indexer.md](../archived-files/cleanup-system-legacy-indexer.md) if you need its internals.
+### Indexer (`indexer/`) — not part of `main`'s pipeline
+`main`'s Sequencer design above doesn't call the Indexer — the Sequencer matches orders directly and the Prover talks to its REST API. The Indexer instead powers the current live `v0.3.0` flow (Cosmos L2 execution, batches of 125 trades). See [testnet-v0.3.0-flow.md](../project/testnet-v0.3.0-flow.md).
 
 ## Data Flow Summary
 
@@ -87,9 +92,11 @@ An earlier design ran trade execution on a Cosmos-SDK EVM chain, with this Index
 See [Release Status](../project/release-status.md) for how these gaps line up against
 what's actually been published as a release.
 
-- **No escape hatch.** `NowaRollup.withdraw()` is explicitly a placeholder — `onlyOwner`, ignores the Merkle proof parameter. If the Sequencer disappears, there is currently no on-chain path for a user to reclaim funds with a Merkle proof of their L2 balance. This is the single biggest gap between the documented design intent (`FAQ-ZK.md` §7) and the current code.
+- **Escape hatch is deposit-bound, and only helps if the Sequencer is still reachable.** `emergencyWithdraw()` is real and verified end-to-end on Sepolia (see `docs/project/release-status.md`), but has two remaining scope limits, not oversights:
+  1. **Deposit-bound**: L2 accounts are keyed by BabyJubJub pubkeys, not Ethereum addresses, so the contract can't verify on-chain that a caller controls the L2 private key — eligibility is tied to `depositorOf[pubkey]` (first-depositor-wins, recorded in `deposit()`). Covers "get back what you deposited," not balance a pubkey only ever received via L2 trades. Full on-chain EdDSA verification would close this — separate, larger, not started.
+  2. **Needs the Sequencer's `GET /proof` endpoint to be reachable.** If only the Prover has died, this works fine — the Sequencer can still serve proofs. If the Sequencer itself is fully offline, there is currently no way to reconstruct a proof independently from L1 DA blob history — no tool for this exists yet, and building one has a real blocker of its own (blobs live on the consensus/beacon API, not any execution RPC this repo has used, and are pruned after ~18 days unless something archives them durably).
 - **Account onboarding isn't a tracked state transition.** `GET /account`/`/balance` (and the first-trade path inside `applyTrade`) lab-credit a new pubkey by writing directly to the Merkle tree (`sequencer/internal/api/account.go`'s `openBalance`) with no corresponding `StateTransition` — invisible to the batcher and Prover. If a new account gets onboarded *between* two batches that both get submitted, the later batch's `old_root` silently stops matching the earlier one's `new_root`, and it becomes permanently unsubmittable (no recovery once `batchCount > 0` — `setStateRoot()` only works pre-genesis). We hit this live: batch #1 settled, a second `test_client.go` run's batch #2 never could. `cmd/cli/test_client.go` now works around this by registering its accounts exactly once and refusing to run twice (see [testing.md](../testing.md#stress-testing-with-many-trades---count)), but the underlying gap is in the Sequencer itself — lab-credits (and likely any account's very first appearance in general) should really be their own tracked op type, the same way `OpDeposit` is.
-- **Batch size is 1**, not the 25/128 described in `BENCHMARKS.md` or the recursive-proving roadmap in `FAQ-ZK.md` — every fill gets its own proof and its own L1 submission today.
+- **Batch size is 1**, not the 25/128 described in `BENCHMARKS.md` or the recursive-proving note in `FAQ-ZK.md` — every fill gets its own proof and its own L1 submission today.
 - **No WebSocket API** on the Sequencer — order placement and orderbook streaming are HTTP-only.
 
 ## Technology Stack

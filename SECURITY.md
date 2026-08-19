@@ -141,17 +141,14 @@ If you're contributing code, please follow these security practices:
 
 ## Security Audits
 
-### Planned Audits
+### Audit Policy
 
-We plan to conduct professional security audits before major releases:
-
-- **Pre-Mainnet Audit**: Before v1.0.0 release
-- **Annual Audits**: After mainnet launch
-- **Component-Specific Audits**: For major changes
+Professional security audits are required before major releases, and for major
+component changes.
 
 ### Past Audits
 
-*No audits completed yet. This section will be updated as audits are conducted.*
+*No audits completed yet.*
 
 ## Known Issues
 
@@ -167,16 +164,6 @@ We maintain transparency about known security issues:
 - **Smart Contracts**: Using Solidity 0.8.x with checked arithmetic
 - **CI/CD**: Automated testing on all pull requests
 - **Code Review**: All code changes require review
-- **Dependency Scanning**: Automated dependency vulnerability checks (planned)
-
-### Planned Security Enhancements
-
-- [ ] Static analysis integration (Slither, Mythril)
-- [ ] Fuzzing framework integration
-- [ ] Formal verification for critical contracts
-- [ ] Automated dependency updates
-- [ ] Security-focused CI pipeline
-- [ ] Professional security audit
 
 ## Responsible Disclosure Examples
 

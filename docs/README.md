@@ -1,6 +1,17 @@
 # Nowa-ZK Documentation
 
-Complete documentation for setting up, deploying, and operating the Nowa-ZK ZK Validium.
+Complete documentation for setting up, deploying, and operating Nowa-ZK.
+
+## Current Flow
+
+Nowa-ZK runs two aligned tracks today: **Nowa Chain**, our EVM-compatible Cosmos
+blockchain (first outlined in `v0.0.1`); and **Nowa DEX**, live on testnet via the
+**[`v0.3.0`](project/testnet-v0.3.0-flow.md)** flow (branch `release/v0.3.0`). Read that
+doc first if you're trying to understand what's really running right now.
+
+> [!NOTE]
+> The rest of this documentation set describes `main` — built groundwork toward a more
+> complete ZK rollup, on hold pending prioritization, not the current operated flow.
 
 ---
 
@@ -9,7 +20,7 @@ Complete documentation for setting up, deploying, and operating the Nowa-ZK ZK V
 ### 🚀 Getting Started
 
 - **[Root README](../README.md)** — quick-start with the essential `make` commands
-- **[FAQ](../FAQ-ZK.md)** — architecture decisions (Validium vs Rollup, DA, public input hashing, Groth16 vs PLONK, etc.)
+- **[FAQ](FAQ-ZK.md)** — architecture decisions (Validium vs Rollup, DA, public input hashing, Groth16 vs PLONK, etc.)
 
 ### 🌐 Deployment
 
@@ -36,9 +47,8 @@ Complete documentation for setting up, deploying, and operating the Nowa-ZK ZK V
 
 ### 📊 Project
 
-- **[Release Status](project/release-status.md)** — what's actually released vs. built-but-unreleased vs. genuinely incomplete
-- **[Technical Roadmap](project/roadmap-technical.md)** — internal engineering phase tracking
-- **[Marketing Roadmap](project/roadmap-marketing.md)** — public-facing phase/milestone status
+- **[Current Flow — `v0.3.0`](project/testnet-v0.3.0-flow.md)** — the flow actually deployed on testnet today, and how it relates to `main`'s on-hold work
+- **[Release Status](project/release-status.md)** — what's built vs. unreleased vs. genuinely incomplete on `main` (see above for the current live flow)
 - **[Frontend EdDSA Guide](project/frontend-eddsa-guide.md)** — the "hidden key" signing flow for wallet integrations
 
 ---
@@ -87,11 +97,9 @@ docs/
 │   ├── data-flow.md                 # Sequencer → Prover → L1
 │   └── storage.md                   # Data retention per component
 │
-├── project/                         # Roadmap & project tracking
+├── project/                         # Current flow & release status
 │
-├── testing.md                       # Test commands per component + E2E
-│
-└── archived-files/                  # Retired docs, kept for historical reference
+└── testing.md                       # Test commands per component + E2E
 ```
 
 ---
@@ -150,6 +158,6 @@ When updating documentation:
   actual CLI flags/routes, not against what an older doc said.
 - Include real error messages in troubleshooting entries.
 - Test commands before documenting them.
-- If a subsystem stops being on the live path (like the Indexer), move its doc to
-  `archived-files/` with a note explaining what replaced it, rather than leaving it to
-  rot in place looking current.
+- Keep docs describing what's actually operating today — remove or clearly mark
+  content once it stops matching what's live, rather than leaving it to rot in place
+  looking current.
