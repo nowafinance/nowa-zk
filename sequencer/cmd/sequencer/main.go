@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
 	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/api"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/batcher"
@@ -111,6 +112,53 @@ func getOrCreateBalance(tree *state.LevelDBMerkleTree, pubKeyHex string, tokenID
 			PubKeyX:   pubX,
 			PubKeyY:   pubY,
 			Balance:   new(big.Int).SetInt64(1000000), // lab credit until L1 deposit path is used
+			Nonce:     0,
+		}
+		if err := tree.SetBalance(acc); err != nil {
+			return nil, err
+		}
+	}
+	return acc, nil
+}
+
+// compressPubKeyHex reconstructs the compressed EdDSA pubkey hex — matching exactly
+// what eddsa.PublicKey.Bytes() produces for a client's own key — from raw (X, Y)
+// coordinates, the format the L1 Deposit event carries them in. This must match a
+// depositor's own key encoding bit-for-bit, or their deposit lands under a different
+// tree lookup key than /account or /proof would ever compute for them, making it
+// permanently unreachable. (Concatenating raw X||Y, which was here before, is NOT
+// this format — SetBytes expects one compressed 32-byte point, not 64 raw bytes.)
+func compressPubKeyHex(pubX, pubY *big.Int) (string, error) {
+	var p twistededwards.PointAffine
+	p.X.SetBigInt(pubX)
+	p.Y.SetBigInt(pubY)
+	if !p.IsOnCurve() {
+		return "", fmt.Errorf("point (%s, %s) is not on the BabyJubJub curve", pubX.String(), pubY.String())
+	}
+	compressed := p.Bytes()
+	return "0x" + hex.EncodeToString(compressed[:]), nil
+}
+
+// getOrCreateAccountForDeposit is like getOrCreateBalance but starts a brand-new
+// account at balance 0, not the 1,000,000 "lab credit" used for trading-onboarding
+// call sites. A deposit's L2 balance should be exactly what was deposited — crediting
+// a phantom 1,000,000 bonus on top would silently inflate real funds.
+func getOrCreateAccountForDeposit(tree *state.LevelDBMerkleTree, pubKeyHex string, pubX, pubY *big.Int, tokenID uint32) (*types.BalanceState, error) {
+	accID, err := tree.GetAccountID(pubKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	acc, err := tree.GetBalance(accID, tokenID)
+	if err != nil {
+		return nil, err
+	}
+	if acc == nil {
+		acc = &types.BalanceState{
+			AccountID: accID,
+			TokenID:   tokenID,
+			PubKeyX:   pubX,
+			PubKeyY:   pubY,
+			Balance:   big.NewInt(0),
 			Nonce:     0,
 		}
 		if err := tree.SetBalance(acc); err != nil {

@@ -204,6 +204,26 @@ func (smt *LevelDBMerkleTree) SetBalance(acc *types.BalanceState) error {
 	return smt.Update(leafIndex, leafHash)
 }
 
+// SetMeta stores an arbitrary metadata value (e.g. a checkpoint for an external
+// replay/reconstruction tool), namespaced under "meta:" so it can never collide
+// with balance/account/node keys.
+func (smt *LevelDBMerkleTree) SetMeta(key string, value []byte) error {
+	return smt.db.Put([]byte("meta:"+key), value, nil)
+}
+
+// GetMeta retrieves a value previously stored with SetMeta. ok is false if the key
+// was never set (not an error — a fresh tree has no metadata yet).
+func (smt *LevelDBMerkleTree) GetMeta(key string) (value []byte, ok bool, err error) {
+	data, err := smt.db.Get([]byte("meta:"+key), nil)
+	if err == leveldb.ErrNotFound {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return data, true, nil
+}
+
 // GetNextAccountID gets and increments the global account ID counter.
 func (smt *LevelDBMerkleTree) GetNextAccountID() (uint64, error) {
 	data, err := smt.db.Get([]byte("next_account_id"), nil)

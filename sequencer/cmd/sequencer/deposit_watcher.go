@@ -56,10 +56,23 @@ func StartDepositWatcher(rpcURL string, contractAddr string, tree *state.LevelDB
 func processDeposit(event *bindings.NowaRollupDeposit, tree *state.LevelDBMerkleTree, batch *batcher.Batcher) {
 	oldRoot := tree.Root().String()
 
-	// 1. Get or Create user account
-	// The user address is the hash of their public key, but here we just have their pubX and pubY from the event
-	pubHex := fmt.Sprintf("0x%064x%064x", event.PubKeyX, event.PubKeyY)
-	acc, _ := getOrCreateBalance(tree, pubHex, event.TokenId)
+	// 1. Get or create the user account, keyed by their properly-compressed pubkey —
+	// this MUST match the same encoding /account and /proof use, or the deposit
+	// becomes invisible to the depositor's own future lookups.
+	pubHex, err := compressPubKeyHex(event.PubKeyX, event.PubKeyY)
+	if err != nil {
+		// The L1 contract never validates curve membership at deposit() time, so a
+		// malformed pubkey can theoretically reach here. Skip rather than silently
+		// crediting a shared fallback bucket that would corrupt real accounting —
+		// this deposit needs manual/admin recovery, which is safer than guessing.
+		log.Printf("processDeposit: invalid pubkey in Deposit event, skipping: %v\n", err)
+		return
+	}
+	acc, err := getOrCreateAccountForDeposit(tree, pubHex, event.PubKeyX, event.PubKeyY, event.TokenId)
+	if err != nil {
+		log.Printf("processDeposit: failed to load account: %v\n", err)
+		return
+	}
 
 	// 2. Fetch path before update
 	leafIndex := (acc.AccountID * 256) + uint64(event.TokenId)

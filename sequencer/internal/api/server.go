@@ -40,6 +40,7 @@ func (s *Server) Start(port string) error {
 	http.HandleFunc("/orderbook", s.handleOrderbook)
 	http.HandleFunc("/balance", s.handleBalance)
 	http.HandleFunc("/account", s.handleAccount)
+	http.HandleFunc("/proof", s.handleProof)
 	http.HandleFunc("/batch/latest", s.handleBatchLatest)
 	http.HandleFunc("/batch/count", s.handleBatchCount)
 	http.HandleFunc("/batch/", s.handleBatchByID)
@@ -216,7 +217,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	open := func(tokenID uint32) (map[string]interface{}, error) {
-		acc, err := openBalance(s.tree, pubKey, tokenID)
+		acc, err := openBalance(s.tree, s.batcher, pubKey, tokenID)
 		if err != nil {
 			return nil, err
 		}
@@ -309,6 +310,91 @@ func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 		"balance":    balance,
 		"nonce":      nonce,
 		"exists":     exists,
+	})
+}
+
+// GET /proof?pubkey=0x...&token_id=1
+//
+// Returns everything needed to call NowaRollup.emergencyWithdraw() for this leaf:
+// its current balance/nonce plus the 28-level Merkle path to the current root. This
+// is the escape hatch's proof-serving endpoint — it only helps while the Sequencer
+// itself is still reachable (e.g. the Prover died but the matching engine didn't);
+// see docs/architecture/overview.md for the fully-offline reconstruction story.
+func (s *Server) handleProof(w http.ResponseWriter, r *http.Request) {
+	writeCORS(w, "GET, OPTIONS")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "Only GET is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.tree == nil {
+		http.Error(w, "state tree unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	pubKey := strings.TrimSpace(r.URL.Query().Get("pubkey"))
+	if pubKey == "" {
+		http.Error(w, "pubkey required", http.StatusBadRequest)
+		return
+	}
+	tokenID := uint32(1)
+	if q := r.URL.Query().Get("token_id"); q != "" {
+		v, err := strconv.ParseUint(q, 10, 32)
+		if err != nil {
+			http.Error(w, "invalid token_id", http.StatusBadRequest)
+			return
+		}
+		tokenID = uint32(v)
+	}
+
+	// Same lookup pattern as /balance — GetAccountID auto-creates a fresh account ID
+	// for a never-before-seen pubkey (an existing quirk of the tree, not new here).
+	accID, err := s.tree.GetAccountID(pubKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	acc, err := s.tree.GetBalance(accID, tokenID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	balance := "0"
+	nonce := uint64(0)
+	pubX, pubY := "0", "0"
+	if acc != nil {
+		balance = acc.Balance.String()
+		nonce = acc.Nonce
+		pubX = acc.PubKeyX.String()
+		pubY = acc.PubKeyY.String()
+	}
+
+	index := (accID * 256) + uint64(tokenID)
+	path, bits := s.tree.GetPath(index)
+
+	siblings := make([]string, 28)
+	pathBits := make([]int, 28)
+	for i := 0; i < 28; i++ {
+		siblings[i] = path[i].String()
+		pathBits[i] = int(bits[i])
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"pubkey":     pubKey,
+		"account_id": accID,
+		"token_id":   tokenID,
+		"index":      index,
+		"balance":    balance,
+		"nonce":      nonce,
+		"pub_key_x":  pubX,
+		"pub_key_y":  pubY,
+		"siblings":   siblings,
+		"path_bits":  pathBits,
 	})
 }
 

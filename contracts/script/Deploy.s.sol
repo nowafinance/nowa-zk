@@ -34,9 +34,18 @@ contract Deploy is Script {
         try vm.envBytes32("INITIAL_STATE_ROOT") returns (bytes32 r) {
             initialRoot = r;
         } catch {}
-        nowaRollup = new NowaRollup(address(verifier), initialRoot);
+        // Escape hatch: how long submitBatch() can go quiet before emergencyWithdraw() unlocks.
+        // Fixed at deploy, never owner-adjustable afterward. Defaults to 7 days (matches the
+        // figure documented in FAQ-ZK.md / the internal roadmap) — override for local/testnet
+        // deployments where waiting a real week isn't practical.
+        uint256 escapeTimeout = 7 days;
+        try vm.envUint("ESCAPE_TIMEOUT_SECONDS") returns (uint256 t) {
+            escapeTimeout = t;
+        } catch {}
+        nowaRollup = new NowaRollup(address(verifier), initialRoot, escapeTimeout);
         console.log("   NowaRollup deployed at:", address(nowaRollup));
         console.log("   initial stateRoot:", vm.toString(initialRoot));
+        console.log("   escapeTimeout (seconds):", escapeTimeout);
         console.log("");
 
         vm.stopBroadcast();

@@ -327,6 +327,169 @@ func TestStateCircuit_ValidDeposit(t *testing.T) {
 	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
 }
 
+// TestStateCircuit_ValidDeposit_AsSequencerActuallySendsIt is the real regression
+// test for the deposit-signing bug: TestStateCircuit_ValidDeposit above tests a
+// design that was never actually wired up (a real sequencer-signed Maker
+// signature) — sequencer/cmd/sequencer/deposit_watcher.go has only ever sent an
+// all-zero MakerPubKey/MakerSig/TakerSig (verified directly against that file, and
+// against how prover/cmd/prover/start.go's assignEdDSASig falls back to
+// R.X=R.Y=S=0 on any parse error, which a zero/wrong-length hex string hits either
+// way). Before conditionalVerify, this exact witness shape failed circuit
+// constraints — no deposit could ever be proven. This must now pass.
+func TestStateCircuit_ValidDeposit_AsSequencerActuallySendsIt(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	// Taker base (Index 0) - user balance, starts empty (fresh account)
+	takerBaseLeaf := hashGo(big.NewInt(0), takerX, takerY, big.NewInt(0), big.NewInt(0))
+	smt.Update(0, takerBaseLeaf)
+
+	oldRoot := smt.Root()
+
+	takerBasePath, takerBaseBits := smt.GetPath(0)
+	newTakerBaseLeaf := hashGo(big.NewInt(0), takerX, takerY, big.NewInt(200), big.NewInt(0))
+	smt.Update(0, newTakerBaseLeaf)
+
+	newRoot := smt.Root()
+
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	witness.DepositHash = hashGo(big.NewInt(0), big.NewInt(0), big.NewInt(200))
+
+	witness.Op.OpType = 3 // OpDeposit
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 0
+
+	// Maker: exactly what deposit_watcher.go sends — all zero, no real key or sig.
+	witness.Op.MakerPubKey.A.X = 0
+	witness.Op.MakerPubKey.A.Y = 0
+	witness.Op.MakerSig.R.X = 0
+	witness.Op.MakerSig.R.Y = 0
+	witness.Op.MakerSig.S = 0
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerBase.Index = 99
+	witness.Op.MakerBase.Balance = 0
+	witness.Op.MakerBase.Nonce = 0
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(emptyPath, emptyBits)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	// Taker: real pubkey (the depositor), but also zero signature — deposits are
+	// authenticated by the L1 Deposit event, not an off-chain signature.
+	witness.Op.TakerPubKey.A.X = takerX
+	witness.Op.TakerPubKey.A.Y = takerY
+	witness.Op.TakerSig.R.X = 0
+	witness.Op.TakerSig.R.Y = 0
+	witness.Op.TakerSig.S = 0
+	witness.Op.TakerBase.Index = 0
+	witness.Op.TakerBase.Balance = 0
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
+// TestStateCircuit_TradeStillRequiresRealTakerSignature guards against
+// conditionalVerify accidentally weakening Trade: only Deposit/Transfer/Withdrawal
+// should ever bypass the Taker check. A Trade with a genuine Maker signature but an
+// all-zero Taker signature must still be rejected.
+func TestStateCircuit_TradeStillRequiresRealTakerSignature(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	privKey, _ := eddsa.GenerateKey(rand.Reader)
+	pubKey := privKey.PublicKey
+	pubX := new(big.Int)
+	pubKey.A.X.BigInt(pubX)
+	pubY := new(big.Int)
+	pubKey.A.Y.BigInt(pubY)
+
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	makerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(1000), big.NewInt(1))
+	smt.Update(0, makerBaseLeaf)
+	takerQuoteLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(5000), big.NewInt(0))
+	smt.Update(1, takerQuoteLeaf)
+
+	oldRoot := smt.Root()
+	makerBasePath, makerBaseBits := smt.GetPath(0)
+
+	newMakerBaseLeaf := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(800), big.NewInt(1))
+	smt.Update(0, newMakerBaseLeaf)
+	takerQuotePath, takerQuoteBits := smt.GetPath(1)
+	newTakerQuoteLeaf := hashGo(big.NewInt(1), takerX, takerY, big.NewInt(4000), big.NewInt(0))
+	smt.Update(1, newTakerQuoteLeaf)
+
+	newRoot := smt.Root()
+
+	// Real, valid Maker signature (a real trade order).
+	makerMsgHashBig := hashGo(big.NewInt(0), pubX, pubY, big.NewInt(0), big.NewInt(99))
+	var makerMsgHashFr fr.Element
+	makerMsgHashFr.SetBigInt(makerMsgHashBig)
+	makerMsgHashBytes := makerMsgHashFr.Bytes()
+	sig, _ := privKey.Sign(makerMsgHashBytes[:], mimc.NewMiMC())
+
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	witness.DepositHash = 0
+
+	witness.Op.OpType = 0 // OpTrade
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 1000
+
+	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
+	witness.Op.MakerSig.Assign(twistededwards.BN254, sig)
+	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.Balance = 1000
+	witness.Op.MakerBase.Nonce = 1
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	// Taker: real pubkey, but a bogus all-zero signature — must be rejected, Trade
+	// always needs a genuine Taker signature.
+	witness.Op.TakerPubKey.A.X = takerX
+	witness.Op.TakerPubKey.A.Y = takerY
+	witness.Op.TakerSig.R.X = 0
+	witness.Op.TakerSig.R.Y = 0
+	witness.Op.TakerSig.S = 0
+	witness.Op.TakerBase.Index = 99
+	witness.Op.TakerBase.Balance = 0
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(emptyPath, emptyBits)
+	witness.Op.TakerQuote.Index = 1
+	witness.Op.TakerQuote.Balance = 5000
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(takerQuotePath, takerQuoteBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithInvalidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
 func TestStateCircuit_InvalidSignature(t *testing.T) {
 	assert := test.NewAssert(t)
 	smt := NewMemorySMT(MerkleDepth)

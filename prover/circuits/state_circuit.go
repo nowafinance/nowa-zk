@@ -80,6 +80,54 @@ func rangeCheck(api frontend.API, val frontend.Variable) {
 	api.ToBinary(val, 252)
 }
 
+// Dummy EdDSA fixture used to make signature checks conditional per OpType.
+//
+// gnark's eddsa.Verify performs hard, unconditional constraints — including an
+// on-curve assertion on an internally-derived point — so it cannot be wrapped with
+// api.Select after the fact the way the arithmetic/root checks below are (that would
+// still force the real, possibly-invalid inputs through the on-curve assertion). The
+// fix instead muxes the *inputs* to Verify between the real op data and this fixed,
+// publicly known, always-valid signature: when a check is inactive for a given
+// OpType, Verify checks this harmless fixture instead of failing on whatever
+// real-but-irrelevant data happens to sit in that leg of the op.
+//
+// This is a manually constructed Schnorr-style signature (R = r*G, S = r + hRAM*sk,
+// hRAM = MiMC(R, A, msg)) satisfying the exact verification equation eddsa.Verify
+// checks, using the same MiMC construction used everywhere else in this circuit. It
+// is not derived from any secret worth protecting — sk/r are arbitrary fixed
+// scalars chosen only to produce this fixture. Independently verified against the
+// native (non-circuit) equivalent before being hardcoded here.
+const (
+	dummySigAX  = "10298319502295528021229850954227631805200385207603455133709476095367371825263"
+	dummySigAY  = "2504327762688954486123660800211611946128639234034449816647673413157039235394"
+	dummySigRX  = "19615509352750535901637443802064826507464158183993156839337785904648430343214"
+	dummySigRY  = "14649913852925992635033550000810266724942332423222322031248971935568823466398"
+	dummySigS   = "1567003771490820873806856620396274719304459608209466000889389818739844298687"
+	dummySigMsg = "1"
+)
+
+// conditionalVerify checks (pubKey, sig) against msg only when active == 1. When
+// active == 0, it verifies the fixed dummy fixture above instead (which always
+// succeeds), so an inactive leg's real-but-meaningless data can never trip the
+// signature constraint. active must be a boolean (0 or 1) value, e.g. from
+// api.IsZero — the caller is responsible for that, this does not re-check it.
+func conditionalVerify(api frontend.API, curve gnark_twistededwards.Curve, h *mimc.MiMC, active frontend.Variable, pubKey eddsa.PublicKey, sig eddsa.Signature, msg frontend.Variable) error {
+	effPubKey := eddsa.PublicKey{A: gnark_twistededwards.Point{
+		X: api.Select(active, pubKey.A.X, dummySigAX),
+		Y: api.Select(active, pubKey.A.Y, dummySigAY),
+	}}
+	effSig := eddsa.Signature{
+		R: gnark_twistededwards.Point{
+			X: api.Select(active, sig.R.X, dummySigRX),
+			Y: api.Select(active, sig.R.Y, dummySigRY),
+		},
+		S: api.Select(active, sig.S, dummySigS),
+	}
+	effMsg := api.Select(active, msg, dummySigMsg)
+	h.Reset()
+	return eddsa.Verify(curve, effSig, effMsg, effPubKey, h)
+}
+
 func processOperation(api frontend.API, op *Operation, root frontend.Variable, currentWithdrawalHash frontend.Variable, currentDepositHash frontend.Variable, curve gnark_twistededwards.Curve, h *mimc.MiMC) (frontend.Variable, frontend.Variable, frontend.Variable, error) {
 	rangeCheck(api, op.Amount)
 	rangeCheck(api, op.QuoteAmount)
@@ -95,32 +143,31 @@ func processOperation(api frontend.API, op *Operation, root frontend.Variable, c
 	validOp = api.Or(validOp, isDeposit)
 	api.AssertIsEqual(validOp, 1)
 
-	// 1. Verify Maker Signature (Trade, Transfer, Withdraw)
+	// 1. Verify Maker Signature (Trade, Transfer, Withdrawal — NOT Deposit).
 	// Message omits exact fill amounts so one auth covers partial fills of a resting order.
+	// Deposits have no Maker (the L1 Deposit event is the authenticity source, not a
+	// signature), so the check is skipped via conditionalVerify rather than forced
+	// through on real-but-meaningless Maker data — see its doc comment for why a plain
+	// api.Select wrap after the fact doesn't work for eddsa.Verify.
 	h.Reset()
 	h.Write(op.OpType, op.MakerPubKey.A.X, op.MakerPubKey.A.Y, op.MakerBase.Index, op.MakerQuote.Index)
 	makerMsgHash := h.Sum()
-	
-	h.Reset()
-	err := eddsa.Verify(curve, op.MakerSig, makerMsgHash, op.MakerPubKey, h)
-	// We only enforce signature if NOT a deposit!
-	// (GNARK doesn't easily allow conditional verification natively without writing custom gates, 
-	// but we can cheat by doing it for all ops, and if Deposit, providing a dummy valid signature!)
-	// Wait, if it's a deposit, MakerSig is invalid. To conditionally verify, we can't easily skip `eddsa.Verify`.
-	// Instead, we can do: if isDeposit, verify a hardcoded valid signature, else verify MakerSig!
-	// Or we can just use `OpDeposit` where the Maker IS a designated L1 Sequencer Public Key!
-	// Yes! The sequencer signs the deposit. This is highly secure.
-	if err != nil { return nil, nil, nil, err }
 
-	// 2. Verify Taker Signature (Trade Only)
+	makerSigActive := api.Sub(1, isDeposit)
+	if err := conditionalVerify(api, curve, h, makerSigActive, op.MakerPubKey, op.MakerSig, makerMsgHash); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// 2. Verify Taker Signature (Trade only — a trade needs both counterparties'
+	// consent; Transfer/Withdrawal/Deposit only ever need the Maker's authorization,
+	// there's no "receiver must sign to receive" requirement).
 	h.Reset()
 	h.Write(op.OpType, op.TakerPubKey.A.X, op.TakerPubKey.A.Y, op.TakerBase.Index, op.TakerQuote.Index)
 	takerMsgHash := h.Sum()
-	
-	h.Reset()
-	// Taker signature is ONLY relevant for Trade. If not trade, pass dummy matching sig.
-	err = eddsa.Verify(curve, op.TakerSig, takerMsgHash, op.TakerPubKey, h)
-	if err != nil { return nil, nil, nil, err }
+
+	if err := conditionalVerify(api, curve, h, isTrade, op.TakerPubKey, op.TakerSig, takerMsgHash); err != nil {
+		return nil, nil, nil, err
+	}
 
 	// --- 3. Withdrawal Accumulator ---
 	h.Reset()
