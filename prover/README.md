@@ -51,7 +51,7 @@ Fetches batches from indexer API, generates proofs, submits to contract.
 
 ## Circuit
 
-**BatchCircuit** processes 128 transactions per batch:
+**BatchCircuit** processes 25 transactions per batch:
 - Computes transaction hashes (MiMC)
 - Builds Merkle tree
 - Verifies root matches public input
