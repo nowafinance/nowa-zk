@@ -210,3 +210,15 @@ func TestOpenBalance_ChainsAcrossTwoNewAccounts(t *testing.T) {
 		t.Fatalf("batch chain broken: batch #2 OldRoot (%s) != batch #1 NewRoot (%s) — this is exactly the live bug this fix addresses", batchB.OldRoot, batchA.NewRoot)
 	}
 }
+
+// TestOpenBalance_RejectsNilBatcher is the regression test for a Copilot review
+// finding: openBalance used to panic at batch.AddTransition if called with a nil
+// batcher (e.g. a misconfigured Server, or a future direct caller) instead of
+// returning a clear error — a panic inside an HTTP handler risks taking down the
+// whole process if nothing recovers it.
+func TestOpenBalance_RejectsNilBatcher(t *testing.T) {
+	tree := newAccountTestTree(t)
+	if _, err := openBalance(tree, nil, newTestPubKeyHex(t), 1); err == nil {
+		t.Fatal("expected an error for a nil batcher, got nil")
+	}
+}

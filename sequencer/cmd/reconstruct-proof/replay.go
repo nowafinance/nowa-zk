@@ -153,15 +153,26 @@ func applyLeg(tree *state.LevelDBMerkleTree, su types.StateUpdate, pubXStr, pubY
 // gzipDecompress mirrors prover/internal/da/blob.go's GzipDecompress exactly —
 // duplicated, not imported, for the same cross-module-boundary reason unpackBlob is
 // (see its doc comment above). Keep in sync if the compression format ever changes.
+// maxDecompressedPayloadLen mirrors prover/internal/da/blob.go's
+// MaxDecompressedPayloadLen exactly — kept in sync, see that constant's doc comment
+// for why an unbounded io.ReadAll on a gzip.Reader is a real decompression-bomb risk
+// here specifically: this tool decompresses blob data fetched from Blobscan, an
+// external, untrusted-until-hash-verified source.
+const maxDecompressedPayloadLen = 16 * 1024 * 1024 // 16 MiB
+
 func gzipDecompress(compressed []byte) ([]byte, error) {
 	r, err := gzip.NewReader(bytes.NewReader(compressed))
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
 	defer r.Close()
-	out, err := io.ReadAll(r)
+	limited := io.LimitReader(r, maxDecompressedPayloadLen+1)
+	out, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("gzip read: %w", err)
+	}
+	if len(out) > maxDecompressedPayloadLen {
+		return nil, fmt.Errorf("decompressed payload exceeds %d byte cap", maxDecompressedPayloadLen)
 	}
 	return out, nil
 }

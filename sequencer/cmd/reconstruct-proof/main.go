@@ -108,12 +108,28 @@ func run(rollupAddr, rpcURL, blobscanAPI, dataDir, pubkey string, tokenID uint32
 	return nil
 }
 
+// readCheckpoint returns the next batch ID to replay (0 if none has been replayed
+// yet). Factored out of replayAllBatches so the corrupt-data case — a truncated or
+// otherwise malformed persisted value — is independently testable without needing a
+// live rollupReader/L1 connection.
+func readCheckpoint(tree *state.LevelDBMerkleTree) (uint64, error) {
+	data, ok, err := tree.GetMeta(lastReplayedBatchKey)
+	if err != nil {
+		return 0, fmt.Errorf("read checkpoint: %w", err)
+	}
+	if !ok {
+		return 0, nil
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("corrupt checkpoint value: expected 8 bytes, got %d", len(data))
+	}
+	return binary.BigEndian.Uint64(data) + 1, nil
+}
+
 func replayAllBatches(tree *state.LevelDBMerkleTree, reader *rollupReader, blobscanAPI string) error {
-	checkpoint := uint64(0)
-	if data, ok, err := tree.GetMeta(lastReplayedBatchKey); err != nil {
-		return fmt.Errorf("read checkpoint: %w", err)
-	} else if ok {
-		checkpoint = binary.BigEndian.Uint64(data) + 1
+	checkpoint, err := readCheckpoint(tree)
+	if err != nil {
+		return err
 	}
 
 	batchCount, err := reader.batchCount()

@@ -130,3 +130,18 @@ func TestEncodeBatchPayload_25OpBatchFitsCompressed(t *testing.T) {
 		t.Fatal("round-tripped transitions don't match the original — compression isn't lossless here")
 	}
 }
+
+// TestGzipDecompress_RejectsOversizedPayload is the regression test for a Copilot
+// review finding: io.ReadAll on a gzip.Reader has no size limit, so a small
+// compressed input with an unusually high compression ratio ("decompression bomb")
+// could expand to consume unbounded memory. A payload that expands past
+// MaxDecompressedPayloadLen must error, not succeed.
+func TestGzipDecompress_RejectsOversizedPayload(t *testing.T) {
+	huge, err := gzipCompress(make([]byte, MaxDecompressedPayloadLen+1024))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GzipDecompress(huge); err == nil {
+		t.Fatal("expected an error decompressing a payload over the size cap, got nil")
+	}
+}

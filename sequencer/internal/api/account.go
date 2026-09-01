@@ -56,6 +56,9 @@ func inactiveLegUpdate(tree *state.LevelDBMerkleTree, index uint64) types.StateU
 // sequencer/cmd/cli/test_client.go's lock-file workaround, which this fix makes
 // unnecessary going forward (kept in place regardless — harmless once this is fixed).
 func openBalance(tree *state.LevelDBMerkleTree, batch *batcher.Batcher, pubKeyHex string, tokenID uint32) (*types.BalanceState, error) {
+	if batch == nil {
+		return nil, fmt.Errorf("openBalance: batcher is nil — Server misconfigured, or called directly without one")
+	}
 	accID, err := tree.GetAccountID(pubKeyHex)
 	if err != nil {
 		return nil, err

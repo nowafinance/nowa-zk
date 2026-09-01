@@ -92,6 +92,15 @@ func gzipCompress(raw []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// MaxDecompressedPayloadLen bounds GzipDecompress's output — generous headroom over
+// today's real batch sizes (a 25-op batch's uncompressed JSON measured ~248KB) while
+// still capping worst-case memory use. Without this, io.ReadAll on a gzip.Reader has
+// no size limit at all: a small, otherwise-valid compressed blob with an unusually
+// high compression ratio could expand to consume unbounded memory (a "decompression
+// bomb") in both the Prover and reconstruct-proof, which both decompress DA blobs
+// fetched from outside this process (L1 batch data / Blobscan respectively).
+const MaxDecompressedPayloadLen = 16 * 1024 * 1024 // 16 MiB
+
 // GzipDecompress reverses gzipCompress — exported so reconstruct-proof (a separate
 // Go module, see sequencer/cmd/reconstruct-proof/replay.go) can mirror it exactly
 // rather than risk drifting from this implementation.
@@ -101,9 +110,15 @@ func GzipDecompress(compressed []byte) ([]byte, error) {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
 	defer r.Close()
-	out, err := io.ReadAll(r)
+	// Read one byte past the cap so an exactly-at-the-limit payload doesn't get
+	// silently truncated and mistaken for "under the cap".
+	limited := io.LimitReader(r, MaxDecompressedPayloadLen+1)
+	out, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("gzip read: %w", err)
+	}
+	if len(out) > MaxDecompressedPayloadLen {
+		return nil, fmt.Errorf("decompressed payload exceeds %d byte cap", MaxDecompressedPayloadLen)
 	}
 	return out, nil
 }

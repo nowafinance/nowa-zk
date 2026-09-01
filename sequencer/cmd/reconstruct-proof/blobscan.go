@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
+
+// blobscanHTTPClient bounds both requests fetchBlob makes (Blobscan metadata + the
+// IPFS/storage content fetch). Plain http.Get has no timeout at all — a stalled
+// Blobscan or IPFS gateway would hang this tool indefinitely. 30s is generous for a
+// slow gateway while still guaranteeing the tool eventually fails instead of hanging.
+var blobscanHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // blobscanBlobResponse mirrors the subset of Blobscan's GET /blobs/{versionedHash}
 // response this tool needs. Verified live against api.sepolia.blobscan.com this
@@ -26,7 +33,7 @@ func fetchBlob(blobscanAPI, versionedHash string) ([blobLimbs * 32]byte, error) 
 	var blob [blobLimbs * 32]byte
 
 	metaURL := fmt.Sprintf("%s/blobs/%s", blobscanAPI, versionedHash)
-	resp, err := http.Get(metaURL)
+	resp, err := blobscanHTTPClient.Get(metaURL)
 	if err != nil {
 		return blob, fmt.Errorf("query Blobscan for %s: %w", versionedHash, err)
 	}
@@ -53,7 +60,7 @@ func fetchBlob(blobscanAPI, versionedHash string) ([blobLimbs * 32]byte, error) 
 		}
 	}
 
-	dataResp, err := http.Get(dataURL)
+	dataResp, err := blobscanHTTPClient.Get(dataURL)
 	if err != nil {
 		return blob, fmt.Errorf("fetch blob content from %s: %w", dataURL, err)
 	}

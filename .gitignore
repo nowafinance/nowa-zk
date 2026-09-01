@@ -59,11 +59,14 @@ indexer/data/
 # --- Prover Specific ---
 prover/keys/
 prover/prover-bin
+prover/bin_prover
+prover/prover-bin-test
 
 # --- Sequencer Specific ---
 sequencer/nowa_state_db/
 sequencer/bin/
 sequencer/sequencer
+sequencer/bin_seq
 
 
 # --- Smart Contracts Specific ---

@@ -55,3 +55,45 @@ func TestDecodeDAPayload_RejectsUncompressedInput(t *testing.T) {
 		t.Fatal("expected an error decoding uncompressed input, got nil")
 	}
 }
+
+// TestReadCheckpoint_RejectsCorruptData is the regression test for a Copilot review
+// finding: a truncated or otherwise malformed persisted checkpoint value used to
+// panic binary.BigEndian.Uint64 (index-out-of-range) instead of failing gracefully.
+func TestReadCheckpoint_RejectsCorruptData(t *testing.T) {
+	tree := newTestTree(t)
+
+	// No checkpoint written yet — 0, no error.
+	got, err := readCheckpoint(tree)
+	if err != nil || got != 0 {
+		t.Fatalf("fresh tree: got (%d, %v), want (0, nil)", got, err)
+	}
+
+	// A truncated value (not 8 bytes) must error, not panic.
+	if err := tree.SetMeta(lastReplayedBatchKey, []byte{0x01, 0x02, 0x03}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCheckpoint(tree); err == nil {
+		t.Fatal("expected an error for a truncated (3-byte) checkpoint value, got nil")
+	}
+}
+
+// TestGzipDecompress_RejectsOversizedPayload is the regression test for the
+// decompression-bomb Copilot finding: a small compressed input that expands past
+// maxDecompressedPayloadLen must error, not silently allocate unbounded memory.
+func TestGzipDecompress_RejectsOversizedPayload(t *testing.T) {
+	// Highly compressible: all zeros, expands well past the cap from a small input.
+	huge := make([]byte, maxDecompressedPayloadLen+1024)
+
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write(huge); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := gzipDecompress(buf.Bytes()); err == nil {
+		t.Fatal("expected an error decompressing a payload over the size cap, got nil")
+	}
+}
