@@ -41,12 +41,23 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+// boolToVar converts a Go bool into the 0/1 integer a frontend.Variable witness
+// field needs — frontend.NewWitness can't auto-convert a raw bool the way it does
+// for int/uint64/*big.Int.
+func boolToVar(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 type StateUpdate struct {
-	Index    uint64     `json:"index"`
-	Balance  string     `json:"balance"`
-	Nonce    uint64     `json:"nonce"`
-	Path     [28]string `json:"path"`
-	PathBits [28]uint64 `json:"path_bits"` // was []bool — fixed to match sequencer JSON
+	Index     uint64     `json:"index"`
+	Balance   string     `json:"balance"`
+	Nonce     uint64     `json:"nonce"`
+	IsGenesis bool       `json:"is_genesis"`
+	Path      [28]string `json:"path"`
+	PathBits  [28]uint64 `json:"path_bits"` // was []bool — fixed to match sequencer JSON
 }
 
 type StateTransition struct {
@@ -460,11 +471,13 @@ func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.P
 		}
 
 		circuit.Ops[i].MakerBase.Index = op.MakerBase.Index
+		circuit.Ops[i].MakerBase.IsGenesis = boolToVar(op.MakerBase.IsGenesis)
 		circuit.Ops[i].MakerBase.Balance, _ = new(big.Int).SetString(op.MakerBase.Balance, 10)
 		circuit.Ops[i].MakerBase.Nonce = op.MakerBase.Nonce
 		assignPath(&circuit.Ops[i].MakerBase.Path, &circuit.Ops[i].MakerBase.PathBits, op.MakerBase.Path, op.MakerBase.PathBits)
 
 		circuit.Ops[i].MakerQuote.Index = op.MakerQuote.Index
+		circuit.Ops[i].MakerQuote.IsGenesis = boolToVar(op.MakerQuote.IsGenesis)
 		circuit.Ops[i].MakerQuote.Balance, _ = new(big.Int).SetString(op.MakerQuote.Balance, 10)
 		circuit.Ops[i].MakerQuote.Nonce = op.MakerQuote.Nonce
 		assignPath(&circuit.Ops[i].MakerQuote.Path, &circuit.Ops[i].MakerQuote.PathBits, op.MakerQuote.Path, op.MakerQuote.PathBits)
@@ -478,11 +491,13 @@ func generateProof(batch *ZKBatch, ccs constraint.ConstraintSystem, pk groth16.P
 		}
 
 		circuit.Ops[i].TakerBase.Index = op.TakerBase.Index
+		circuit.Ops[i].TakerBase.IsGenesis = boolToVar(op.TakerBase.IsGenesis)
 		circuit.Ops[i].TakerBase.Balance, _ = new(big.Int).SetString(op.TakerBase.Balance, 10)
 		circuit.Ops[i].TakerBase.Nonce = op.TakerBase.Nonce
 		assignPath(&circuit.Ops[i].TakerBase.Path, &circuit.Ops[i].TakerBase.PathBits, op.TakerBase.Path, op.TakerBase.PathBits)
 
 		circuit.Ops[i].TakerQuote.Index = op.TakerQuote.Index
+		circuit.Ops[i].TakerQuote.IsGenesis = boolToVar(op.TakerQuote.IsGenesis)
 		circuit.Ops[i].TakerQuote.Balance, _ = new(big.Int).SetString(op.TakerQuote.Balance, 10)
 		circuit.Ops[i].TakerQuote.Nonce = op.TakerQuote.Nonce
 		assignPath(&circuit.Ops[i].TakerQuote.Path, &circuit.Ops[i].TakerQuote.PathBits, op.TakerQuote.Path, op.TakerQuote.PathBits)

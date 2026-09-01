@@ -32,7 +32,7 @@ func main() {
 	eng := engine.NewEngine(tradeQueue)
 	batch := batcher.NewBatcher()
 
-	// Apply every real match into Merkle state + ZK batch (BatchSize=1 ⇒ seals immediately).
+	// Apply every real match into Merkle state + ZK batch (seals once batcher.BatchSize real fills accumulate).
 	go func() {
 		for trade := range tradeQueue {
 			fmt.Printf("Matched Trade: %s (Amount: %s, Price: %s)\n",
@@ -139,34 +139,13 @@ func compressPubKeyHex(pubX, pubY *big.Int) (string, error) {
 	return "0x" + hex.EncodeToString(compressed[:]), nil
 }
 
-// getOrCreateAccountForDeposit is like getOrCreateBalance but starts a brand-new
-// account at balance 0, not the 1,000,000 "lab credit" used for trading-onboarding
-// call sites. A deposit's L2 balance should be exactly what was deposited — crediting
-// a phantom 1,000,000 bonus on top would silently inflate real funds.
-func getOrCreateAccountForDeposit(tree *state.LevelDBMerkleTree, pubKeyHex string, pubX, pubY *big.Int, tokenID uint32) (*types.BalanceState, error) {
-	accID, err := tree.GetAccountID(pubKeyHex)
-	if err != nil {
-		return nil, err
-	}
-	acc, err := tree.GetBalance(accID, tokenID)
-	if err != nil {
-		return nil, err
-	}
-	if acc == nil {
-		acc = &types.BalanceState{
-			AccountID: accID,
-			TokenID:   tokenID,
-			PubKeyX:   pubX,
-			PubKeyY:   pubY,
-			Balance:   big.NewInt(0),
-			Nonce:     0,
-		}
-		if err := tree.SetBalance(acc); err != nil {
-			return nil, err
-		}
-	}
-	return acc, nil
-}
+// Note: account-opening for deposits used to live here as getOrCreateAccountForDeposit,
+// which started a brand-new account at balance 0 (not the 1,000,000 "lab credit" used
+// for trading-onboarding) by writing directly to the tree. That direct write was itself
+// a real bug — untracked, breaking the Merkle-proof consistency of the deposit
+// transition that followed it — so account-opening is now handled inline in
+// deposit_watcher.go's processDeposit, as its own tracked transition. See that file's
+// comments for the full explanation.
 
 func getEmptyStateUpdate(tree *state.LevelDBMerkleTree, index uint64) types.StateUpdate {
 	path, bits := tree.GetPath(index)

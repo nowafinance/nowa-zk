@@ -120,6 +120,16 @@ deploy:
 	@mkdir -p contracts/deployments
 	@# Load .env variables from ROOT .env
 	@if [ -f .env ]; then export $$(grep -v '^#' .env | xargs); fi; \
+	if [ -z "$$INITIAL_STATE_ROOT" ]; then \
+		echo "🌱 No INITIAL_STATE_ROOT set — reading the Sequencer's current tree root..."; \
+		INITIAL_STATE_ROOT=$$(cd sequencer && go run ./cmd/print-root --data-dir ~/.nowa-zk/sequencer/nowa_state_db); \
+		echo "   Sequencer root: $$INITIAL_STATE_ROOT"; \
+		echo "   (an empty/fresh tree does NOT root to 0 — this replaces the old"; \
+		echo "    manual setStateRoot() bootstrap step for a fresh deploy)"; \
+	else \
+		echo "🌱 Using explicit INITIAL_STATE_ROOT from environment: $$INITIAL_STATE_ROOT"; \
+	fi; \
+	export INITIAL_STATE_ROOT; \
 	cd contracts && forge script script/Deploy.s.sol --rpc-url $${L1_RPC_URL} --broadcast
 	@mkdir -p .nowa-zk
 	@echo "📦 Copying deployment file..."

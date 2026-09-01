@@ -53,6 +53,11 @@ type StateUpdate struct {
 	Nonce    uint64     `json:"nonce"`
 	Path     [28]string `json:"path"`
 	PathBits [28]uint64 `json:"path_bits"`
+	// IsGenesis marks this leg as the very first time its leaf has ever been
+	// written — the tree's true default for an untouched leaf is 0, not
+	// accountLeaf(index, pubX, pubY, 0, 0), so the circuit needs to know which
+	// check to make. See prover/circuits/state_circuit.go's StateUpdate doc comment.
+	IsGenesis bool `json:"is_genesis"`
 }
 
 // StateTransition represents a single operation for the ZK Circuit.
@@ -84,5 +89,5 @@ type ZKBatch struct {
 	NewRoot        string            `json:"new_root"`
 	WithdrawalHash string            `json:"withdrawal_hash"`
 	DepositHash    string            `json:"deposit_hash"`
-	Transitions    []StateTransition `json:"transitions"` // Array of 5 (BatchSize=5 in circuit)
+	Transitions    []StateTransition `json:"transitions"` // len == batcher.BatchSize / circuits.BatchSize once sealed
 }

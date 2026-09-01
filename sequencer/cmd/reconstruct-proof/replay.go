@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/nowafinance/nowa-zk/sequencer/internal/state"
@@ -147,9 +150,33 @@ func applyLeg(tree *state.LevelDBMerkleTree, su types.StateUpdate, pubXStr, pubY
 }
 
 // decodeDAPayload unmarshals the unpacked blob payload JSON.
+// gzipDecompress mirrors prover/internal/da/blob.go's GzipDecompress exactly —
+// duplicated, not imported, for the same cross-module-boundary reason unpackBlob is
+// (see its doc comment above). Keep in sync if the compression format ever changes.
+func gzipDecompress(compressed []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, fmt.Errorf("gzip reader: %w", err)
+	}
+	defer r.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("gzip read: %w", err)
+	}
+	return out, nil
+}
+
+// decodeDAPayload reverses EncodeBatchPayload: gzip-decompress (see
+// prover/internal/da/blob.go's EncodeBatchPayload doc comment for why every payload
+// is compressed — raising BatchSize past 1 outgrew a single blob's raw capacity),
+// then parse the resulting JSON.
 func decodeDAPayload(raw []byte) (*daPayload, error) {
+	decompressed, err := gzipDecompress(raw)
+	if err != nil {
+		return nil, fmt.Errorf("decompress DA payload: %w", err)
+	}
 	var p daPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
+	if err := json.Unmarshal(decompressed, &p); err != nil {
 		return nil, fmt.Errorf("decode DA payload: %w", err)
 	}
 	return &p, nil

@@ -2,9 +2,12 @@
 package da
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -31,7 +34,23 @@ type DAPayload struct {
 	Transitions    json.RawMessage `json:"transitions"`
 }
 
-// EncodeBatchPayload marshals a DA payload and returns raw bytes + keccak256 hash.
+// EncodeBatchPayload marshals a DA payload, gzip-compresses it, and returns the
+// compressed bytes + keccak256 hash of those same compressed bytes (dataHash is a
+// hash of exactly what ends up packed into the blob, per submitBatch's "_dataHash
+// ... must match bytes stored in the blob" contract — so integrity verification
+// never needs to decompress first to check it).
+//
+// Compression exists because raising BatchSize from 1 to 25 (see
+// prover/circuits/state_circuit.go) grew a real batch's uncompressed JSON payload
+// past a single blob's 126,976-byte capacity (a 25-op batch measured at ~248KB) —
+// confirmed live. The payload is mostly decimal-string-encoded Merkle path siblings,
+// which compress well (repetitive, numeric). This is a pragmatic fix, not a
+// structural one: it buys headroom rather than removing the one-blob-per-batch
+// ceiling entirely — a batch whose data is unusually incompressible, or a further
+// increase in BatchSize, could still exceed it. True multi-blob support (EIP-4844
+// allows up to 6 blobs per transaction) would remove the ceiling properly, at the
+// cost of a NowaRollup.sol change (it currently tracks one blob hash per batch) —
+// not done here, deliberately deferred.
 func EncodeBatchPayload(batchID uint64, oldRoot, newRoot, withdrawalHash, depositHash string, transitions any) (payload []byte, dataHash common.Hash, err error) {
 	transJSON, err := json.Marshal(transitions)
 	if err != nil {
@@ -46,15 +65,47 @@ func EncodeBatchPayload(batchID uint64, oldRoot, newRoot, withdrawalHash, deposi
 		DepositHash:    depositHash,
 		Transitions:    transJSON,
 	}
-	payload, err = json.Marshal(p)
+	uncompressed, err := json.Marshal(p)
 	if err != nil {
 		return nil, common.Hash{}, fmt.Errorf("marshal DA payload: %w", err)
 	}
+	payload, err = gzipCompress(uncompressed)
+	if err != nil {
+		return nil, common.Hash{}, fmt.Errorf("compress DA payload: %w", err)
+	}
 	// 4-byte length prefix is included inside the packed blob data budget.
 	if len(payload)+4 > MaxPayloadLen {
-		return nil, common.Hash{}, fmt.Errorf("DA payload too large for one blob: %d bytes (max %d)", len(payload)+4, MaxPayloadLen)
+		return nil, common.Hash{}, fmt.Errorf("DA payload too large for one blob even after compression: %d bytes compressed from %d (max %d)", len(payload)+4, len(uncompressed), MaxPayloadLen)
 	}
 	return payload, crypto.Keccak256Hash(payload), nil
+}
+
+func gzipCompress(raw []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write(raw); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// GzipDecompress reverses gzipCompress — exported so reconstruct-proof (a separate
+// Go module, see sequencer/cmd/reconstruct-proof/replay.go) can mirror it exactly
+// rather than risk drifting from this implementation.
+func GzipDecompress(compressed []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, fmt.Errorf("gzip reader: %w", err)
+	}
+	defer r.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("gzip read: %w", err)
+	}
+	return out, nil
 }
 
 // packBlob encodes arbitrary bytes into a valid EIP-4844 blob.

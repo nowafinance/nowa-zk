@@ -203,6 +203,7 @@ func TestStateCircuit_ValidTransfer(t *testing.T) {
 	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
 	witness.Op.MakerSig.Assign(twistededwards.BN254, sig)
 	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.IsGenesis = 0
 	witness.Op.MakerBase.Balance = 1000
 	witness.Op.MakerBase.Nonce = 1
 	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
@@ -211,6 +212,7 @@ func TestStateCircuit_ValidTransfer(t *testing.T) {
 	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
 	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
 	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.IsGenesis = 0
 	witness.Op.TakerBase.Balance = 500
 	witness.Op.TakerBase.Nonce = 0
 	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
@@ -218,11 +220,13 @@ func TestStateCircuit_ValidTransfer(t *testing.T) {
 	// Dummy paths for inactive
 	emptyPath, emptyBits := smt.GetPath(99)
 	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
 	witness.Op.MakerQuote.Balance = 0
 	witness.Op.MakerQuote.Nonce = 0
 	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
 	
 	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
 	witness.Op.TakerQuote.Balance = 0
 	witness.Op.TakerQuote.Nonce = 0
 	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
@@ -301,6 +305,7 @@ func TestStateCircuit_ValidDeposit(t *testing.T) {
 	witness.Op.MakerPubKey.Assign(twistededwards.BN254, seqPub.Bytes())
 	witness.Op.MakerSig.Assign(twistededwards.BN254, seqSig)
 	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.IsGenesis = 0
 	witness.Op.MakerBase.Balance = 0
 	witness.Op.MakerBase.Nonce = 1
 	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(seqBasePath, seqBaseBits)
@@ -308,6 +313,7 @@ func TestStateCircuit_ValidDeposit(t *testing.T) {
 	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
 	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
 	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.IsGenesis = 0
 	witness.Op.TakerBase.Balance = 500
 	witness.Op.TakerBase.Nonce = 0
 	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
@@ -315,11 +321,13 @@ func TestStateCircuit_ValidDeposit(t *testing.T) {
 	// Dummy paths for inactive
 	emptyPath, emptyBits := smt.GetPath(99)
 	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
 	witness.Op.MakerQuote.Balance = 0
 	witness.Op.MakerQuote.Nonce = 0
 	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
 	
 	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
 	witness.Op.TakerQuote.Balance = 0
 	witness.Op.TakerQuote.Nonce = 0
 	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
@@ -377,10 +385,12 @@ func TestStateCircuit_ValidDeposit_AsSequencerActuallySendsIt(t *testing.T) {
 	witness.Op.MakerSig.S = 0
 	emptyPath, emptyBits := smt.GetPath(99)
 	witness.Op.MakerBase.Index = 99
+	witness.Op.MakerBase.IsGenesis = 0
 	witness.Op.MakerBase.Balance = 0
 	witness.Op.MakerBase.Nonce = 0
 	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(emptyPath, emptyBits)
 	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
 	witness.Op.MakerQuote.Balance = 0
 	witness.Op.MakerQuote.Nonce = 0
 	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
@@ -393,15 +403,161 @@ func TestStateCircuit_ValidDeposit_AsSequencerActuallySendsIt(t *testing.T) {
 	witness.Op.TakerSig.R.Y = 0
 	witness.Op.TakerSig.S = 0
 	witness.Op.TakerBase.Index = 0
+	witness.Op.TakerBase.IsGenesis = 0
 	witness.Op.TakerBase.Balance = 0
 	witness.Op.TakerBase.Nonce = 0
 	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
 	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
 	witness.Op.TakerQuote.Balance = 0
 	witness.Op.TakerQuote.Nonce = 0
 	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
 
 	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
+// TestStateCircuit_ValidDeposit_GenesisAccount is the regression test for the real
+// bug found live on Sepolia (batch #1): a leaf that has NEVER been written before has
+// the SMT's literal zero as its true value (see merkle_db.go's zeroHashes[0]), not
+// accountLeaf(index, pubX, pubY, 0, 0) — those are different field elements for any
+// real pubkey. Every other deposit test in this file pre-seeds the taker leaf via
+// smt.Update() before treating it as "old" state, which never exercises this path.
+// This test deliberately does NOT seed index 0 beforehand — using the tree's true
+// empty-leaf path and IsGenesis=1 — reproducing exactly what a brand-new depositor's
+// very first deposit looks like against a genuinely fresh Sequencer database.
+func TestStateCircuit_ValidDeposit_GenesisAccount(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	// Deliberately no smt.Update(0, ...) here — index 0 has never been touched.
+	oldRoot := smt.Root()
+
+	takerBasePath, takerBaseBits := smt.GetPath(0) // true empty-tree path for index 0
+	newTakerBaseLeaf := hashGo(big.NewInt(0), takerX, takerY, big.NewInt(200), big.NewInt(0))
+	smt.Update(0, newTakerBaseLeaf)
+
+	newRoot := smt.Root()
+
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	witness.DepositHash = hashGo(big.NewInt(0), big.NewInt(0), big.NewInt(200))
+
+	witness.Op.OpType = 3 // OpDeposit
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 0
+
+	witness.Op.MakerPubKey.A.X = 0
+	witness.Op.MakerPubKey.A.Y = 0
+	witness.Op.MakerSig.R.X = 0
+	witness.Op.MakerSig.R.Y = 0
+	witness.Op.MakerSig.S = 0
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerBase.Index = 99
+	witness.Op.MakerBase.IsGenesis = 0
+	witness.Op.MakerBase.Balance = 0
+	witness.Op.MakerBase.Nonce = 0
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(emptyPath, emptyBits)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	witness.Op.TakerPubKey.A.X = takerX
+	witness.Op.TakerPubKey.A.Y = takerY
+	witness.Op.TakerSig.R.X = 0
+	witness.Op.TakerSig.R.Y = 0
+	witness.Op.TakerSig.S = 0
+	witness.Op.TakerBase.Index = 0
+	witness.Op.TakerBase.IsGenesis = 1 // <-- the property under test
+	witness.Op.TakerBase.Balance = 0
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
+// TestStateCircuit_GenesisCannotForgeBalance guards the security property IsGenesis
+// introduces: a leg claiming IsGenesis=1 MUST also claim Balance=0 and Nonce=0 — it
+// cannot use the genesis flag to skip the inclusion check while asserting a
+// fabricated non-zero starting balance out of thin air.
+func TestStateCircuit_GenesisCannotForgeBalance(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	takerPriv, _ := eddsa.GenerateKey(rand.Reader)
+	takerPub := takerPriv.PublicKey
+	takerX := new(big.Int)
+	takerPub.A.X.BigInt(takerX)
+	takerY := new(big.Int)
+	takerPub.A.Y.BigInt(takerY)
+
+	oldRoot := smt.Root() // index 0 never touched
+	takerBasePath, takerBaseBits := smt.GetPath(0)
+	newTakerBaseLeaf := hashGo(big.NewInt(0), takerX, takerY, big.NewInt(1_000_200), big.NewInt(0))
+	smt.Update(0, newTakerBaseLeaf)
+	newRoot := smt.Root()
+
+	var witness SingleTransitionCircuit
+	witness.OldRoot = oldRoot
+	witness.NewRoot = newRoot
+	witness.WithdrawalHash = 0
+	witness.DepositHash = hashGo(big.NewInt(0), big.NewInt(0), big.NewInt(200))
+
+	witness.Op.OpType = 3
+	witness.Op.Amount = 200
+	witness.Op.QuoteAmount = 0
+
+	witness.Op.MakerPubKey.A.X = 0
+	witness.Op.MakerPubKey.A.Y = 0
+	witness.Op.MakerSig.R.X = 0
+	witness.Op.MakerSig.R.Y = 0
+	witness.Op.MakerSig.S = 0
+	emptyPath, emptyBits := smt.GetPath(99)
+	witness.Op.MakerBase.Index = 99
+	witness.Op.MakerBase.IsGenesis = 0
+	witness.Op.MakerBase.Balance = 0
+	witness.Op.MakerBase.Nonce = 0
+	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(emptyPath, emptyBits)
+	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
+	witness.Op.MakerQuote.Balance = 0
+	witness.Op.MakerQuote.Nonce = 0
+	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	witness.Op.TakerPubKey.A.X = takerX
+	witness.Op.TakerPubKey.A.Y = takerY
+	witness.Op.TakerSig.R.X = 0
+	witness.Op.TakerSig.R.Y = 0
+	witness.Op.TakerSig.S = 0
+	witness.Op.TakerBase.Index = 0
+	witness.Op.TakerBase.IsGenesis = 1
+	// Fabricated: claims a 1,000,000 head start on top of genesis, which IsGenesis
+	// must reject regardless of what path is supplied.
+	witness.Op.TakerBase.Balance = 1_000_000
+	witness.Op.TakerBase.Nonce = 0
+	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
+	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
+	witness.Op.TakerQuote.Balance = 0
+	witness.Op.TakerQuote.Nonce = 0
+	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithInvalidAssignment(&witness), test.WithCurves(ecc.BN254))
 }
 
 // TestStateCircuit_TradeStillRequiresRealTakerSignature guards against
@@ -462,11 +618,13 @@ func TestStateCircuit_TradeStillRequiresRealTakerSignature(t *testing.T) {
 	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
 	witness.Op.MakerSig.Assign(twistededwards.BN254, sig)
 	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.IsGenesis = 0
 	witness.Op.MakerBase.Balance = 1000
 	witness.Op.MakerBase.Nonce = 1
 	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
 	emptyPath, emptyBits := smt.GetPath(99)
 	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
 	witness.Op.MakerQuote.Balance = 0
 	witness.Op.MakerQuote.Nonce = 0
 	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
@@ -479,15 +637,142 @@ func TestStateCircuit_TradeStillRequiresRealTakerSignature(t *testing.T) {
 	witness.Op.TakerSig.R.Y = 0
 	witness.Op.TakerSig.S = 0
 	witness.Op.TakerBase.Index = 99
+	witness.Op.TakerBase.IsGenesis = 0
 	witness.Op.TakerBase.Balance = 0
 	witness.Op.TakerBase.Nonce = 0
 	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(emptyPath, emptyBits)
 	witness.Op.TakerQuote.Index = 1
+	witness.Op.TakerQuote.IsGenesis = 0
 	witness.Op.TakerQuote.Balance = 5000
 	witness.Op.TakerQuote.Nonce = 0
 	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(takerQuotePath, takerQuoteBits)
 
 	assert.CheckCircuit(&SingleTransitionCircuit{}, test.WithInvalidAssignment(&witness), test.WithCurves(ecc.BN254))
+}
+
+// TestStateTransitionCircuit_FullBatchOf25 is the first real test of
+// StateTransitionCircuit.Define()'s multi-op loop — every other test in this file
+// exercises processOperation() directly via the single-op SingleTransitionCircuit
+// wrapper, which never touched the real [BatchSize]Operation array or the root/hash
+// threading between consecutive ops in one proof. With BatchSize raised from 1 to
+// 25, this is the path every real batch now actually takes, so it needs its own
+// dedicated coverage, not an inference from the single-op tests passing.
+//
+// 25 sequential real transfers between the same two accounts, applied one after
+// another to both the reference tree and the witness — mirrors exactly how a real
+// Sequencer batch accumulates fills: each op's "old" snapshot must reflect every
+// prior op in the same batch, not the batch's starting state.
+func TestStateTransitionCircuit_FullBatchOf25(t *testing.T) {
+	assert := test.NewAssert(t)
+	smt := NewMemorySMT(MerkleDepth)
+
+	senderPriv, _ := eddsa.GenerateKey(rand.Reader)
+	senderPub := senderPriv.PublicKey
+	senderX := new(big.Int)
+	senderPub.A.X.BigInt(senderX)
+	senderY := new(big.Int)
+	senderPub.A.Y.BigInt(senderY)
+
+	receiverPriv, _ := eddsa.GenerateKey(rand.Reader)
+	receiverPub := receiverPriv.PublicKey
+	receiverX := new(big.Int)
+	receiverPub.A.X.BigInt(receiverX)
+	receiverY := new(big.Int)
+	receiverPub.A.Y.BigInt(receiverY)
+
+	const transferAmount = 100
+	senderBalance := int64(25000)
+	senderNonce := int64(0)
+	receiverBalance := int64(0)
+
+	smt.Update(0, hashGo(big.NewInt(0), senderX, senderY, big.NewInt(senderBalance), big.NewInt(senderNonce)))
+	smt.Update(1, hashGo(big.NewInt(1), receiverX, receiverY, big.NewInt(receiverBalance), big.NewInt(0)))
+
+	var witness StateTransitionCircuit
+	witness.OldRoot = smt.Root()
+	witness.WithdrawalHash = 0
+	witness.DepositHash = 0
+
+	// Inactive-leg dummy path — safe to compute once: MakerQuote/TakerQuote are
+	// inactive for every op here (Transfer), so their computed root is discarded via
+	// api.Select regardless of whether this path is still "fresh" after later tree
+	// updates elsewhere. Same established pattern the single-op tests above use.
+	emptyPath, emptyBits := smt.GetPath(99)
+
+	if BatchSize != 25 {
+		t.Fatalf("this test assumes BatchSize == 25 to match the account seeding above; got %d", BatchSize)
+	}
+
+	for i := 0; i < BatchSize; i++ {
+		witness.Ops[i].OpType = 1 // OpTransfer
+		witness.Ops[i].Amount = transferAmount
+		witness.Ops[i].QuoteAmount = 0
+
+		witness.Ops[i].MakerPubKey.Assign(twistededwards.BN254, senderPub.Bytes())
+		msgHashBig := hashGo(big.NewInt(1), senderX, senderY, big.NewInt(0), big.NewInt(99))
+		var msgHashFr fr.Element
+		msgHashFr.SetBigInt(msgHashBig)
+		msgHashBytes := msgHashFr.Bytes()
+		sig, _ := senderPriv.Sign(msgHashBytes[:], mimc.NewMiMC())
+		witness.Ops[i].MakerSig.Assign(twistededwards.BN254, sig)
+
+		// Snapshot MakerBase (sender), then apply its mutation immediately — the
+		// circuit processes this leg, and updates root, BEFORE it even looks at
+		// TakerBase's inclusion proof. Indices 0 and 1 are adjacent (siblings at the
+		// tree's bottom level), so the receiver's own Merkle path genuinely changes
+		// the instant the sender's leaf does — fetching both paths upfront (as an
+		// earlier version of this test did) reads a stale receiver path and fails.
+		senderPath, senderBits := smt.GetPath(0)
+		witness.Ops[i].MakerBase.Index = 0
+		witness.Ops[i].MakerBase.IsGenesis = 0
+		witness.Ops[i].MakerBase.Balance = senderBalance
+		witness.Ops[i].MakerBase.Nonce = senderNonce
+		witness.Ops[i].MakerBase.Path, witness.Ops[i].MakerBase.PathBits = getPathVars(senderPath, senderBits)
+
+		senderBalance -= transferAmount
+		senderNonce++
+		smt.Update(0, hashGo(big.NewInt(0), senderX, senderY, big.NewInt(senderBalance), big.NewInt(senderNonce)))
+
+		witness.Ops[i].MakerQuote.Index = 99
+		witness.Ops[i].MakerQuote.IsGenesis = 0
+		witness.Ops[i].MakerQuote.Balance = 0
+		witness.Ops[i].MakerQuote.Nonce = 0
+		witness.Ops[i].MakerQuote.Path, witness.Ops[i].MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+
+		// Taker signature is never checked for Transfer (conditionalVerify only
+		// requires it for Trade) — left zero on purpose, matching how a real
+		// Transfer transition is actually constructed.
+		witness.Ops[i].TakerPubKey.Assign(twistededwards.BN254, receiverPub.Bytes())
+		witness.Ops[i].TakerSig.R.X = 0
+		witness.Ops[i].TakerSig.R.Y = 0
+		witness.Ops[i].TakerSig.S = 0
+
+		// Snapshot TakerBase (receiver) only now — after MakerBase's mutation above,
+		// matching the circuit's actual processing order.
+		receiverPath, receiverBits := smt.GetPath(1)
+		witness.Ops[i].TakerBase.Index = 1
+		witness.Ops[i].TakerBase.IsGenesis = 0
+		witness.Ops[i].TakerBase.Balance = receiverBalance
+		witness.Ops[i].TakerBase.Nonce = 0
+		witness.Ops[i].TakerBase.Path, witness.Ops[i].TakerBase.PathBits = getPathVars(receiverPath, receiverBits)
+
+		receiverBalance += transferAmount
+		smt.Update(1, hashGo(big.NewInt(1), receiverX, receiverY, big.NewInt(receiverBalance), big.NewInt(0)))
+
+		witness.Ops[i].TakerQuote.Index = 99
+		witness.Ops[i].TakerQuote.IsGenesis = 0
+		witness.Ops[i].TakerQuote.Balance = 0
+		witness.Ops[i].TakerQuote.Nonce = 0
+		witness.Ops[i].TakerQuote.Path, witness.Ops[i].TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
+	}
+
+	witness.NewRoot = smt.Root()
+
+	assert.CheckCircuit(&StateTransitionCircuit{}, test.WithValidAssignment(&witness), test.WithCurves(ecc.BN254))
+
+	if senderBalance != 25000-25*transferAmount || receiverBalance != 25*transferAmount {
+		t.Fatalf("test bookkeeping bug (not a circuit bug): sender=%d receiver=%d", senderBalance, receiverBalance)
+	}
 }
 
 func TestStateCircuit_InvalidSignature(t *testing.T) {
@@ -559,6 +844,7 @@ func TestStateCircuit_InvalidSignature(t *testing.T) {
 	witness.Op.MakerPubKey.Assign(twistededwards.BN254, pubKey.Bytes())
 	witness.Op.MakerSig.Assign(twistededwards.BN254, invalidSig) // INVALID SIG
 	witness.Op.MakerBase.Index = 0
+	witness.Op.MakerBase.IsGenesis = 0
 	witness.Op.MakerBase.Balance = 1000
 	witness.Op.MakerBase.Nonce = 1
 	witness.Op.MakerBase.Path, witness.Op.MakerBase.PathBits = getPathVars(makerBasePath, makerBaseBits)
@@ -566,17 +852,20 @@ func TestStateCircuit_InvalidSignature(t *testing.T) {
 	witness.Op.TakerPubKey.Assign(twistededwards.BN254, takerPub.Bytes())
 	witness.Op.TakerSig.Assign(twistededwards.BN254, takerSig)
 	witness.Op.TakerBase.Index = 1
+	witness.Op.TakerBase.IsGenesis = 0
 	witness.Op.TakerBase.Balance = 500
 	witness.Op.TakerBase.Nonce = 0
 	witness.Op.TakerBase.Path, witness.Op.TakerBase.PathBits = getPathVars(takerBasePath, takerBaseBits)
 	
 	emptyPath, emptyBits := smt.GetPath(99)
 	witness.Op.MakerQuote.Index = 99
+	witness.Op.MakerQuote.IsGenesis = 0
 	witness.Op.MakerQuote.Balance = 0
 	witness.Op.MakerQuote.Nonce = 0
 	witness.Op.MakerQuote.Path, witness.Op.MakerQuote.PathBits = getPathVars(emptyPath, emptyBits)
 	
 	witness.Op.TakerQuote.Index = 99
+	witness.Op.TakerQuote.IsGenesis = 0
 	witness.Op.TakerQuote.Balance = 0
 	witness.Op.TakerQuote.Nonce = 0
 	witness.Op.TakerQuote.Path, witness.Op.TakerQuote.PathBits = getPathVars(emptyPath, emptyBits)

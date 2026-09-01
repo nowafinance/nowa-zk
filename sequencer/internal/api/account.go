@@ -75,6 +75,11 @@ func openBalance(tree *state.LevelDBMerkleTree, batch *batcher.Batcher, pubKeyHe
 	leafIndex := (accID * 256) + uint64(tokenID)
 	oldRoot := tree.Root().String()
 	takerBaseUpdate := inactiveLegUpdate(tree, leafIndex) // pre-credit state: balance 0
+	// This leaf has never been written before (acc == nil was just confirmed above) —
+	// its true tree value is the SMT's literal 0, not accountLeaf(index,pubX,pubY,0,0).
+	// See prover/circuits/state_circuit.go's StateUpdate.IsGenesis doc comment for why
+	// conflating the two fails circuit verification (confirmed live on Sepolia).
+	takerBaseUpdate.IsGenesis = true
 
 	acc = &types.BalanceState{
 		AccountID: accID,
