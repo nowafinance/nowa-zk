@@ -24,7 +24,7 @@ Environment variables:
 RPC_URL=http://localhost:8545      # Ethereum RPC endpoint (REQUIRED)
 WS_URL=ws://localhost:8546          # WebSocket endpoint (optional)
 API_PORT=8080                       # API server port (default: 8080)
-BATCH_SIZE=128                      # Trades per batch (default: 128)
+BATCH_SIZE=25                       # Trades per batch (default: 25)
 STATE_DB_PATH=./data/state          # Database path (default: ./data/state)
 ```
 
@@ -60,7 +60,7 @@ curl http://localhost:8080/prover/batch/1
 
 1. **Monitors** blockchain for new blocks
 2. **Processes** and decodes trades from each block transaction
-3. **Builds** batches incrementally (e.g. 128 trades per batch)
+3. **Builds** batches incrementally (e.g. 25 trades per batch)
 5. **Persists** batches to BadgerDB
 6. **Serves** batches via API for prover
 7. **Handles** chain reorganizations automatically

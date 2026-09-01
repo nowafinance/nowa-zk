@@ -68,17 +68,6 @@ open the `Makefile` directly) for the current list of available targets.
 
 ---
 
-## 📚 Documentation & Resources
-
-- 🛡️ **[Security Policy](SECURITY.md)** — vulnerability reporting and security guidelines.
-
-**Component READMEs:**
-- [Prover Documentation](prover/README.md)
-- [Smart Contracts Documentation](contracts/README.md)
-- [Indexer Documentation](indexer/README.md)
-
----
-
 ## 🤝 Contributing
 
 We welcome and appreciate contributions from the community! Whether it's bug reports, feature requests, or code contributions, please check out our **[Contribution Guidelines](CONTRIBUTING.md)** before getting started.

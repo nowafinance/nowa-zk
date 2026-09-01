@@ -73,6 +73,7 @@ sequencer/bin_seq
 contracts/lib/*
 contracts/broadcast/*
 contracts/deployments/*
+contracts/lcov.info
 contracts/src/generated/*
 
 ignore/
