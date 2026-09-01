@@ -123,7 +123,7 @@ func TestApplyTrade_PartialFillBalances(t *testing.T) {
 	assert.Equal(t, big.NewInt(50), trade.MatchPrice)
 
 	applyTrade(trade, tree, b)
-	assert.Equal(t, uint64(1), b.GetBatchCount(), "BatchSize=1 should seal after one real fill")
+	assert.Equal(t, 1, b.GetCurrentBatchSize(), "the fill should be tracked as a transition in the open batch")
 
 	quote := new(big.Int).Mul(big.NewInt(30), big.NewInt(50))
 	assert.Equal(t, new(big.Int).Sub(sellerStart1, big.NewInt(30)).String(), balanceOf(t, tree, sellerPub, 1).String())

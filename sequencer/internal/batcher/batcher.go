@@ -11,7 +11,9 @@ import (
 	"github.com/nowafinance/nowa-zk/sequencer/internal/types"
 )
 
-const BatchSize = 1 // must match prover/circuits.BatchSize — real fills only, no dummy padding
+const BatchSize = 25 // must match prover/circuits.BatchSize — real fills only, no dummy padding.
+// A batch only seals once exactly this many real transitions have accumulated —
+// on low trade volume, nothing settles to L1 until BatchSize fills happen.
 
 const (
 	OpTrade    = 0
@@ -45,16 +47,26 @@ func NewBatcher() *Batcher {
 	}
 }
 
-// mimcHashTwo hashes two *big.Int values using MiMC (BN254), producing a *big.Int.
-func mimcHashTwo(a, b *big.Int) *big.Int {
+// mimcHash hashes N *big.Int values using MiMC (BN254) as a single continuous chain
+// from one fresh state — matching prover/circuits/state_circuit.go's
+// h.Write(a, b, c); h.Sum() exactly. This must NOT be composed by nesting two calls
+// (e.g. mimcHash(mimcHash(a, b), c)) to fold in a third item — that's a different,
+// incompatible construction: MiMC's Miyaguchi-Preneel state threads through every
+// Write in one chain, so f(f(f(0,a),b),c) (one chain, three items) is mathematically
+// different from f(f(0, f(f(0,a),b)), c) (two chains, the second re-injecting a fresh
+// zero state) — confirmed live on Sepolia: the DepositHash accumulator used the
+// nested form here while the circuit used the single-chain form, and every batch
+// containing a deposit failed the circuit's final DepositHash equality check as a
+// result once deposits could reach proving at all (this was masked until now by the
+// deposit-signing bug blocking every deposit from being proven in the first place).
+func mimcHash(items ...*big.Int) *big.Int {
 	h := mimc.NewMiMC()
-	var aFr, bFr fr.Element
-	aFr.SetBigInt(a)
-	bFr.SetBigInt(b)
-	ab := aFr.Bytes()
-	bb := bFr.Bytes()
-	h.Write(ab[:])
-	h.Write(bb[:])
+	for _, item := range items {
+		var f fr.Element
+		f.SetBigInt(item)
+		b := f.Bytes()
+		h.Write(b[:])
+	}
 	var res fr.Element
 	res.SetBytes(h.Sum(nil))
 	out := new(big.Int)
@@ -86,9 +98,7 @@ func (b *Batcher) AddTransition(t types.StateTransition, oldRoot, newRoot string
 		if !ok {
 			amount = big.NewInt(0)
 		}
-		// H(H(currentHash, leafIndex), amount)
-		mid := mimcHashTwo(b.currentDepositHash, leafIndex)
-		b.currentDepositHash = mimcHashTwo(mid, amount)
+		b.currentDepositHash = mimcHash(b.currentDepositHash, leafIndex, amount)
 	}
 
 	// Accumulate WithdrawalHash: H(currentHash, leafIndex, amount) for OpWithdraw.
@@ -98,8 +108,7 @@ func (b *Batcher) AddTransition(t types.StateTransition, oldRoot, newRoot string
 		if !ok {
 			amount = big.NewInt(0)
 		}
-		mid := mimcHashTwo(b.currentWithdrawalHash, leafIndex)
-		b.currentWithdrawalHash = mimcHashTwo(mid, amount)
+		b.currentWithdrawalHash = mimcHash(b.currentWithdrawalHash, leafIndex, amount)
 	}
 
 	if len(b.currentBatch.Transitions) == BatchSize {

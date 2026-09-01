@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards"
 	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/api"
 	"github.com/nowafinance/nowa-zk/sequencer/internal/batcher"
@@ -31,7 +32,7 @@ func main() {
 	eng := engine.NewEngine(tradeQueue)
 	batch := batcher.NewBatcher()
 
-	// Apply every real match into Merkle state + ZK batch (BatchSize=1 ⇒ seals immediately).
+	// Apply every real match into Merkle state + ZK batch (seals once batcher.BatchSize real fills accumulate).
 	go func() {
 		for trade := range tradeQueue {
 			fmt.Printf("Matched Trade: %s (Amount: %s, Price: %s)\n",
@@ -119,6 +120,32 @@ func getOrCreateBalance(tree *state.LevelDBMerkleTree, pubKeyHex string, tokenID
 	}
 	return acc, nil
 }
+
+// compressPubKeyHex reconstructs the compressed EdDSA pubkey hex — matching exactly
+// what eddsa.PublicKey.Bytes() produces for a client's own key — from raw (X, Y)
+// coordinates, the format the L1 Deposit event carries them in. This must match a
+// depositor's own key encoding bit-for-bit, or their deposit lands under a different
+// tree lookup key than /account or /proof would ever compute for them, making it
+// permanently unreachable. (Concatenating raw X||Y, which was here before, is NOT
+// this format — SetBytes expects one compressed 32-byte point, not 64 raw bytes.)
+func compressPubKeyHex(pubX, pubY *big.Int) (string, error) {
+	var p twistededwards.PointAffine
+	p.X.SetBigInt(pubX)
+	p.Y.SetBigInt(pubY)
+	if !p.IsOnCurve() {
+		return "", fmt.Errorf("point (%s, %s) is not on the BabyJubJub curve", pubX.String(), pubY.String())
+	}
+	compressed := p.Bytes()
+	return "0x" + hex.EncodeToString(compressed[:]), nil
+}
+
+// Note: account-opening for deposits used to live here as getOrCreateAccountForDeposit,
+// which started a brand-new account at balance 0 (not the 1,000,000 "lab credit" used
+// for trading-onboarding) by writing directly to the tree. That direct write was itself
+// a real bug — untracked, breaking the Merkle-proof consistency of the deposit
+// transition that followed it — so account-opening is now handled inline in
+// deposit_watcher.go's processDeposit, as its own tracked transition. See that file's
+// comments for the full explanation.
 
 func getEmptyStateUpdate(tree *state.LevelDBMerkleTree, index uint64) types.StateUpdate {
 	path, bits := tree.GetPath(index)

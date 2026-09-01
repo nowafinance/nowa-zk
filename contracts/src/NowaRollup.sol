@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "./generated/Verifier.sol";
+import "./MiMC.sol";
 
 /// @title NowaRollup
 /// @notice L1 contract for ZK batch settlement with EIP-4844 blob data availability.
@@ -32,9 +33,24 @@ contract NowaRollup {
     mapping(address => bool) public isProver;
     address public owner;
 
+    /// @notice Escape hatch: fixed at deploy, never owner-adjustable.
+    uint256 public immutable escapeTimeout;
+
+    /// @notice Timestamp of the last successful submitBatch (or deploy, if none yet).
+    uint256 public lastBatchAt;
+
+    /// @notice keccak256(pubKeyX, pubKeyY) -> first address that ever deposited into that L2 pubkey.
+    /// @dev First-depositor-wins: prevents an attacker depositing dust into someone else's
+    ///      already-funded pubkey to hijack escape-hatch rights over it.
+    mapping(bytes32 => address) public depositorOf;
+
+    /// @notice Leaf index -> already claimed via emergencyWithdraw (prevents double-withdrawal).
+    mapping(uint256 => bool) public escapeWithdrawn;
+
     event TokenRegistered(uint32 indexed tokenId, address indexed tokenAddress);
     event Deposit(address indexed user, uint32 indexed tokenId, uint256 amount, uint256 pubKeyX, uint256 pubKeyY);
     event Withdrawal(address indexed user, uint32 indexed tokenId, uint256 amount);
+    event EscapeWithdrawal(address indexed user, uint32 indexed tokenId, uint256 indexed index, uint256 amount);
     event StateTransition(
         uint64 indexed batchId,
         bytes32 indexed oldRoot,
@@ -45,11 +61,13 @@ contract NowaRollup {
         bytes32 dataHash
     );
 
-    constructor(address _verifier, bytes32 _initialStateRoot) {
+    constructor(address _verifier, bytes32 _initialStateRoot, uint256 _escapeTimeout) {
         verifier = Verifier(_verifier);
         owner = msg.sender;
         isProver[msg.sender] = true;
         stateRoot = _initialStateRoot;
+        escapeTimeout = _escapeTimeout;
+        lastBatchAt = block.timestamp;
     }
 
     /// @notice Bootstrap / resync L1 root before any batch is settled (owner only).
@@ -94,6 +112,11 @@ contract NowaRollup {
             abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, address(this), _amount)
         );
         require(success && (data.length == 0 || abi.decode(data, (bool))), "TransferFrom failed");
+
+        bytes32 key = keccak256(abi.encode(_pubKeyX, _pubKeyY));
+        if (depositorOf[key] == address(0)) {
+            depositorOf[key] = msg.sender;
+        }
 
         emit Deposit(msg.sender, _tokenId, _amount, _pubKeyX, _pubKeyY);
     }
@@ -147,7 +170,97 @@ contract NowaRollup {
         stateRoot = _newRoot;
         batchBlobHash[batchId] = blobHash;
         batchDataHash[batchId] = _dataHash;
+        lastBatchAt = block.timestamp;
 
         emit StateTransition(batchId, _oldRoot, _newRoot, _withdrawalHash, _depositHash, blobHash, _dataHash);
+    }
+
+    /// @notice Parameters for emergencyWithdraw, bundled into a struct — Solidity's legacy codegen
+    ///         hits "stack too deep" with this many individual parameters (2 of them length-28
+    ///         arrays) on a single external function.
+    struct EscapeProof {
+        uint32 tokenId;
+        uint256 balance;
+        uint256 nonce;
+        uint256 pubX;
+        uint256 pubY;
+        uint256 index;
+        bytes32[28] siblings;
+        bool[28] pathBits;
+    }
+
+    /// @notice Trustless fallback withdrawal if the Sequencer has stalled for `escapeTimeout`.
+    /// @dev Deposit-bound: only the address recorded in `depositorOf` for this leaf's pubkey may
+    ///      claim it (first-depositor-wins, set in `deposit()`). This does NOT cover balance a
+    ///      pubkey only ever received via L2 trades and never deposited into directly — that's a
+    ///      documented limitation, not an oversight (see docs/architecture/overview.md).
+    /// @param p.tokenId Token being withdrawn — must match `index % 256` (the circuit's leaf layout).
+    /// @param p.balance The leaf's full current balance for this token — withdrawn in full, no partial exit.
+    /// @param p.nonce The leaf's current nonce (part of the leaf hash the Sequencer/circuit compute).
+    /// @param p.pubX L2 EdDSA public key X coordinate for this account.
+    /// @param p.pubY L2 EdDSA public key Y coordinate for this account.
+    /// @param p.index Merkle leaf index (`accountID*256 + tokenId`).
+    /// @param p.siblings The 28 sibling hashes from leaf to root (depth-28 SMT).
+    /// @param p.pathBits Per-level direction bits; `true` means this node is the right child (matches
+    ///        prover/circuits/state_circuit.go's merkleRoot() convention exactly).
+    function emergencyWithdraw(EscapeProof calldata p) external {
+        require(block.timestamp > lastBatchAt + escapeTimeout, "Sequencer not stalled");
+        require(p.index % 256 == p.tokenId, "Token/index mismatch");
+        bytes32 key = keccak256(abi.encode(p.pubX, p.pubY));
+        require(depositorOf[key] == msg.sender, "Not original depositor");
+        require(!escapeWithdrawn[p.index], "Already withdrawn");
+
+        uint256 leaf = _accountLeaf(p.index, p.pubX, p.pubY, p.balance, p.nonce);
+        uint256 root = _foldMerklePath(leaf, p.siblings, p.pathBits);
+        require(bytes32(root) == stateRoot, "Invalid Merkle proof");
+
+        // Effects before interaction.
+        escapeWithdrawn[p.index] = true;
+
+        address tokenAddress = tokens[p.tokenId];
+        require(tokenAddress != address(0), "Token ID not registered");
+        (bool success, bytes memory data) = tokenAddress.call(
+            abi.encodeWithSignature("transfer(address,uint256)", msg.sender, p.balance)
+        );
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "Transfer failed");
+
+        emit EscapeWithdrawal(msg.sender, p.tokenId, p.index, p.balance);
+    }
+
+    /// @dev Mirrors accountLeaf() in prover/circuits/state_circuit.go: MiMC(index, pubX, pubY, balance, nonce).
+    function _accountLeaf(uint256 index, uint256 pubX, uint256 pubY, uint256 balance, uint256 nonce)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256[] memory leafData = new uint256[](5);
+        leafData[0] = index;
+        leafData[1] = pubX;
+        leafData[2] = pubY;
+        leafData[3] = balance;
+        leafData[4] = nonce;
+        return MiMC.hash(leafData);
+    }
+
+    /// @dev Mirrors merkleRoot() in prover/circuits/state_circuit.go: bit=1 means the current
+    ///      node is the right child, sibling goes on the left; bit=0 is the reverse.
+    function _foldMerklePath(uint256 leaf, bytes32[28] calldata siblings, bool[28] calldata pathBits)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 cur = leaf;
+        for (uint256 i = 0; i < 28; i++) {
+            uint256[] memory pair = new uint256[](2);
+            if (pathBits[i]) {
+                pair[0] = uint256(siblings[i]);
+                pair[1] = cur;
+            } else {
+                pair[0] = cur;
+                pair[1] = uint256(siblings[i]);
+            }
+            cur = MiMC.hash(pair);
+        }
+        return cur;
     }
 }

@@ -28,15 +28,28 @@ contract Deploy is Script {
         console.log("");
 
         console.log("2. Deploying NowaRollup...");
-        // Start at 0; owner must call setStateRoot(sequencer oldRoot) before the first submitBatch
-        // once the off-chain SMT has been opened (lab credits / deposits).
+        // `make deploy` computes this automatically (sequencer/cmd/print-root, reading
+        // whatever's actually in the Sequencer's LevelDB tree right now) and passes it
+        // as INITIAL_STATE_ROOT — a fresh/empty tree does NOT root to 0, so defaulting
+        // to bytes32(0) here would make every submitBatch() revert until manually
+        // fixed. Only falls back to 0 if INITIAL_STATE_ROOT truly isn't set at all
+        // (e.g. calling this script directly, bypassing the Makefile).
         bytes32 initialRoot = bytes32(0);
         try vm.envBytes32("INITIAL_STATE_ROOT") returns (bytes32 r) {
             initialRoot = r;
         } catch {}
-        nowaRollup = new NowaRollup(address(verifier), initialRoot);
+        // Escape hatch: how long submitBatch() can go quiet before emergencyWithdraw() unlocks.
+        // Fixed at deploy, never owner-adjustable afterward. Defaults to 7 days (matches the
+        // figure documented in FAQ-ZK.md / the internal roadmap) — override for local/testnet
+        // deployments where waiting a real week isn't practical.
+        uint256 escapeTimeout = 7 days;
+        try vm.envUint("ESCAPE_TIMEOUT_SECONDS") returns (uint256 t) {
+            escapeTimeout = t;
+        } catch {}
+        nowaRollup = new NowaRollup(address(verifier), initialRoot, escapeTimeout);
         console.log("   NowaRollup deployed at:", address(nowaRollup));
         console.log("   initial stateRoot:", vm.toString(initialRoot));
+        console.log("   escapeTimeout (seconds):", escapeTimeout);
         console.log("");
 
         vm.stopBroadcast();
